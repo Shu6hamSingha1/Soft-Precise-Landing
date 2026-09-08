@@ -1,6 +1,6 @@
 ---
 name: project_20260909_visibility_projection_wire_in
-description: "The visibility CBF was rebuilt from clean requirements as src/visibility_projection.py (Tier-1 hard lean projection on the measured cross-marker CENTRE in the real camera plane + Tier-2 soft self-releasing descent ease) and wired into controller.py (82fa9c16), retiring cbf_visibility.py / cbf_visibility_aruco.py / the joint-QP / deliverability-sphere / descent-relief / two-phase-delta / rho_fov-cone machinery. IC2-5 n=5 A/B vs the old machinery (worktree @ d380901c): PASS -- both 20/20 land / 0 TL; NEW pooled mean xy 0.14 vs OLD 0.24, precise 11 vs 8. WHY NEW>OLD (traced from the bundle): median is a WASH (CBF idle on clean approaches); NEW wins the TAIL because the old joint-solve/relief/pullback/theta_cone-floor stack THRASHED on marginal off-center approaches -- intervened when it shouldn't (OLD dtheta_az fired 4-5% of terminal frames vs NEW vis_active 0%; fought the SMC re-centering), chattered theta_cone 3-5x into the kappa ratchet (a_u 32-55 vs 5-6, kappa 0.5 vs 0.1), added descent-slowing pressure. All OLD tail failures end with s_e_n~0.9-1.0 (the unresolved off-center wall); NEW doesn't fix that wall, it stops the CBF from worsening it (NEW still hits it once, IC5r2)."
+description: "The visibility CBF was rebuilt from clean requirements as src/visibility_projection.py (Tier-1 = a discrete-time one-step CBF-QP: min-norm lean projection keeping the measured cross-marker CENTRE inside the buffered FoV on the real camera plane; Tier-2 = a soft, non-CBF, self-releasing descent-ease governor) and wired into controller.py (82fa9c16), retiring cbf_visibility.py / cbf_visibility_aruco.py / the joint-QP / deliverability-sphere / descent-relief / two-phase-delta / rho_fov-cone machinery. IC2-5 n=5 A/B vs the old machinery (worktree @ d380901c): PASS -- both 20/20 land / 0 TL; NEW pooled mean xy 0.14 vs OLD 0.24, precise 11 vs 8. WHY NEW>OLD (traced from the bundle): median is a WASH (CBF idle on clean approaches); NEW wins the TAIL because the old joint-solve/relief/pullback/theta_cone-floor stack THRASHED on marginal off-center approaches -- intervened when it shouldn't (OLD dtheta_az fired 4-5% of terminal frames vs NEW vis_active 0%; fought the SMC re-centering), chattered theta_cone 3-5x into the kappa ratchet (a_u 32-55 vs 5-6, kappa 0.5 vs 0.1), added descent-slowing pressure. All OLD tail failures end with s_e_n~0.9-1.0 (the unresolved off-center wall); NEW doesn't fix that wall, it stops the CBF from worsening it (NEW still hits it once, IC5r2)."
 metadata:
   node_type: memory
   type: project
@@ -27,6 +27,20 @@ User directed a clean-slate rebuild from two requirements (2026-09-08/09):
   input. Single-point linearisation is <8% off for a per-cycle lean CHANGE <=~15deg
   (the real 50 Hz regime); `buffer_frac=0.15` absorbs it. NOT accurate for a one-shot
   ~50deg correction -- relies on the lean cap + the every-cycle incremental nature.
+
+  **Tier 1 IS a control barrier function** -- a discrete-time, one-step-horizon
+  CBF-QP: explicit barrier `h_k` defining a safe set (centroid inside the buffered
+  FoV); the QP constraint `|c + Le(y - y_now) + tau*d|_k <= phi_k` enforces
+  `h_k(c_next) >= 0` on the predicted feature (the DTCBF condition
+  `h(x_{k+1}) >= gamma*h(x_k)` at `gamma=0`, hard invariance, plus a `tau*d`
+  look-ahead for target motion); min-norm objective = minimal intervention.
+  Caveats vs a *rigorous* CBF: the invariance rests on the one-step linearisation
+  (holds for the <=~15deg/cycle regime, buffer_frac is the margin -- no proven
+  Lipschitz/exact-map bound); no `alpha(h)` rate relaxation (uses the hard
+  `h(c_next)>=0`, more conservative near the edge, re-solved every 20 ms); no
+  stability/feasibility theorem is claimed (the retired note claimed a disputed
+  one). **Tier 2 `descent_ease` is NOT a CBF** -- a soft bounded self-releasing
+  governor on the descent rate, no barrier, no invariance claim.
 - **Tier 2 `descent_ease`** -- soft, predictive, the user's "relaxing descent helps
   visibility" point done right. Scales ONLY the downward part of `a_z` by
   `g_z in [g_min, 1]` on the measured time-for-`|c|`-to-reach-the-edge
