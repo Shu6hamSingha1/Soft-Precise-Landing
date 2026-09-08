@@ -2090,6 +2090,16 @@ class Controller(Thread):
         self._theta_desired_log = []
         self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
         self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
+        # joint-QP convergence residual (2026-09-08) -- cbf_visibility.py stashes a
+        # per-outer-iterate command-move norm in self._cbf_state each call; surface
+        # the summary here per control step. final ~ 0 => the fixed 6-iterate budget
+        # converged; large final or resid_rising > 0 => it chattered (the
+        # project_joint_qp_nonconvergence_kappa_ratchet signature). NaN on steps
+        # where the joint QP did not run (Phase-2 fallback / theta path / QP off).
+        self._jqp_resid_final_log = []
+        self._jqp_resid_max_log = []
+        self._jqp_resid_rising_log = []
+        self._jqp_converged_log = []
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -3852,6 +3862,11 @@ class Controller(Thread):
         # own h_z docstring for the derivation. Default-off (CBF_HZ_AWARE_DRIFT
         # env var), so passing this is a no-op until explicitly enabled.
         _cbf_h_z = float(self._h[-1][2]) if len(self._h) > 0 else 0.0
+        # clear last call's joint-QP convergence summary so a frame that does NOT
+        # run the joint QP (Phase-2 fallback / theta path) logs NaN, not a stale value
+        for _k in ("joint_qp_resid_final", "joint_qp_resid_max",
+                   "joint_qp_resid_rising", "joint_qp_converged"):
+            self._cbf_state.pop(_k, None)
         I_a, theta_cone, _cbf_ok, self._theta_safe, _th_desired = cbf2_filter(
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
@@ -3877,6 +3892,14 @@ class Controller(Thread):
             _dtheta_norm = 0.0
         self._dtheta_az_log.append(_dtheta_norm)
         self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
+        # joint-QP convergence residual (2026-09-08, see __init__)
+        _nan = float("nan")
+        self._jqp_resid_final_log.append(float(self._cbf_state.get("joint_qp_resid_final", _nan)))
+        self._jqp_resid_max_log.append(float(self._cbf_state.get("joint_qp_resid_max", _nan)))
+        _jqp_rise = self._cbf_state.get("joint_qp_resid_rising", None)
+        self._jqp_resid_rising_log.append(float(_jqp_rise) if _jqp_rise is not None else _nan)
+        _jqp_conv = self._cbf_state.get("joint_qp_converged", None)
+        self._jqp_converged_log.append(1.0 if _jqp_conv is True else (0.0 if _jqp_conv is False else _nan))
         # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
         # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
         # of this fully SKIPPED the angle clip below, relying only on the downstream
@@ -4356,6 +4379,10 @@ class Controller(Thread):
             "theta_desired(t)": self._theta_desired_log,
             "dtheta_href_g(t)": self._dtheta_href_g_log,
             "az_joint_delta(t)": self._az_joint_log,
+            "jqp_resid_final(t)": self._jqp_resid_final_log,   # joint-QP last-outer-iterate command move (m/s^2); ~0 => converged, NaN => QP didn't run
+            "jqp_resid_max(t)": self._jqp_resid_max_log,       # max per-iterate move over the 6 outer iterates
+            "jqp_resid_rising(t)": self._jqp_resid_rising_log, # # of outer iterates whose residual rose vs the previous (chatter proxy; 0 => monotone)
+            "jqp_converged(t)": self._jqp_converged_log,       # 1.0 converged (final < CBF_JQP_RESID_TOL), 0.0 not, NaN QP didn't run
         }
 
     def getImgData(self):

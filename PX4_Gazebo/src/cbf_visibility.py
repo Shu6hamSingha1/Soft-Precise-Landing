@@ -319,6 +319,18 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
             P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
             Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel
             Ia_z = float(I_a[2])
+            # --- per-outer-iterate convergence residual (2026-09-08) ---
+            # The solver runs a FIXED 6-outer x 5-inner budget with no convergence
+            # test (CBF_visibility.pdf S4, "convergence is currently unobserved";
+            # project_joint_qp_nonconvergence_kappa_ratchet has the first concrete
+            # evidence it actually chatters near touchdown). Record how far the full
+            # command vector [Ia_lat; Ia_z] moves on each outer iterate: a converging
+            # solve decays this toward 0 by iterate 6; a chattering one does not.
+            # Stashed in `state` (persists via the caller's self._cbf_state) so it
+            # needs no signature change and no new return value.
+            _jqp_resid_tol = float(env.get("CBF_JQP_RESID_TOL", "0.05"))   # m/s^2 on the last iterate = "settled"
+            _jqp_prev = np.array([Ia_lat[0], Ia_lat[1], Ia_z])
+            _jqp_resid = []
             for _outer in range(6):
                 _az_now = max(abs(Ia_z), 1e-6)
                 M = (Lw2 @ P) / _az_now                              # box-constraint Jacobian w.r.t. I_a[:2] at the CURRENT a_z estimate
@@ -386,6 +398,18 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                         thrust_vec = thrust_vec * (A_CAP / _T)
                         Ia_lat = thrust_vec[:2].copy()
                         Ia_z = float(thrust_vec[2] - g)
+                _jqp_cur = np.array([Ia_lat[0], Ia_lat[1], Ia_z])
+                _jqp_resid.append(float(np.linalg.norm(_jqp_cur - _jqp_prev)))
+                _jqp_prev = _jqp_cur
+            # convergence summary for this call (see the residual comment above)
+            state["joint_qp_resid"] = _jqp_resid                     # full 6-vector of per-iterate command moves (m/s^2)
+            state["joint_qp_resid_final"] = _jqp_resid[-1] if _jqp_resid else 0.0
+            state["joint_qp_resid_max"] = max(_jqp_resid) if _jqp_resid else 0.0
+            # chatter proxy: # of iterates whose residual ROSE vs the previous one
+            # (a monotone-decreasing solve scores 0; the 2026-09-04 chatter rep scores high)
+            state["joint_qp_resid_rising"] = sum(
+                1 for _i in range(1, len(_jqp_resid)) if _jqp_resid[_i] > _jqp_resid[_i - 1] + 1e-9)
+            state["joint_qp_converged"] = bool(_jqp_resid and _jqp_resid[-1] < _jqp_resid_tol)
             _az_final = max(abs(Ia_z), 1e-6)
             th_safe = P @ (Ia_lat / _az_final)                        # derived, for Fix B / dtheta consumers -- not the QP's own variable here
             # SANITY CLIP (2026-08-29, caught in offline stress-testing before SITL): the
