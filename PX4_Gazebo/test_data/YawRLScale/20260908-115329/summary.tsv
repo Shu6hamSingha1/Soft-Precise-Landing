@@ -1,0 +1,4 @@
+knob	val	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+PLASMC_YAW_RL_WZ_SCALE	2.5	1	YES	0.0847	0.5152	24.7	1	0	0	rep1
+PLASMC_YAW_RL_WZ_SCALE	2.5	2	YES	0.0106	0.2569	21.3	0	0	0	rep2
+PLASMC_YAW_RL_WZ_SCALE	2.5	3	YES	0.2000	0.4843	24.6	0	0	0	rep3

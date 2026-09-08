@@ -122,3 +122,9 @@ PX4_Gazebo/test_data/OverfillCapture_IC2to5/**
 !PX4_Gazebo/test_data/OverfillCapture_IC2to5/*.log
 !PX4_Gazebo/test_data/OverfillCapture_IC2to5/driver.out
 !PX4_Gazebo/test_data/OverfillCapture_IC2to5/raw_dirs.txt
+
+# YawRLScale (2026-09-08): FLOW_KF_Q_WZ / PLASMC_YAW_RL_WZ_SCALE sweep. Bulk per-rep
+# .npy ignored; sweep summaries + per-rep launch logs tracked.
+PX4_Gazebo/test_data/YawRLScale/**/rep*/
+!PX4_Gazebo/test_data/YawRLScale/**/summary.tsv
+!PX4_Gazebo/test_data/YawRLScale/**/*.log
