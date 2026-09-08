@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T20:29:11.890Z
+  modified: 2026-09-08T20:42:39.979Z
 ---
 
 ## Context / goal
@@ -573,3 +573,34 @@ bounded/fails-safe.** Shadow-mode `"Scale Loom Rate"` is LANDED + committed (`4a
 - Output clamp `|scale rate| ≤ ~1.0` + an IC5-style hold (IC5 breaks the signal — separate blocker).
 - The wire-in itself needs the full IC2-5 n=5 SITL gate (it's a control-path change, not a
   perception fix).
+
+### ⚠ WIRE-IN LANDED DEFAULT-ON (2026-09-09, `c843a7a1`) — user directed, classified as a
+### PERCEPTION change (controller.py untouched); NOT flight-tested yet
+User's call: feeding `Scale Loom Rate` into `h_z` is a perception-ESTIMATOR change (the loom is a
+perception output; `controller.py` still just reads `getOptFlowAngVel()[2]`), so the IC2-5 gate's
+control-change requirement doesn't strictly bind. Implemented + committed default-ON over my
+stated reservation that there is zero closed-loop evidence.
+- **Mechanism:** second sequential scalar KF correction on `_hw_kf_x[2]` (loom channel) at the end
+  of `_kf_update_hw`, measurement = `scale_rate / _sensor_cal_hw[2,2]` (0.9513 — scale_rate was
+  validated on the CALIBRATED loom scale, `_hw_kf_x` is RAW). Corrects VALUE only (`H=[1,0]`);
+  rate state left to the main KF. Applied in BOTH the measurement and coast branches.
+- **Guards:** `_scale_fuse_on` (env `CROSS_SCALE_RATE_FUSE`, default 1) · hw-KF initialised · hw-KF
+  NOT frozen (don't mutate the shared frozen array) · scale KF initialised AND
+  `_scale_rate_measured_this_frame` (both width+extent fresh — skip on a coast so a collapsing
+  terminal / detect-miss estimate never drags h_z) · `|scale_rate| <= CROSS_SCALE_FUSE_CLAMP`
+  (1.0 — rejects IC5-style excursions; IC5 breaks the signal, still a separate blocker).
+- **1-frame lag:** the scale KF steps in `_log_frame_data` which runs AFTER `_kf_update_hw`, so
+  the fusion consumes the previous frame's `scale_rate` (~26 ms @ 38 Hz). Deliberate, acceptable.
+- **Env:** `CROSS_SCALE_RATE_FUSE=0` fully restores shadow-only (verified bit-identical `_hw` in a
+  unit smoke test). `CROSS_SCALE_FUSE_R` (0.05 — tighter than the primary loom `FLOW_KF_R=0.1` so
+  it can pull a spiking h_z down over ~2-3 frames). New log key `"Scale Fuse Z"` = the applied
+  pseudo-measurement (raw scale) or NaN when the fusion didn't fire.
+- **Smoke test only:** `_kf_update_hw` with no scale KF → bit-identical `_hw`, NaN log; with a
+  primary h_z spike to 5.0 + a valid `scale_rate=-0.4` → fused h_z pulled to ~0.94 in one frame
+  (converges toward -0.42 over a few); out-of-clamp `scale_rate=-5` → skipped, NaN logged.
+- **STILL OWED:** live sanity (blocked at commit time by a concurrent SITL session on ports
+  14540/8888) + the IC1-5 n=5 outcome check. If it regresses ANY IC → `CROSS_SCALE_RATE_FUSE=0`
+  is the instant revert. Watch specifically: IC5 (signal breaks there), the >2m/engage-transient
+  window (live scale-rate corr only ~0.4 full-descent), and terminal touchdown (scale-rate ~0 /
+  sign-unstable — the `_scale_rate_measured_this_frame` guard should stop it firing there but
+  confirm in a real rep).
