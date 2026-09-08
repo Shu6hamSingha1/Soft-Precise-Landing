@@ -584,24 +584,42 @@ class Controller(Thread):
         self._yaw_rate_law = os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
-        # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-08) ──────────────
+        # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-08; derivation 2026-09-09) ──
         # The law increment is `k_p*e_a - w_z_eff`, w_z_eff = WZ_SIGN*WZ_SCALE*w_z.
-        # It was DERIVED and GT-feedback-validated against the w_z that
-        # `gt_feedback.py` supplies: w[2] = -d(alpha)/dt (with PLASMC_GT_ALPHA_SIGN=+1,
-        # the non-perception alpha convention) -> e_a_dot = -w_z holds.
-        # REAL cross-marker perception's w_z (self._w_i[-1][2], lstsq col-5) is the
-        # manuscript rotational optic flow = -psi_dot_b,NED = +psi_dot_b,ENU
-        # ~= +alpha_dot -- verified against GT body yaw rate 2026-09-08
-        # (corr +0.66..+0.86, slope +0.2..+0.38 over 6 IC-val reps;
-        # project_yaw_rate_law_sign_bug_and_validation.md). That is the OPPOSITE
-        # sign to the GT-FB w_z, so on real perception the `-w_z` term became
-        # POSITIVE feedback on w_u[2] -> continuous yaw spin-up (1-2 full turns
-        # before overfill) -> alpha aliases -> e_a "diverges" to -50..-110 deg.
-        # Default: flip to +w_z for perception (WZ_SIGN=-1 so `-w_z_eff` = `+w_z`),
-        # restore the GT-FB convention automatically under PLASMC_GT_FEEDBACK=1
-        # (WZ_SIGN=+1). WZ_SCALE (default 1.0) is a separate lever for the ~3x
-        # magnitude deficit in the lstsq yaw column (structural under-observability,
-        # cross_marker_perception.py ~L715-731) -- sweep it once the sign is proven.
+        #
+        # WHY WZ_SIGN IS FRAME-FORCED, NOT AN EMPIRICAL FUDGE. The `-w_z` term was
+        # derived/GT-FB-validated against the w_z that `gt_feedback.py:234` supplies:
+        #   w[2] = -_asign * d(ry)/dt,  ry = yaw(uav)_ENU - yaw(target)_ENU,  _asign=+1
+        #        = -d(alpha)/dt = -psi_dot_b,ENU   (stationary target)
+        # (`_yaw_of` returns ENU yaw despite its docstring — numerically verified: a
+        #  +30deg-about-z quat -> +30.) The MANUSCRIPT rotational optic flow is
+        #   w_z = omega_t,z - psi_dot_b,NED = -psi_dot_b,NED = +psi_dot_b,ENU.
+        # So gt_feedback's w[2] = -w_z,manuscript  (the NEGATIVE of the convention).
+        # REAL perception's w_z (self._w_i[-1][2], lstsq col-5, calibrated) IS the
+        # manuscript convention: s_wz = +0.587 > 0, and measured corr(w_iz,
+        # +psi_dot_b,ENU) = +0.66..+0.86 -> w_iz ~= +w_z,manuscript.
+        # => gt_feedback w[2] and perception w_iz are OPPOSITE-signed. The law's
+        # `-w_z` slot wants a `-w_z,manuscript`-convention input, so:
+        #   GT-FB  -> feed w[2] as-is                 -> WZ_SIGN = +1
+        #   percep -> flip w_iz to -w_z,manuscript    -> WZ_SIGN = -1
+        # Feeding perception w_iz unflipped made `-w_z` POSITIVE feedback -> 1-2-turn
+        # spin-up. WZ_SIGN=-1 is the analytically-correct value, not a knob-tune.
+        #
+        # THE CLEAN FIX (queued, NOT done — needs a 2-gate SITL re-validation):
+        # flip gt_feedback.py:234 to w[2] = +w_z,manuscript so both paths agree, then
+        # re-derive this term from the correct identity e_a_dot = +w_z and delete
+        # WZ_SIGN. BLOCKED: gt_feedback's w[2] is SHARED with the lateral h_d /
+        # c-term path (cross(w_i,s), 2*cross(w,h) at ~L2678/2959 — sign-sensitive
+        # even with CTRL_ZERO_WXY=1), and feedback_gtfb_wz_sign_bug (2026-06-25)
+        # deliberately set it to -_slope for THAT path (other sign -> IC4 flew out
+        # at altitude). Flipping it needs the lateral GT-FB IC2-5 gate re-run too,
+        # plus reconciling the 2026-06-25 "matches perception" claim with the frame
+        # math above (they disagree). See project_yaw_rate_law_sign_bug_and_validation.md.
+        #
+        # WZ_SCALE (default 1.0): SEPARATE issue — the ~3x magnitude deficit in the
+        # lstsq yaw column (col-5 ~= Ty aliasing, cross_marker_perception.py ~L715-731).
+        # s_wz=0.587 bakes the attenuation in; WZ_SCALE restores the end-to-end gain.
+        # Proper fix = re-derive s_wz (deferred recal), then WZ_SCALE -> 1.0.
         _gt_fb = os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
         self._yaw_rl_wz_sign = float(os.environ.get(
             "PLASMC_YAW_RL_WZ_SIGN", "1.0" if _gt_fb else "-1.0"))

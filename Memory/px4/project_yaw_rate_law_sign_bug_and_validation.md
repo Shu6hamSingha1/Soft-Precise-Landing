@@ -436,3 +436,37 @@ the cal absorbs it — `s_wz = +0.587 > 0`; measured `corr(w_iz, +ψ̇_b,ENU) = 
 **Clean fix (queued, needs own GT-FB re-validation): (1) `gt_feedback.py` `w[2] = +α̇` (drop the
 leading `−`); (2) re-derive the law's rate term from `e_a_dot = +w_z`; (3) re-validate GT-FB
 ceiling048/beyond060; (4) delete `WZ_SIGN`. `WZ_SCALE` stays (separate magnitude-deficit → recal).**
+
+### 2026-09-09 — WZ_SIGN clean fix: frame math NAILED, gt_feedback.py flip BLOCKED on the lateral path
+
+Numerically verified `_yaw_of` (gt_feedback.py) returns **ENU yaw** (docstring "NED yaw" is
+WRONG — a +30°-about-z quat → +30°). So:
+- `gt_feedback.py:234` `w[2] = -_asign·d(ry)/dt`, `ry` ENU, `_asign=+1` → `w[2] = -psi_dot_b,ENU`
+- Manuscript `w_z = -psi_dot_b,NED = +psi_dot_b,ENU`
+- ∴ **`gt_feedback w[2] = -w_z,manuscript`**; perception `w_iz ≈ +w_z,manuscript` (`s_wz=+0.587`,
+  corr +0.66..+0.86). Genuinely opposite → `WZ_SIGN` split (`+1` GT-FB / `-1` percep) is
+  ANALYTICALLY FORCED, not a knob-tune. Comment in `controller.py:587` now carries the derivation.
+
+**gt_feedback.py flip is BLOCKED (2 reasons):**
+1. `gt_feedback`'s `w[2]` feeds `self._w_i`, consumed by the LATERAL `h_d`/c-term path
+   (`cross(w_i,s)`, `2·cross(w,h)` at `controller.py:2678`/`2959-2961` — sign-sensitive in `w_z`
+   even with `CTRL_ZERO_WXY=1`: `cross([0,0,w_z],s)=[-w_z·s_y, +w_z·s_x, 0]`). `feedback_gtfb_wz_sign_bug`
+   (2026-06-25) deliberately set `w[2] = -_slope` FOR that path — other sign → IC4 flew OUT at
+   altitude (2.5→6.4→5.4 m). Flipping needs the lateral GT-FB IC2-5 gate re-run.
+2. That 2026-06-25 memory claims `-_slope` "matches perception". The frame math above says it's
+   the OPPOSITE. Reconcile before flipping (one of the two is wrong).
+
+**Status:** `WZ_SIGN=-1` (perception) stays — it IS the correct value. The gt_feedback.py flip +
+`WZ_SIGN` deletion is queued behind: (a) lateral GT-FB IC2-5 re-gate, (b) yaw GT-FB re-gate
+(ceiling048/beyond060), (c) resolving the 2026-06-25 sign-claim contradiction.
+
+### 2026-09-09 — ramp-cmd→0-on-gate is STATIONARY-ONLY, wrong for a moving target
+
+The terminal `e_a` residual fix (ramp `_yaw_rl_cmd`→0 when the gate fires) only works if the true
+required yaw rate is 0 = stationary target. On a target turning at ω_t the drone must KEEP yawing
+at ~ω_t to touchdown; ramping to 0 grows the relative yaw error in the final approach. For a
+CONSTANT-rate turn the current FREEZE (hold last cmd) is accidentally closer to right (last cmd ≈
+the tracking rate). General fix: make it scenario-aware, OR drop the `MARKER_EXTENT_PX` overfill
+trigger from the yaw gate and keep only the `|w_z| > WZ_MAX` rate-guard (overfill drives `w_z`
+large so the rate-guard catches it anyway; the extent trigger is what prematurely kills the
+command at ~0.8 m).
