@@ -506,3 +506,28 @@ Reverting SHOULD match perception (which lands fine), but the 2026-06-25 IC4 alt
 
 **Perception paths (stationary 24/25, turning-target yaw) are UNCHANGED** — `gt_feedback` isn't in
 the perception path and the yaw term relabel is bit-identical.
+
+### 2026-09-09 — WZ_SIGN CLEAN FIX **VALIDATED** (n=1 GT-FB, decisive)
+
+n=1 is sufficient here: the failure mode is binary+multi-metre (monotone-converge vs altitude
+fly-out) and GT-FB removes perception noise. Bundles `test_data/ICValidation/{20260909-020940
+(yaw spin IC1), 20260909-021038 (lateral IC2/3/4)}`, base `4acc9ef0`.
+
+- **Yaw path (relabel no-op):** IC1, spin 0.48 rad/s → lands xy=0.007 m, `lat_err ≤ 0.09 m`
+  throughout; yaw held on the spinning target. Confirms `- w_z_gtfb_old ≡ + w_z_manuscript`.
+- **Lateral GT-FB (sign check):** IC2/IC3/IC4 no-spin → **monotone convergence, ZERO fly-out**
+  (2.8 → 2.6 → 1.6 → 0.5 → 0.15 → 0.02 m; `max lat_err after t=1s` = start offset). IC4 — which
+  `feedback_gtfb_wz_sign_bug` claimed flew OUT 2.5→6.4→5.4 m on the other sign — converges
+  2.78 → 0.02 m.
+
+⇒ `gt_feedback.py w[2] = +_slope` (unified manuscript convention) is correct for BOTH the yaw
+law and the lateral `cross(w_i,s)`/c-term path. The 2026-06-25 `-_slope` was the wrong sign
+(erroneous `alpha_dot = +psi_dot_b,NED`); its n=2 IC4-flyout was flaky/confounded. **`WZ_SIGN`
+is retired.** Perception paths were bit-identical throughout (unchanged).
+
+**Yaw-rate-law thread status:** sign bugs (actuation-chain + w_z convention) both fixed and
+frame-derived; `w_z` confidence gate built; stationary IC1-5 n=5 = 24/25 (best config
+`FLOW_KF_Q_WZ=1.0`+`WZ_SCALE=2.5`); turning-target YAW validated (e_a 1-4° vs ASMC runaway);
+k_i dead end; terminal residual = gate-freeze (fix = ramp-cmd→0, stationary-only). Remaining:
+WZ_SCALE recal (deferred); turning-target LATERAL limit cycle ([[project_rover_turning_open]]);
+ASMC/psi_d removal (keep as fallback). `PLASMC_YAW_RATE_LAW` stays default OFF.
