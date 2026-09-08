@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T12:42:26.157Z
+  modified: 2026-09-08T13:24:06.828Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -210,6 +210,33 @@ landing gate on the restructured control-path moment-loom. Peer messaged 2026-09
 
 **WZ_SCALE=2.5's own n=5 verdict is DEFERRED** until the loom regression is fixed (re-running on
 the broken base fails the same way). No further SITL until resolved.
+
+### 2026-09-08 — loom fixed (`e173b05c`, `CROSS_TZ_VETO_R_MULT` 1e6→1.0), WZ_SCALE=2.5 re-gate
+
+`test_data/ICValidation/20260908-182815` (n=5, WZ_SCALE=2.5, fixed base, collision-clean).
+h_z sanity: `hz_early ≈ 0.00` on all 25 reps (was +0.27..+1.30), `hz_min` negative everywhere —
+loom regression GONE.
+
+| IC | result | vs broken-base run |
+|---|---|---|
+| IC1 | 5/5 land 0.01-0.09 m, 4/5 precise | (was fine) |
+| IC2 | 5/5 land 0.01-0.21 m, 2/5 precise | **0.54 mean / 0 precise → fixed** |
+| IC3 | 5/5 land 0.03-0.06 m, 4/5 precise | **5.40 mean / 0 → fixed** |
+| IC4 | 5/5 land 0.05-0.30 m, 2/5 precise | **0.92 mean → fixed** |
+| IC5 | **0/5 crash** (9.4/4.9/4.9/4.9/34 m, 3-13 m/s) | still fails |
+
+**IC5 failure is TERMINAL 1/Z loom over-report, NOT WZ_SCALE, NOT the (fixed) veto.** IC5_rep1:
+descends clean from 3 m, h_z tracks normally (−0.05→−0.47) and a_u ≈ 1-9 until t=5.0 s / alt
+0.8 m — then h_z spikes to −6.54, a_u_z to −67.8, a_u_xy to 71 in the last 2 frames. This is the
+documented "#1 open blocker" terminal-overfill mechanism (tuning-guide STATUS). yaw_rl_cmd bounded
+±0.31, e_a ≤42° on every IC5 rep — yaw law is fine. IC5 = 3 m start = least runway before the
+terminal danger zone (memory: "IC5 fails = LARGEST normalized error + LEAST runway").
+
+**Still owed: WZ_SCALE=1.0 IC1-5 n=5 on the same fixed base** — the controlled A/B (1.0 vs 2.5)
+and the current default's own n=5 gate. Disambiguates whether IC5 also crashes at 1.0 (→ pre-
+existing terminal blocker, yaw law verdict = "works IC1-4") or lands at 1.0 (→ WZ_SCALE=2.5 eats
+IC5's terminal margin, reject 2.5). Off-center clean dataset (`182815/IC2,IC3,IC4`) handed to the
+loom session for tuning the relative-drop veto.
 
 ## Next step (not started)
 
