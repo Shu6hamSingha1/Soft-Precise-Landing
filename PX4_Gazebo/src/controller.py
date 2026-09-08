@@ -584,45 +584,42 @@ class Controller(Thread):
         self._yaw_rate_law = os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
-        # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-08; derivation 2026-09-09) ──
-        # The law increment is `k_p*e_a - w_z_eff`, w_z_eff = WZ_SIGN*WZ_SCALE*w_z.
-        #
-        # WHY WZ_SIGN IS FRAME-FORCED, NOT AN EMPIRICAL FUDGE. The `-w_z` term was
-        # derived/GT-FB-validated against the w_z that `gt_feedback.py:234` supplies:
-        #   w[2] = -_asign * d(ry)/dt,  ry = yaw(uav)_ENU - yaw(target)_ENU,  _asign=+1
-        #        = -d(alpha)/dt = -psi_dot_b,ENU   (stationary target)
-        # (`_yaw_of` returns ENU yaw despite its docstring — numerically verified: a
-        #  +30deg-about-z quat -> +30.) The MANUSCRIPT rotational optic flow is
-        #   w_z = omega_t,z - psi_dot_b,NED = -psi_dot_b,NED = +psi_dot_b,ENU.
-        # So gt_feedback's w[2] = -w_z,manuscript  (the NEGATIVE of the convention).
-        # REAL perception's w_z (self._w_i[-1][2], lstsq col-5, calibrated) IS the
-        # manuscript convention: s_wz = +0.587 > 0, and measured corr(w_iz,
-        # +psi_dot_b,ENU) = +0.66..+0.86 -> w_iz ~= +w_z,manuscript.
-        # => gt_feedback w[2] and perception w_iz are OPPOSITE-signed. The law's
-        # `-w_z` slot wants a `-w_z,manuscript`-convention input, so:
-        #   GT-FB  -> feed w[2] as-is                 -> WZ_SIGN = +1
-        #   percep -> flip w_iz to -w_z,manuscript    -> WZ_SIGN = -1
-        # Feeding perception w_iz unflipped made `-w_z` POSITIVE feedback -> 1-2-turn
-        # spin-up. WZ_SIGN=-1 is the analytically-correct value, not a knob-tune.
-        #
-        # THE CLEAN FIX (queued, NOT done — needs a 2-gate SITL re-validation):
-        # flip gt_feedback.py:234 to w[2] = +w_z,manuscript so both paths agree, then
-        # re-derive this term from the correct identity e_a_dot = +w_z and delete
-        # WZ_SIGN. BLOCKED: gt_feedback's w[2] is SHARED with the lateral h_d /
-        # c-term path (cross(w_i,s), 2*cross(w,h) at ~L2678/2959 — sign-sensitive
-        # even with CTRL_ZERO_WXY=1), and feedback_gtfb_wz_sign_bug (2026-06-25)
-        # deliberately set it to -_slope for THAT path (other sign -> IC4 flew out
-        # at altitude). Flipping it needs the lateral GT-FB IC2-5 gate re-run too,
-        # plus reconciling the 2026-06-25 "matches perception" claim with the frame
-        # math above (they disagree). See project_yaw_rate_law_sign_bug_and_validation.md.
+        # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-09: unified on manuscript) ──
+        # Law increment is now `k_p*e_a + w_z_eff`, w_z_eff = WZ_SIGN*WZ_SCALE*w_z,
+        # with w_z = MANUSCRIPT rotational optic flow from BOTH sources:
+        #   perception:  self._w_i[-1][2] (lstsq col-5, calibrated; s_wz=+0.587>0,
+        #                measured corr(w_iz,+psi_dot_b,ENU)=+0.66..+0.86) = +w_z,manuscript
+        #   GT-FB:       gt_feedback.py:234, now w[2] = +d(ry)/dt = +psi_dot_b,ENU
+        #                = -psi_dot_b,NED = +w_z,manuscript  (flipped 2026-09-09;
+        #                `_yaw_of` returns ENU yaw — numerically verified +30quat->+30).
+        # Kinematic identity: alpha_dot = -psi_dot_b,NED = w_z (Jabbari Asl eq 22 +
+        #   the 2026-08-31 _alpha_0 re-derive), so e_a_dot = +w_z. The convergence
+        #   law is `d(w_u2)/dt = k_p*e_a + w_z` -> e_a_dot -> -k_p*e_a (see the
+        #   memory for the full closed-loop derivation; roots s^2+s+k_p, stable).
+        # This SUPERSEDES the empirical WZ_SIGN split (was +1 GT-FB / -1 percep):
+        #   the split existed only because the pre-2026-09-09 GT-FB `w[2] = -_slope`
+        #   was OPPOSITE-signed to perception. `- w_z_gtfb_old == + w_z_manuscript`,
+        #   so the yaw path is a pure relabel — behaviour unchanged. WZ_SIGN default
+        #   is now +1 for both; kept only as an env override for rollback.
+        # ⚠ UNVALIDATED for the LATERAL GT-FB path: gt_feedback's w[2] also feeds
+        #   cross(w_i,s) / c-term (~L2678/2959, sign-sensitive in w_z even with
+        #   CTRL_ZERO_WXY=1). feedback_gtfb_wz_sign_bug (2026-06-25) set it to
+        #   -_slope citing an erroneous `alpha_dot=+psi_dot_b,NED`; that flip left
+        #   GT-FB opposite-signed to perception. Reverting SHOULD match perception
+        #   (which lands fine) but needs the lateral GT-FB IC2-5 gate re-run (the
+        #   2026-06-25 IC4 altitude-flyout was n=2/flaky). Yaw GT-FB gate
+        #   (ceiling048/beyond060) should be a no-op regression check.
         #
         # WZ_SCALE (default 1.0): SEPARATE issue — the ~3x magnitude deficit in the
         # lstsq yaw column (col-5 ~= Ty aliasing, cross_marker_perception.py ~L715-731).
         # s_wz=0.587 bakes the attenuation in; WZ_SCALE restores the end-to-end gain.
         # Proper fix = re-derive s_wz (deferred recal), then WZ_SCALE -> 1.0.
-        _gt_fb = os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
-        self._yaw_rl_wz_sign = float(os.environ.get(
-            "PLASMC_YAW_RL_WZ_SIGN", "1.0" if _gt_fb else "-1.0"))
+        # WZ_SIGN default +1 for BOTH paths (2026-09-09): gt_feedback.py:234 now feeds
+        # +w_z,manuscript (unified with perception's w_iz), and the law increment is
+        # `k_p*e_a + w_z_eff` (was `- w_z_eff`; the flip is the identity
+        # -w_z_gtfb_old == +w_z_manuscript, so yaw behaviour is unchanged). The env
+        # override stays for debugging / rolling back mid-transition.
+        self._yaw_rl_wz_sign = float(os.environ.get("PLASMC_YAW_RL_WZ_SIGN", "1.0"))
         self._yaw_rl_wz_scale = float(os.environ.get("PLASMC_YAW_RL_WZ_SCALE", "1.0"))
         # ── w_z CONFIDENCE GATE (2026-09-07, PLASMC_YAW_RL_GATE, default ON) ──
         # Real perception-ON w_z inherits the terminal-overfill corruption: it
@@ -3258,22 +3255,23 @@ class Controller(Thread):
         # (self._yaw_rl_cmd), own light-optional integral (self._yaw_rl_ie, k_i=0 default),
         # own anti-windup -- entirely independent of ie_a/sigma_a/kappa_a/u_a above.
         #
-        # ⚠ SIGN, 2026-09-04: the increment is `k_p*e_a - w_z`, NOT `w_z - k_p*e_a` as first
-        # written. Measured directly in SITL (GT poses, independent of this law's own state):
-        # commanding w_u[2]=+2.0 (saturated) produced an ACTUAL drone yaw rate of -2.03 rad/s
-        # -- psi_dot_b_TRUE = -w_u2, not +w_u2. (The manuscript/gt_feedback.py w_z=omega_t-
-        # psi_dot_b relation itself is correct and unaffected -- confirmed independently via
-        # integration of e_a_dot=-w_z against an unrelated rep. Only the actuation-chain sign
-        # from w_u2 to the ACHIEVED rate was mis-assumed.) Substituting the confirmed relation
-        # gives w_z=omega_t,z+w_u2, i.e. a POSITIVE gain from w_u2 to w_z -- the ORIGINAL
-        # `w_z - k_p*e_a` form put w_u2 on the RHS of its own update with coefficient +1
-        # (dw_u2/dt = w_u2 + ...), an unstable ODE -- exactly the observed runaway-to-
-        # saturation. `k_p*e_a - w_z` is stable against the CONFIRMED plant; verified by
-        # closed-loop simulation before redeploying (steady e_a <0.05deg at 0.30/0.48/0.60
-        # rad/s and the stationary no-op, all against psi_dot_b=-w_u2).
+        # ⚠ SIGN HISTORY:
+        #  - 2026-09-04: increment is `k_p*e_a - w_z`, NOT `w_z - k_p*e_a` (first-written
+        #    form put w_u2 on its own RHS with +1 coeff -> unstable, ran away to
+        #    saturation). Root: the actuation chain is inverted -- commanding w_u[2]=+2.0
+        #    achieves -2.03 rad/s (psi_dot_b_TRUE = -w_u2). GT-FB-validated (e_a <0.05deg
+        #    at 0.30/0.48/0.60 rad/s spin).
+        #  - 2026-09-09: increment is now `k_p*e_a + w_z_eff` (this line below), because
+        #    gt_feedback.py:234 was flipped to feed +w_z,manuscript (unified with the
+        #    perception w_iz sign). `- w_z_gtfb_old == + w_z_manuscript`, so this is a
+        #    pure relabel -- w_u[2] is bit-identical before/after for BOTH perception
+        #    and GT-FB (see __init__'s block). Retires the empirical WZ_SIGN split.
+        #    UNVALIDATED bit = the LATERAL GT-FB path (gt_feedback w[2] also feeds
+        #    cross(w_i,s)) -- needs its own IC2-5 re-gate.
         _wz = float(self._w_i[-1][2]) if len(self._w_i) > 0 else 0.0
-        # Sign/scale-corrected value the law integrates against (see __init__).
-        # The gate below deliberately still guards on the RAW |_wz| (physical rate).
+        # w_z is +w_z,manuscript from both sources (2026-09-09). _wz_eff = WZ_SIGN
+        # (default +1) * WZ_SCALE (magnitude-deficit compensation) * _wz; the law
+        # increment is `+ _wz_eff`. Gate below guards on the RAW |_wz| (physical rate).
         _wz_eff = self._yaw_rl_wz_sign * self._yaw_rl_wz_scale * _wz
 
         # w_z confidence gate (see __init__). Evaluated every step so yaw_rl_gated(t)
@@ -3303,7 +3301,7 @@ class Controller(Thread):
                 self._yaw_rl_cmd.append(_rl_prev)                      # frozen (yaw-hold, or w_z untrusted)
             else:
                 _rl_new = _rl_prev + self._dt[-1] * (
-                    self._yaw_rl_kp * e_a - _wz_eff - self._yaw_rl_ki * self._yaw_rl_ie[-1])
+                    self._yaw_rl_kp * e_a + _wz_eff - self._yaw_rl_ki * self._yaw_rl_ie[-1])
                 self._yaw_rl_cmd.append(float(np.clip(_rl_new, -_psid_rate, _psid_rate)))
         else:
             self._yaw_rl_cmd.append(self._yaw_rl_cmd[-1])

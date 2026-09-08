@@ -470,3 +470,39 @@ the tracking rate). General fix: make it scenario-aware, OR drop the `MARKER_EXT
 trigger from the yaw gate and keep only the `|w_z| > WZ_MAX` rate-guard (overfill drives `w_z`
 large so the rate-guard catches it anyway; the extent trigger is what prematurely kills the
 command at ~0.8 m).
+
+### 2026-09-09 — WZ_SIGN CLEAN FIX IMPLEMENTED (unify on manuscript convention)
+
+**Done** (commit pending): `gt_feedback.py:234` `w[2] = -_asign·_slope` → `w[2] = +_asign·_slope`;
+`controller.py` yaw law increment `k_p·e_a - _wz_eff` → `k_p·e_a + _wz_eff`; `WZ_SIGN` default
+`+1` for BOTH paths (dropped the `_gt_fb ? +1 : -1` branch; env override kept).
+
+**Frame derivation (settled):**
+- `_yaw_of` (gt_feedback) returns **ENU yaw** — numerically verified (+30°-about-z quat → +30°;
+  docstring "NED yaw" is WRONG). So `ry = ψ_uav,ENU − ψ_tgt,ENU`, `d(ry)/dt = ψ̇_b,ENU` (stationary).
+- Manuscript `w_z = ω_t,z − ψ̇_b,NED` → stationary `w_z = −ψ̇_b,NED = +ψ̇_b,ENU`.
+- Jabbari Asl eq 22 + 2026-08-31 `_alpha_0` re-derive: `α̇ = −ψ̇_b,NED`. **∴ `α̇ = w_z,manuscript`
+  and `e_a_dot = +w_z`** (NOT `−w_z`).
+- OLD `gt_feedback w[2] = −_slope = −ψ̇_b,ENU = −w_z,manuscript`; perception `w_iz` (calibrated,
+  `s_wz=+0.587`, `corr(w_iz,+ψ̇_b,ENU)=+0.66..0.86`) `= +w_z,manuscript`. OLD state had the two
+  sources OPPOSITE-signed → the empirical `WZ_SIGN` split papered over it.
+- NEW `gt_feedback w[2] = +_slope = +w_z,manuscript` → both sources agree.
+
+**Convergence law (manuscript convention):** `d(w_u2)/dt = k_p·e_a + w_z`. Closed loop with
+`e_a_dot = ω_t,z − w_u2` (actuation inversion `ψ̇_b,ENU ≈ −w_u2`) → `e_a_dot → −k_p·e_a`; char.
+`s²+s+k_p=0`, stable (k_p=0.3 → damped complex, Re −0.5). `w_u2 → ω_t,z` (absorbs the spin).
+
+**`- w_z_gtfb_old ≡ + w_z_manuscript`** → the yaw-path `w_u[2]` is **bit-identical before/after**
+for BOTH perception and GT-FB (numerically checked). Pure relabel. The empirical `WZ_SIGN` split
+is RETIRED — it existed only because the pre-fix GT-FB `w[2]` was mis-signed.
+
+**⚠ UNVALIDATED — the LATERAL GT-FB path.** `gt_feedback w[2]` also feeds `cross(w_i,s)` / c-term
+(`controller.py:2678`/`2959-2961` — sign-sensitive in `w_z` even with `CTRL_ZERO_WXY=1`).
+`feedback_gtfb_wz_sign_bug` (2026-06-25) set it to `−_slope` citing `alpha_dot = +psi_dot_b,NED`
+— which is the ERRONEOUS sign (paper eq 22 says `−`). That flip left GT-FB opposite to perception.
+Reverting SHOULD match perception (which lands fine), but the 2026-06-25 IC4 altitude-flyout claim
+(n=2, flaky) needs a **lateral GT-FB IC2-5 re-gate** to confirm no regression. Yaw GT-FB gate
+(`ceiling048`/`beyond060`) is a no-op regression check (relabel).
+
+**Perception paths (stationary 24/25, turning-target yaw) are UNCHANGED** — `gt_feedback` isn't in
+the perception path and the yaw term relabel is bit-identical.

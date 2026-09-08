@@ -7,6 +7,16 @@ metadata:
   originSessionId: 31fd53ca-48b0-48f4-81a8-2e081955028f
 ---
 
+> ⛔ **PARTIALLY SUPERSEDED 2026-09-09.** The `alpha_dot = +psi_dot_b` claim here is a
+> SIGN ERROR — Jabbari Asl eq 22 and the 2026-08-31 `_alpha_0` re-derive both give
+> `alpha_dot = -psi_dot_b,NED = w_z,manuscript`, so `alpha_dot = +w_z` (not `-w_z`).
+> The `w[2] = -_slope` fix recorded here therefore made GT-FB's `w[2]` the OPPOSITE
+> sign to the calibrated perception `w_iz` (`s_wz=+0.587`). Reverted 2026-09-09 to
+> `w[2] = +_slope` (unify on the manuscript convention) — see
+> [[project-yaw-rate-law-sign-bug-and-validation]] '2026-09-09 WZ_SIGN CLEAN FIX'.
+> The IC4-flyout result here was n=2/flaky; a lateral GT-FB IC2-5 re-gate is owed.
+
+
 **THE GT-FB w_z SIGN BUG = root cause of the lateral divergence (2026-06-25, user-led).** User flagged
 `alpha_dot = -w_z`. The rotational optic flow `w` (manuscript eq 82: w = ^V w_t - psi_dot_b*e3 = -psi_dot_b*e3
 for a stationary target) has `w_z = -psi_dot_b = -alpha_dot` (alpha = relative yaw uav-target = +psi_dot_b

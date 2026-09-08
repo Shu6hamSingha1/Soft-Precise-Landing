@@ -225,12 +225,24 @@ class GTFeedback:
             B_v = Ru.T @ W_v_tu
             V_v = _v_frame(Ru) @ B_v
             h = V_v / (zB + Z_REG)
-            # SIGN FIX (2026-06-25): the rotational optic flow is w_z = -alpha_dot, NOT +alpha_dot.
-            # Validated vs IMU: the perception lstsq w_z correlates -0.91 with the body yaw rate
-            # (w_z = -psi_dot_b, per manuscript w = ^Vw_t - psi_dot_b*e3); alpha_dot = +psi_dot_b for a
-            # stationary target, so alpha_dot = -w_z. The old +d(alpha)/dt fed w_z with the OPPOSITE sign
-            # to the perception path, flipping the h_d rotation FF (cross(w,s)) and the old c-term's
-            # w-cross-products (omega_dot x s, 2 w x h) -> spurious anti-restoring feedforward.
-            w[2] = -_asign * _slope(ts, ry_arr)                     # w_z = -d(alpha)/dt (alpha = _asign*ry) — validated relation kept in either sign convention
+            # SIGN (2026-09-09 — UNIFY on the MANUSCRIPT convention, reverts the
+            # 2026-06-25 flip). Manuscript rotational optic flow:
+            #   w_z = omega_t,z - psi_dot_b,NED  ->  stationary: w_z = -psi_dot_b,NED
+            # And alpha_dot = -psi_dot_b,NED  (Jabbari Asl eq 22; cross_marker
+            #   _alpha_0 re-derive 2026-08-31: alpha ~= +psi_ENU) = +psi_dot_b,ENU.
+            #   => w_z = alpha_dot  (both = -psi_dot_b,NED).
+            # `_yaw_of` returns ENU yaw (numerically verified: +30deg quat -> +30),
+            #   ry = psi_uav,ENU - psi_tgt,ENU, so d(ry)/dt = psi_dot_b,ENU (stationary).
+            #   => w[2] = +d(ry)/dt = +psi_dot_b,ENU = -psi_dot_b,NED = +w_z,manuscript.
+            # This MATCHES the calibrated perception w_iz (s_wz=+0.587>0; measured
+            #   corr(w_iz,+psi_dot_b,ENU)=+0.66..+0.86). The 2026-06-25 `-_asign*..`
+            #   came from an erroneous `alpha_dot=+psi_dot_b,NED` and left GT-FB
+            #   OPPOSITE-signed to perception for the shared _w_i consumers
+            #   (yaw-rate law; lateral cross(w_i,s)/c-term).
+            # ⚠ UNVALIDATED: needs the lateral GT-FB IC2-5 re-gate (2026-06-25
+            #   flagged an IC4 altitude-flyout on the other sign; n=2, flaky) +
+            #   the yaw GT-FB gate (ceiling048/beyond060 — should be a no-op:
+            #   -w_z_old == +w_z_new in the law after its matching flip).
+            w[2] = +_asign * _slope(ts, ry_arr)                     # w_z = +d(alpha)/dt = +w_z,manuscript (matches perception)
         flow6 = np.array([h[0], h[1], h[2], w[0], w[1], w[2]])
         return s4, flow6
