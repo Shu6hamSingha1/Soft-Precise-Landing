@@ -366,15 +366,26 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                     # -> `Ia_z` ratchets toward -g whenever the box binds at all
                     # (terminal descent stall: project_20260901_rover_cross_perception_
                     # diagnosis "folds ~5 m/s^2 UP into I_a[2] -> B_T->0 -> stall").
-                    # FIX (CBF_JQP_RELIEF_REF_AZ0=1): evaluate BOTH y0 and y* at the
+                    # "FIX" (CBF_JQP_RELIEF_REF_AZ0=1): evaluate BOTH y0 and y* at the
                     # FIXED unconstrained a_z (`_az0` == th_desired's own denominator),
                     # so Δθ reflects only the box's lateral suppression, not the
                     # relief's own geometric angle shrink. Then
                     #   th_desired - P@(Ia_lat/_az0) == P@((I_a[:2]-Ia_lat)/_az0)
                     # -- exactly "lateral accel the box removed, over the original a_z".
-                    # Default OFF pending the mandatory IC2-5 SITL gate (per the
-                    # CBF_SPHERE_TRUE_THRUST / Rz_p90b precedent: synthetic-only CBF
-                    # changes have regressed every IC twice in this project).
+                    #
+                    # ⛔ FAILED the IC2-5 cross-marker SITL A/B gate (2026-09-08,
+                    # test_data/JQP_ReliefRefAz0_AB/20260908-160523, n=5/arm/IC):
+                    # REF_AZ0=1 regressed mean xy_err at ALL FOUR ICs (off->on:
+                    # 0.58->0.97, 1.17->1.93, 1.88->2.34, 0.71->1.49 m) and nearly
+                    # DOUBLED target-loss (4 -> 7 TL total; worse or equal at every
+                    # IC). validate_cbf.py 17/17 was misleading -- same pattern as
+                    # Rz_p90b and CBF_MARGIN_RESERVE. Mechanism: the "principled"
+                    # fix under-relieves vs what the off-center terminal geometry
+                    # needs; the self-inflating relief, ugly as it is, empirically
+                    # buys the descent-slowing that keeps the marker in frame while
+                    # the lateral loop converges. LEFT default OFF as an A/B hatch;
+                    # do NOT bake / re-try as an untested win.
+                    # See project_20260908_jqp_relief_refaz0_gate_failed.
                     _az_ref = _az0 if _relief_ref_az0 else _az_now
                     _th_safe_ref = P @ (Ia_lat / _az_ref)
                     _lat_supp = float(np.linalg.norm(th_desired - _th_safe_ref))

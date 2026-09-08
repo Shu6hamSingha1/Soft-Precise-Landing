@@ -1,0 +1,11 @@
+arm	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+relief_off	1	YES	0.8051	0.2591	6.9	0	0	0	rep1
+relief_on	1	YES	0.7938	0.1922	6.4	0	0	1	rep1
+relief_off	2	YES	0.3026	0.2696	7.6	0	0	1	rep2
+relief_on	2	YES	3.3085	5.4478	7.7	0	0	0	rep2
+relief_off	3	YES	1.4208	2.1235	7.5	0	0	0	rep3
+relief_on	3	YES	2.0426	1.7108	8.3	0	0	1	rep3
+relief_off	4	YES	0.3340	0.1381	7.8	0	0	1	rep4
+relief_on	4	YES	0.6835	0.1456	6.9	0	0	1	rep4
+relief_off	5	YES	0.6627	0.2716	6.8	0	0	1	rep5
+relief_on	5	YES	0.6078	0.3413	7.0	0	0	1	rep5
