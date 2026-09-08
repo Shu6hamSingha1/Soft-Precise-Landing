@@ -102,3 +102,32 @@ under test broke everything."
 is bound or any harness/SITL process is alive. A silent collision costs a full run; a loud abort
 costs a second. And **always smoke-test ONE rep before launching a long sweep** — the first
 failure here burned 2 h / 40 reps before anyone looked at a summary.
+
+## 2026-09-08 — coordinated with ONE peer of THREE, and launched before the ack
+
+User called this out (2nd time the standing rule was under-applied). Before an IC2-5
+`CBF_AZ_COST_GAIN` A/B sweep I ran `pgrep` for SITL *processes* (clean) and had a prior
+"lane's yours" from `soft-precise-landing-35` via SendMessage — then launched. What I
+skipped:
+
+- **`ps -eo ... | grep claude` — there were THREE other interactive sessions**, not one.
+  `ListAgents` after the fact: `soft-precise-landing-35` (the one I'd talked to),
+  `soft-precise-landing-4e` (this session), plus two more — one actively doing loom work.
+  A "go" from the peer you happen to be chatting with is not clearance from the machine.
+- **Announced and launched in the SAME step** — `SendMessage("taking the lane")` then
+  `nohup ... &` with no wait for acknowledgement. If another session was mid-launch, both
+  lose.
+- **No `ss -lunp | grep 8888`** before launch.
+- **No one-rep smoke test** before committing 40 reps.
+
+The run happened to be uncontended (verified after: single SITL stack, my process tree,
+my agent holding 8888) — but that was luck, not diligence.
+
+**How to apply (adds to the list above):**
+- **`ListAgents` is the session census** — use it, not just the peer thread you're in.
+  Message EVERY peer session before a SITL launch; a coordination channel used with one
+  of N sessions is not coordination.
+- **Wait for an explicit "go" (or a clear idle) from each peer before `&`-launching.**
+  Announcing is not coordinating. If a peer is `busy` in `ListAgents`, hold.
+- Same meta-lesson as the 2026-08-25 entry: the rule was already in this file; having
+  written it is not applying it. Run the full checklist on every launch, every session.
