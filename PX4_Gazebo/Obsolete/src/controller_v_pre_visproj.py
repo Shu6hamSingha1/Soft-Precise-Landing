@@ -57,12 +57,20 @@ from collections import deque
 from numerical_methods import RK5, smooth4
 import img_data as ID
 from ahrs import Quaternion
-# Target-visibility: keep the marker centre in the real camera plane by
-# conditioning the acceleration command. Replaces cbf_visibility.py /
-# cbf_visibility_aruco.py + the joint-QP / deliverability-sphere / descent-relief
-# / two-phase-delta / rho_fov-cone machinery (removed 2026-09-09). See
-# src/visibility_projection.py.
-from visibility_projection import condition_for_visibility
+# cbf2_filter import now routes by MARKER_TYPE (2026-08-13, was CBF_PHASE2_FIX-
+# gated before this): cbf_visibility.py is dedicated to the cross-marker
+# (mandatory `radius` param, no corner-array delta2 fallback -- see its module
+# docstring) and can no longer serve ArUco's real-4-corner-array case at all,
+# so ArUco always gets its own separate copy, cbf_visibility_aruco.py (which
+# also carries an in-progress Phase-2 signed-projection rewrite, previously
+# opt-in via CBF_PHASE2_FIX -- that flag no longer selects the FILE, since
+# MARKER_TYPE now does; see cbf_visibility_aruco.py's module docstring for
+# what would be needed to make CBF_PHASE2_FIX toggle its Phase-2 behavior
+# in-module instead, not implemented here).
+if os.environ.get("MARKER_TYPE", "aruco") == "cross":
+    from cbf_visibility import cbf2_filter
+else:
+    from cbf_visibility_aruco import cbf2_filter
 
 # MARKER_TYPE=cross: use the standalone cross_marker_perception pipeline (no
 # ArUco decode, no PlanarFeatureMap rescue, no marker handover -- see
@@ -306,11 +314,6 @@ class Controller(Thread):
         # consumer (s_e_n, dsn, _hd_rate, dr_bar_e, the CBF's m2) that now receives
         # axis-swapped s/h from the perception pipeline.
         self._p_10 = self._img_node.center[::-1] / self._img_node.focal[::-1]  # (2,)
-        # un-reversed tangent half-FoV -- the frame visibility_projection's `c`/`phi`
-        # live in (its marker_tangent applies its own [y,-x] swap on center/focal
-        # directly). Used only by the drift-off pull-back trigger. Do NOT feed this
-        # to the SMC path -- that uses self._p_10 (reversed) as before.
-        self._p_10_tan = self._img_node.center / self._img_node.focal
 
         # ════ Outer-loop Virtual Image Point PID  [manuscript: K_rp, K_ri, K_rd] ════
         # DIRECT per-axis control parameters (2026-06-03 cleanup: scale factors on
@@ -642,10 +645,22 @@ class Controller(Thread):
         # every other per-axis quantity in this file (p_10, u_centered/v_centered, etc.).
         # Env var NAMES kept as U/V (still label the PHYSICAL sensor axis each controls)
         # to avoid an unrelated config-surface rename.
-        # (rho_fov / l_fov removed 2026-09-09 -- the frozen visibility-cone scaffold
-        # went with the cbf_visibility.py machinery. visibility_projection uses a fixed
-        # buffer_frac inset on the true camera half-FoV instead; the drift-off
-        # pull-back that consumed rho_fov is re-expressed as a per-axis buffer bump.)
+        # 2026-08-27: halved (210/290/80 -> 105/145/40) for the 640x480->320x240
+        # camera resolution drop (see img_data.py's fx/fy comment) -- these are
+        # PIXEL-domain quantities that were themselves exactly 2x MATLAB's own
+        # 320x240-native values by design (this file's own top-of-file comment,
+        # line ~32); now that the camera matches MATLAB's resolution again, so
+        # should these.
+        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_V",   "105.0")),
+                                      float(os.environ.get("PLASMC_RHOFOV0_U",   "145.0"))])
+        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_V", "40.0")),
+                                      float(os.environ.get("PLASMC_RHOFOVINF_U", "40.0"))])
+        # rho_fov held CONSTANT at rho_fov_0 by default (l_fov=0 -> exp(0)=1 -> rho_fov_curr=rho_fov_0).
+        # The decay to rho_fov_inf (80px) shrank the visibility funnel far inside the camera FoV,
+        # firing the perception-death handoff prematurely (marker fills 80px while still visible to
+        # ~290px). Constant rho_fov_0 = a fixed near-camera-FoV visibility limit; precision/convergence
+        # is the SMC's job, not the visibility funnel's. Set PLASMC_LFOV>0 to restore the decay. (2026-06-05)
+        self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.0"))
         # BAKED 2026-08-23: default 60.0 -> THETA_CAP_DEG_DERIVED (see its top-of-file
         # comment) -- 60 deg assumed a 2x-hover-thrust margin the measured A_CAP doesn't
         # support (~1.39x with THRUST_MARGIN applied). PLASMC_THETACAP_DEG still overrides.
@@ -2081,16 +2096,34 @@ class Controller(Thread):
                   f"(1+s/{self._au_lead_wp:g}) on I_a xy "
                   f"(+{_ph14:.0f} deg @1.4 rad/s, HF x{self._au_lead_wp/self._au_lead_wz:.1f})")
         self._marker_extent = []   # MARKER_EXTENT_PX per step (proximity / terminal-hold trigger)
-        # Visibility diagnostics (visibility_projection.py)
-        self._theta_cone_log = []          # ||y_star||, the commanded safe-lean magnitude
-        self._theta_current_log = []       # arccos(R33), current tilt
-        self._az_joint_log = []            # a_z delta from the downstream thrust-magnitude cap (0 when it didn't bind)
-        self._vis_gz_log = []              # Tier-2 descent-ease scale g_z in [g_min, 1]
-        self._vis_active_log = []          # 1.0 when Tier-1 modified a_xy this step
-        self._theta_safe = None            # Tier-1 safe lean vector (image axes) -> Fix B direct rd3
-        self._vis_prev_c = None            # image-tangent marker centre from the previous step (for c_rate)
-        self._vis_state = {}               # descent_ease g_z low-pass carry
-        self._vis_drift_streak = np.zeros(2)   # per-axis consecutive one-sided phi breaches (drift-off pull-back)
+        # FoV-cone diagnostics
+        self._rho_fov_log = []
+        self._d_min_fov_log = []
+        self._theta_cone_log = []
+        # AZ VISIBILITY FILTER v2 diagnostic (2026-08-24): dtheta = ||th_desired-th_safe||,
+        # the lateral authority the visibility CBF is suppressing this cycle -- see the
+        # cbf2_filter call site's comment. Replaces the 2026-08-23 az_violation/az_ddelta/
+        # az_margin_pred logs (that mechanism was removed, not just superseded).
+        self._dtheta_az_log = []
+        # theta_desired norm (2026-08-24 follow-up): logged separately from dtheta/theta_cone
+        # to directly compute the theta_safe/theta_desired ratio post-hoc -- see
+        # project_20260824_dtheta_az_filter_self_defeating_feedback memory, "not yet done" item.
+        # NaN when th_desired is None (Phase-2 fallback, no projection ran).
+        self._theta_desired_log = []
+        self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
+        # joint-QP convergence residual (2026-09-08) -- cbf_visibility.py stashes a
+        # per-outer-iterate command-move norm in self._cbf_state each call; surface
+        # the summary here per control step. final ~ 0 => the fixed 6-iterate budget
+        # converged; large final or resid_rising > 0 => it chattered (the
+        # project_joint_qp_nonconvergence_kappa_ratchet signature). NaN on steps
+        # where the joint QP did not run (Phase-2 fallback / theta path / QP off).
+        self._jqp_resid_final_log = []
+        self._jqp_resid_max_log = []
+        self._jqp_resid_rising_log = []
+        self._jqp_converged_log = []
+        self._theta_current_log = []
+        self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
+        self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
         # CBF SMALL-MARKER PREFERENCE + OVERFLOW/DRIFT-OFF (2026-07-17, user design): the CBF
         # needs more tilt headroom than the flow pipeline does -- the flow (h_x/h_y) needs the
         # BIG marker's wider corner spread to avoid a rank-deficient lstsq (stays big-priority,
@@ -2121,9 +2154,15 @@ class Controller(Thread):
         # separately-heuristic _last_overflow/_last_drifted_off (different margin, different
         # purpose -- ring-flow routing, not visibility enforcement).
         self._cbf_overflow = False
-        self._cbf_drift_off = False   # set from visibility_projection's persistent one-sided phi breach (drift-off pull-back); read by the DRIFT_OFF property + apps/landing_test.py
-        self._cbf_drift_axis = None   # (axis 0/1, sign) of the worst breach
-        self._cbf_drift_pullback_frac = float(os.environ.get("CBF_DRIFT_PULLBACK_FRAC", "0.4"))   # EXTRA buffer_frac added on the breaching axis while drift-off
+        self._cbf_drift_off = False
+        self._cbf_drift_axis = None   # (axis 0/1, sign) of the worst breach, for the pull-back
+        self._cbf_drift_pullback_frac = float(os.environ.get("CBF_DRIFT_PULLBACK_FRAC", "0.4"))
+        # TEMP DIAG 2026-08-24 (cross-marker IC5 false-touchdown investigation): d_min_fov
+        # alone can't distinguish OVERFLOW (benign, spanning breach) from DRIFT_OFF (real
+        # visibility failure, one-sided breach) -- neither was logged before this. (t,
+        # overflow, drift_off, d_min_fov) per control step, so the elevated d_min_fov=0
+        # fraction seen in IC5's false-positive reps can be attributed to the right cause.
+        self._cbf_overflow_diag_log = []
         # CBF COAST-HOLD GRACE (2026-07-30, moving-target starvation investigation, default OFF
         # pending validation): the 2026-07-17 freshness gate (see FEATURE_PTS_FRESH block below)
         # made d_min_fov snap to 0.0 -- "no tilt allowed" -- the INSTANT _feature_pts goes stale,
@@ -3503,11 +3542,18 @@ class Controller(Thread):
                     _lead_delta *= _cap / _nd
             I_a[:2] = I_a_raw[:2] + _lead_delta
 
-        # Current tilt angle from body-z direction (R[2,2] is body-z's inertial-z component)
+        # 1) Current tilt angle from body-z direction (R[2,2] is body-z's inertial-z component)
         R33 = float(np.clip(R[2, 2], -1.0, 1.0))
-        theta_current = float(np.arccos(R33))
+        theta_current = np.arccos(R33)
 
-        # MARKER-CENTRE SOURCE. SMALL-MARKER PREFERENCE (2026-07-17, user design): the
+        # 2) Pixel-margin envelope (per axis). With l_fov=0 (default, 2026-06-05) this is CONSTANT
+        #    at rho_fov_0 — a fixed visibility limit (see __init__ note). l_fov>0 restores the decay.
+        t_elapsed = self._t[-1] - self._t0
+        rho_fov_curr = ((self._rho_fov_0 - self._rho_fov_inf)
+                        * np.exp(-self._l_fov * t_elapsed)
+                        + self._rho_fov_inf)   # (2,)  == rho_fov_0 when l_fov=0
+
+        # 3) Per-corner pixel margins. SMALL-MARKER PREFERENCE (2026-07-17, user design): the
         # CBF wants the SMALL marker specifically -- more headroom, since it isn't the one
         # overflowing near touchdown -- independent of which marker _feature_pts currently
         # holds (that stays big-priority, for h_x/h_y flow observability). Read
@@ -3695,24 +3741,88 @@ class Controller(Thread):
                       f"corners_is_none={cbf_corners is None} "
                       f"none_streak={self._cbf_corners_none_streak}", flush=True)
 
-        # DRIFT-OFF PULL-BACK, re-expressed in visibility_projection's units (was the
-        # rho_fov / p_10_eff cone tightening): a persistent one-sided breach of the
-        # module's own phi on an axis bumps THAT axis's buffer_frac. Triggered from
-        # the PREVIOUS step's returned centre (self._vis_prev_c), consistent with the
-        # old classification also being a frame behind the QP it fed.
-        _buf = np.full(2, float(os.environ.get("CBF_BUFFER_FRAC", "0.15")))
-        _bad = ((np.abs(self._vis_prev_c) > 0.92 * self._p_10_tan)
-                if self._vis_prev_c is not None else np.zeros(2, bool))
-        self._vis_drift_streak = np.where(_bad, self._vis_drift_streak + 1.0, 0.0)
-        _drift_ax = self._vis_drift_streak >= 5
-        _buf = _buf + np.where(_drift_ax, float(self._cbf_drift_pullback_frac), 0.0)
-        self._cbf_drift_off = bool(np.any(_drift_ax))
-        self._cbf_drift_axis = (int(np.argmax(self._vis_drift_streak)),
-                                int(np.sign(self._vis_prev_c[int(np.argmax(self._vis_drift_streak))]))
-                                ) if self._cbf_drift_off and self._vis_prev_c is not None else None
-        self._cbf_overflow = False   # cross-marker has no overflow-to-handover concept
+        d_min_fov = 0.0
+        self._cbf_overflow = False
+        self._cbf_drift_off = False
+        self._cbf_drift_axis = None
+        if cbf_corners is not None:
+            try:
+                cx, cy = self._img_node.center
+                # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): cbf_corners are raw pixel
+                # positions (same convention as cbf_visibility.py's own `corners` param)
+                # -- apply the identical [y,-x] swap (Rz(-90deg), corrected sign) so
+                # u_centered/v_centered stay consistent with the new image-axis
+                # convention (and rho_fov_curr's reversed component order, see
+                # self._rho_fov_0/_rho_fov_inf's own fix).
+                u_centered = cbf_corners[:, 1] - cy
+                v_centered = -(cbf_corners[:, 0] - cx)
+                # CLOSED-FORM CIRCLE (2026-08-13, user correction -- see cbf_radius's
+                # top-of-branch comment): rather than materializing points around a
+                # circle of radius cbf_radius, subtract it directly from each per-axis
+                # margin. This is EXACT, not an approximation: for a circle of radius r
+                # centered at (u0,v0) tested against an axis-aligned box, the point on
+                # the circle closest to breaching the u-edge is always exactly u0 +/- r
+                # (same for v) -- so `rho_fov - (|center_offset| + r)` is the true
+                # worst-case margin, identical to what 4 axis-extreme points would have
+                # given, without needing to build that array. cbf_radius=0.0 for ArUco
+                # (and for cross-marker whenever the radius wasn't available this
+                # frame) collapses this back to the original bare-point margin exactly.
+                d_corner_x = rho_fov_curr[0] - (np.abs(u_centered) + cbf_radius)
+                d_corner_y = rho_fov_curr[1] - (np.abs(v_centered) + cbf_radius)
+                d_min_fov = max(float(np.min(np.concatenate([d_corner_x, d_corner_y]))), 0.0)
 
-        # (Apply the visibility constraint to inertial accel; NED, z=down.)
+                # OVERFLOW vs DRIFT-OFF (2026-07-17, user design): classify off the SAME
+                # per-corner margin d_min_fov is built from, not img_data.py's separate
+                # _last_overflow/_last_drifted_off heuristic (different margin, different
+                # purpose). OVERFLOW = corners breach on OPPOSITE sides of an axis (spanning
+                # -- still over target, benign, marks the BIG marker ready for handover).
+                # DRIFT-OFF = breach on ONE side only (target visibility genuinely failing --
+                # the CBF's own job to prevent, not just observe). Breach thresholds also
+                # circle-adjusted (radius pushed toward the boundary, same closed-form logic).
+                bx_neg = bool(np.any(u_centered - cbf_radius < -rho_fov_curr[0]))
+                bx_pos = bool(np.any(u_centered + cbf_radius >  rho_fov_curr[0]))
+                by_neg = bool(np.any(v_centered - cbf_radius < -rho_fov_curr[1]))
+                by_pos = bool(np.any(v_centered + cbf_radius >  rho_fov_curr[1]))
+                span = (bx_neg and bx_pos) or (by_neg and by_pos)
+                leaving = bx_neg or bx_pos or by_neg or by_pos
+                self._cbf_overflow = bool(leaving and span)
+                self._cbf_drift_off = bool(leaving and not span)
+                if self._cbf_drift_off:
+                    # worst (most negative) per-axis margin picks the pull-back axis/sign
+                    _cands = []
+                    if bx_neg and not bx_pos: _cands.append((0, -1, float(d_corner_x.min())))
+                    if bx_pos and not bx_neg: _cands.append((0, +1, float(d_corner_x.min())))
+                    if by_neg and not by_pos: _cands.append((1, -1, float(d_corner_y.min())))
+                    if by_pos and not by_neg: _cands.append((1, +1, float(d_corner_y.min())))
+                    if _cands:
+                        self._cbf_drift_axis = min(_cands, key=lambda c: c[2])[:2]
+            except (IndexError, ValueError, TypeError):
+                d_min_fov = 0.0
+
+        self._cbf_overflow_diag_log.append(
+            (float(self._t[-1]) if len(self._t) > 0 else float('nan'),
+             bool(self._cbf_overflow), bool(self._cbf_drift_off), float(d_min_fov)))
+
+        # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
+        focal_px = float(self._img_node.focal[0])
+        # Visibility tilt-cone headroom = current tilt + how far we can still tilt
+        # before the nearest marker corner exits the FoV envelope, capped at theta_cap.
+        # This is the cbf2 Phase-2 fallback cone (the exact camera-frame theta-QP below
+        # refines it when corners are available).
+        theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
+                               self._theta_cap))
+        # θ_cone floor — RESTORED 2026-06-03 (removed by the 14:20 refactor; second
+        # refactor regression after DH_D_MAX). The d_min collapse logic assumes
+        # tilt moves the marker OUT of the image, but tilting toward the marker
+        # re-centers it — near touchdown / during overshoot d_min→0 collapses
+        # θ_cone to the current tilt and clamps exactly the recovery action
+        # (cone-clamp duty 43.8% vs 4.9% with the floor; LateralRestore c1 vs b13).
+        # The validated 28%-SP config ran with floor=60 (=θ_cap, disables the
+        # d_min term); it is the default. Set PLASMC_THETA_FLOOR_DEG=0 for the
+        # legacy collapsing cone, or 15-30 for a softened intermediate clamp.
+        theta_cone = float(max(theta_cone, min(self._theta_floor, self._theta_cap)))
+
+        # 5) Apply cone to inertial accel (NED; z=down, gravity subtracted).
         # MATLAB-equivalent safety: I_a represents required thrust acceleration
         # (thrust force / m). For sane upright drone with thrust opposing
         # gravity, I_a[2] should be NEGATIVE (thrust accel up in NED). If the
@@ -3738,46 +3848,115 @@ class Controller(Thread):
             _a = self._tau_ia / (self._tau_ia + self._dt[-1])
             I_a = _a * self._I_a[-1] + (1.0 - _a) * I_a
         # Visibility constraint = exact camera-frame theta-QP (docs/CBF_visibility.pdf —
-        # the visibility mechanism (src/visibility_projection.py):
-        #   Tier 1 -- hard, this-cycle lean projection of a_xy so the marker centre
-        #             stays inside phi = R/(2f)*(1 - buffer_frac) on the REAL camera
-        #             plane. a_d[2] is a fixed input.
-        #   Tier 2 -- soft, self-releasing descent ease (scales the downward part of
-        #             a_z when the centre is predicted to reach the edge before the
-        #             lateral loop can re-centre it). CBF_DESCENT_EASE=0 disables.
-        # Deliverability stays THIS file's job (the lean cap + thrust-magnitude cap
-        # below). Scale-free / depth-free.
-        marker_center_px = (np.asarray(cbf_corners, float).mean(0)
-                            if cbf_corners is not None else None)
-        _dt_last = self._dt[-1] if len(self._dt) > 0 else 0.02
-        I_a, y_star, _vis = condition_for_visibility(
-            I_a, R, yaw_c, marker_center_px,
+        # the literal QP). Extracted verbatim into cbf_visibility.cbf2_filter so the
+        # offline validator (tools/validate_cbf.py) runs the EXACT
+        # live code path. The barrier, two-phase δ, and Phase-2 fallback all live there;
+        # this site only marshals the controller state into pure args.
+        self._theta_safe = None        # Fix B: cbf2 Phase-1 safe lean vector for direct->rd3; None => accel path
+        # Reuse the SAME corner source (small-marker-preferred, freshness-gated) computed
+        # above for d_min_fov/overflow/drift-off classification -- one source of truth for
+        # what the CBF is looking at, not a second independent read of _feature_pts.
+        corners = cbf_corners
+        # DRIFT-OFF PULL-BACK (2026-07-17, user design): rather than inventing a new
+        # corrective force with an unverified sign, TIGHTEN the barrier margin cbf2_filter
+        # already enforces (p_10 = phi_max, the camera half-FoV) on the breaching axis --
+        # this forces the SAME validated QP (docs/CBF_visibility.pdf, tools/validate_cbf.py)
+        # to compute a MORE conservative/corrective tilt on that axis using its own
+        # already-correct math, instead of adding an independent term whose sign I cannot
+        # verify against the image Jacobian without risking exactly the kind of
+        # wrong-direction position correction this project has repeatedly traced to
+        # catastrophic fly-aways (see feedback_planar_map_plausibility_gate). Only the
+        # breaching axis is tightened; the other stays at full p_10.
+        p_10_eff = self._p_10
+        if self._cbf_drift_off and self._cbf_drift_axis is not None:
+            _axis, _sign = self._cbf_drift_axis
+            p_10_eff = self._p_10.copy()
+            p_10_eff[_axis] *= (1.0 - self._cbf_drift_pullback_frac)
+        dt_last = self._dt[-1] if len(self._dt) > 0 else None
+        w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+        # h_z (2026-08-29, CBF_HZ_AWARE_DRIFT prototype): pass the scale-free
+        # loom/closing-rate proxy so the QP's drift extrapolation can account
+        # for descent-driven acceleration of feature drift. See cbf2_filter's
+        # own h_z docstring for the derivation. Default-off (CBF_HZ_AWARE_DRIFT
+        # env var), so passing this is a no-op until explicitly enabled.
+        _cbf_h_z = float(self._h[-1][2]) if len(self._h) > 0 else 0.0
+        # clear last call's joint-QP convergence summary so a frame that does NOT
+        # run the joint QP (Phase-2 fallback / theta path) logs NaN, not a stale value
+        for _k in ("joint_qp_resid_final", "joint_qp_resid_max",
+                   "joint_qp_resid_rising", "joint_qp_converged"):
+            self._cbf_state.pop(_k, None)
+        I_a, theta_cone, _cbf_ok, self._theta_safe, _th_desired = cbf2_filter(
+            I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
-            prev_center_tangent=self._vis_prev_c, dt=_dt_last,
-            buffer_frac=_buf, tau=0.0, drift=None,
-            descent_ease_on=(os.environ.get("CBF_DESCENT_EASE", "1") == "1"),
-            g=g, g_min=float(os.environ.get("CBF_GMIN", "0.2")),
-            t_react=float(os.environ.get("CBF_TREACT", "1.5")),
-            state=self._vis_state)
-        self._vis_state = _vis.get("state", self._vis_state)
-        self._vis_prev_c = _vis["c"]
-        self._theta_safe = np.asarray(y_star, float)
-
-        # LEAN CAP = deliverability (the module leaves this to the caller): the
-        # az-aware true deliverable tilt arccos(a_z/A_CAP), or theta_cap.
-        _cap = (float(np.arccos(np.clip(abs(float(I_a[2])) / A_CAP, -1.0, 1.0)))
-                if A_CAP > g else float(self._theta_cap))
-        _tn = float(np.linalg.norm(self._theta_safe))
-        if _tn > _cap > 0.0:
-            self._theta_safe = self._theta_safe * (_cap / _tn)
-            _az = max(abs(float(I_a[2])), 0.5)
-            _cy, _sy = np.cos(yaw_c), np.sin(yaw_c)
-            _Pmat = np.array([[0.0, -1.0], [1.0, 0.0]]) @ np.array([[_cy, _sy], [-_sy, _cy]])
-            I_a[:2] = _az * (_Pmat.T @ self._theta_safe)
-        theta_cone = float(np.linalg.norm(self._theta_safe))
-        self._vis_gz_log.append(float(_vis["g_z"]))
-        self._vis_active_log.append(1.0 if _vis["active"] else 0.0)
-        self._az_joint_log.append(0.0)   # a_z delta from the thrust-magnitude cap; set below
+            p_10_eff, theta_cone,
+            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z,
+            A_CAP=A_CAP, g=g)
+        # AZ VISIBILITY FILTER -- REMOVED 2026-08-31. This was a downstream bolt-on:
+        # after cbf2_filter, it measured dtheta = ||th_desired - th_safe|| (the lateral
+        # tilt the FoV box had just suppressed) and did `I_a[2] -= gain*dtheta` to slow
+        # the descent "to buy the lateral loop time." Two problems: (1) it modified
+        # I_a[2] OUTSIDE the QP's own constraint set, so the final vector was no longer
+        # guaranteed FoV- or sphere-consistent; (2) it could pile unbounded lift on top
+        # of the loom-tracking z-SMC -> the terminal climb-away / fly-away (traced on a
+        # perception-mode landing 2026-08-31; earlier IC5 fly-aways too). The joint QP
+        # (CBF_JOINT_QP, default on) already solves for the full I_a including I_a[2],
+        # so the same "trade descent rate for lateral margin" now lives INSIDE that
+        # constrained solve as CBF_AZ_COST_GAIN (cbf_visibility.py) -- self-consistent
+        # output, and hard-clamped so it can only slow a descent toward hover, never
+        # reverse it into a climb. th_desired / dtheta stay logged as diagnostics.
+        if self._theta_safe is not None and _th_desired is not None:
+            _dtheta_norm = float(np.linalg.norm(_th_desired - self._theta_safe))
+        else:
+            _dtheta_norm = 0.0
+        self._dtheta_az_log.append(_dtheta_norm)
+        self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
+        # joint-QP convergence residual (2026-09-08, see __init__)
+        _nan = float("nan")
+        self._jqp_resid_final_log.append(float(self._cbf_state.get("joint_qp_resid_final", _nan)))
+        self._jqp_resid_max_log.append(float(self._cbf_state.get("joint_qp_resid_max", _nan)))
+        _jqp_rise = self._cbf_state.get("joint_qp_resid_rising", None)
+        self._jqp_resid_rising_log.append(float(_jqp_rise) if _jqp_rise is not None else _nan)
+        _jqp_conv = self._cbf_state.get("joint_qp_converged", None)
+        self._jqp_converged_log.append(1.0 if _jqp_conv is True else (0.0 if _jqp_conv is False else _nan))
+        # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
+        # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
+        # of this fully SKIPPED the angle clip below, relying only on the downstream
+        # thrust-magnitude sphere cap. That's wrong -- the angle clip does double duty:
+        # it's both a deliverability bound AND the ONLY thing preventing a pathological/
+        # degenerate QP output (theta_desired = I_a[:2]/a_z can blow up, observed live up
+        # to 21.68 rad -- ~1240deg, nonsensical) from reaching Fix B's `rd3` (attitude
+        # direction) undamped. The thrust-magnitude sphere cap bounds MAGNITUDE only; a
+        # garbage DIRECTION with correct magnitude is still garbage. Fix: NEVER fully skip
+        # the angle clip -- instead make its BOUND az-aware (arccos(a_z_current/A_CAP),
+        # the true deliverable angle AT THE CURRENT a_z) instead of the fixed hover-
+        # assumed constant (arccos(g/A_CAP)) the non-joint path uses. This addresses the
+        # actual "assumes hovering" gap (uses REAL a_z, not hover g) while keeping the
+        # same always-active sanity bound. `PLASMC_AZ_JOINT` OFF preserves the exact
+        # original behavior (fixed hover-based cap) for backward compatibility.
+        # CBF_JOINT_QP (default on, see cbf_visibility.py) already interleaves its OWN
+        # az-aware angle clip (arccos(a_z_final/A_CAP)) into the QP itself, so th_safe/
+        # I_a[:2] coming back here are already envelope-consistent -- reapplying a SECOND
+        # clip below using the fixed hover-assumed self._theta_cap would fight that (either
+        # redundant or, when a_z sits below hover, wrongly TIGHTER than the true deliverable
+        # angle at the actual a_z). Skip this block's clip whenever the joint QP ran; keep
+        # it (PLASMC_AZ_JOINT / fixed-cap fallback) only for CBF_JOINT_QP=0 A/B comparisons.
+        _cbf_joint_active = os.environ.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
+        _az_joint = os.environ.get("PLASMC_AZ_JOINT", "0") == "1"
+        self._az_joint_log.append(0.0)   # populated for real below, once the downstream cap's effect is known
+        if self._theta_safe is not None and not _cbf_joint_active:
+            if _az_joint:
+                _az_now = abs(float(I_a[2]))
+                _cap_eff = float(np.arccos(np.clip(_az_now / A_CAP, -1.0, 1.0))) if A_CAP > 0 else self._theta_cap
+            else:
+                _cap_eff = self._theta_cap
+            _tn = float(np.linalg.norm(self._theta_safe))
+            if _tn > _cap_eff:
+                _scl = _cap_eff / _tn
+                self._theta_safe = self._theta_safe * _scl
+                I_a[:2] = I_a[:2] * _scl
+            theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
+        elif self._theta_safe is not None:
+            theta_cone = float(np.linalg.norm(self._theta_safe))   # joint QP already capped; just refresh the log value
         # DELIVERABLE-THRUST-MAGNITUDE CAP (2026-08-23, replaces the old, unvalidated
         # I_a[2]=max(I_a[2],-50.0) floor -- see A_CAP's top-of-file comment). theta_cap
         # just above only bounds LEAN ANGLE; nothing previously bounded the FULL thrust
@@ -3815,7 +3994,9 @@ class Controller(Thread):
             I_a = _thrust_vec - np.array([0.0, 0.0, g])
         self._az_joint_log[-1] = float(I_a[2] - _az_before_cap)   # how much this cap actually moved a_z this cycle (0 when it didn't bind)
 
-        # visibility diagnostics
+        # log FoV diagnostics
+        self._rho_fov_log.append(rho_fov_curr.copy())
+        self._d_min_fov_log.append(d_min_fov)
         self._theta_cone_log.append(theta_cone)
         self._theta_current_log.append(theta_current)
 
@@ -4080,12 +4261,11 @@ class Controller(Thread):
             "YAW_RL_EXT_ABS": float(self._yaw_rl_ext_abs),
             "HD_FUNNEL_REF": bool(self._hd_funnel_ref),
             "HD_PASSIVE": bool(self._hd_passive),
-            # visibility_projection knobs (mirrored with their live defaults)
-            "CBF_BUFFER_FRAC": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
-            "CBF_DESCENT_EASE": os.environ.get("CBF_DESCENT_EASE", "1") == "1",
-            "CBF_GMIN": float(os.environ.get("CBF_GMIN", "0.2")),
-            "CBF_TREACT": float(os.environ.get("CBF_TREACT", "1.5")),
-            "CBF_SPHERE_TRUE_THRUST": _TRUE_THRUST_SPHERE,
+            # CBF knobs read inside cbf_visibility at call time -- mirrored here with the SAME
+            # defaults so the rep records them even when unset.
+            "CBF_JOINT_QP": os.environ.get("CBF_JOINT_QP", "1") == "1",
+            "CBF_AZ_COST_GAIN": float(os.environ.get("CBF_AZ_COST_GAIN", "5.0")),
+            "CBF_TAU": float(os.environ.get("CBF_TAU", "0.3")),
         }
         return {"overrides": overrides, "resolved": resolved}
 
@@ -4121,11 +4301,9 @@ class Controller(Thread):
             # FoV / LPF
             "theta_cap_deg": np.rad2deg(self._theta_cap),
             "theta_floor_deg": np.rad2deg(self._theta_floor),
-            "cbf_buffer_frac": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
-            "cbf_g_min": float(os.environ.get("CBF_GMIN", "0.2")),
-            "cbf_t_react": float(os.environ.get("CBF_TREACT", "1.5")),
-            "cbf_descent_ease": os.environ.get("CBF_DESCENT_EASE", "1") == "1",
-            "cbf_drift_pullback_frac": float(self._cbf_drift_pullback_frac),
+            "rho_fov_0": self._rho_fov_0,
+            "rho_fov_inf": self._rho_fov_inf,
+            "l_fov": self._l_fov,
             "tau_ia": self._tau_ia,
             "tau_ua": self._tau_ua,
             # Outer SEN_FUNNEL
@@ -4193,6 +4371,7 @@ class Controller(Thread):
             "VDS Gate Hits N": self._vds_gate_hits,               # diag 2026-08-31, VDS KF glitch gate: axis-frames down-weighted
             "VDS Gate Calls N": self._vds_gate_calls,             # diag 2026-08-31, total axis-frames tested (hits/calls = glitch rate)
             "VDS d2 Max": self._vds_d2_max,                       # diag 2026-08-31, worst inter-step centroid-rate d² (glitch severity)
+            "CBF Overflow Diag Log": self._cbf_overflow_diag_log,  # diag 2026-08-24, see its own comment
             "G(t)": self._G,
             "theta(t)": self._theta,
             "sigma(t)": self._sigma,
@@ -4216,12 +4395,18 @@ class Controller(Thread):
             "EA_d(t)": self._euler_d,
             "yaw_c(t)": self._yaw_c_log,
             "e_R(t)": self._e_R_log,
-            # visibility diagnostics
-            "theta_cone(t)": self._theta_cone_log,             # ||y_star||, commanded safe-lean magnitude
+            # FoV-margin cone diagnostics
+            "rho_fov(t)": self._rho_fov_log,
+            "d_min_fov(t)": self._d_min_fov_log,
+            "theta_cone(t)": self._theta_cone_log,
             "theta_current(t)": self._theta_current_log,
-            "az_joint_delta(t)": self._az_joint_log,           # a_z moved by the thrust-magnitude cap
-            "vis_gz(t)": self._vis_gz_log,                     # Tier-2 descent-ease scale in [g_min, 1]
-            "vis_active(t)": self._vis_active_log,             # 1.0 when Tier-1 modified a_xy this step
+            "dtheta_az(t)": self._dtheta_az_log,
+            "theta_desired(t)": self._theta_desired_log,
+            "az_joint_delta(t)": self._az_joint_log,
+            "jqp_resid_final(t)": self._jqp_resid_final_log,   # joint-QP last-outer-iterate command move (m/s^2); ~0 => converged, NaN => QP didn't run
+            "jqp_resid_max(t)": self._jqp_resid_max_log,       # max per-iterate move over the 6 outer iterates
+            "jqp_resid_rising(t)": self._jqp_resid_rising_log, # # of outer iterates whose residual rose vs the previous (chatter proxy; 0 => monotone)
+            "jqp_converged(t)": self._jqp_converged_log,       # 1.0 converged (final < CBF_JQP_RESID_TOL), 0.0 not, NaN QP didn't run
         }
 
     def getImgData(self):

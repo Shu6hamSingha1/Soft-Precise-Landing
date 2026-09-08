@@ -76,8 +76,10 @@ def marker_tangent(marker_center_px, center_px, focal_px):
 
 
 def fov_limit(center_px, focal_px, buffer_frac=0.15):
-    """Per-axis FoV-edge tangent half-extent minus the buffer -> phi."""
-    return (np.asarray(center_px, float) / np.asarray(focal_px, float)) * (1.0 - float(buffer_frac))
+    """Per-axis FoV-edge tangent half-extent minus the buffer -> phi.
+    ``buffer_frac`` may be a scalar or a per-axis (2,) array."""
+    return ((np.asarray(center_px, float) / np.asarray(focal_px, float))
+            * (1.0 - np.asarray(buffer_frac, float)))
 
 
 # ===========================================================================
