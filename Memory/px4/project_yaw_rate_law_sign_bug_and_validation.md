@@ -531,3 +531,16 @@ frame-derived; `w_z` confidence gate built; stationary IC1-5 n=5 = 24/25 (best c
 k_i dead end; terminal residual = gate-freeze (fix = ramp-cmd→0, stationary-only). Remaining:
 WZ_SCALE recal (deferred); turning-target LATERAL limit cycle ([[project_rover_turning_open]]);
 ASMC/psi_d removal (keep as fallback). `PLASMC_YAW_RATE_LAW` stays default OFF.
+
+### 2026-09-09 — terminal-yaw fix: drop the overfill trigger from the w_z gate
+
+`PLASMC_YAW_RL_GATE_EXTENT` (default **OFF**). The `_wz_untrusted` gate's MARKER_EXTENT_PX
+overfill trigger is now opt-in; only the `|w_z| > WZ_MAX(0.9)` rate-guard fires by default.
+Rationale: overfill corruption drives `w_z` LARGE (tracks extent past ~1 rad/s), so the
+rate-guard catches it at the moment it manifests; the extent trigger fired ~1-2 s early
+(alt ~0.8 m) freezing a legitimate non-zero command → the drone kept yawing uncorrected →
+terminal `e_a` drifted to ±15-30° (gate-freeze artifact). A frozen non-zero command is also
+wrong for a turning target. One-line change (extent clause behind the flag); `_ext_max`
+tracking + frac/abs knobs kept for the opt-in path; recorded in `_resolvedConfig` as
+`YAW_RL_GATE_EXTENT`. Only affects `PLASMC_YAW_RATE_LAW=1` (default OFF). NEEDS a validation
+n=1 (residual shrinks + no terminal spin-up past the rate guard).
