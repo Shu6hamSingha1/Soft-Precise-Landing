@@ -544,3 +544,22 @@ wrong for a turning target. One-line change (extent clause behind the flag); `_e
 tracking + frac/abs knobs kept for the opt-in path; recorded in `_resolvedConfig` as
 `YAW_RL_GATE_EXTENT`. Only affects `PLASMC_YAW_RATE_LAW=1` (default OFF). NEEDS a validation
 n=1 (residual shrinks + no terminal spin-up past the rate guard).
+
+### 2026-09-09 — terminal-yaw fix VALIDATED (n=1 IC1+IC2) — works; off-center residual is alpha overfill
+
+`bcee431c` (drop extent-overfill trigger). `test_data/ICValidation/20260909-024247`, best config,
+collision-clean:
+- **gated_frac = 0.00 both reps** (|w_z|max 0.17 ≪ 0.9) — extent trigger cleanly removed, gate
+  never fires spuriously; **no terminal spin-up** (cmd bounded ±0.23) — the |w_z| rate-guard alone
+  is sufficient.
+- **IC1 residual 13° → 6.7°** (removing the freeze lets the law correct to touchdown). Land 0.061 m.
+- **IC2 residual ~22° PERSISTS** — but the trace shows it's NOT gate/yaw-law: `e_a` is CONVERGED
+  (−0.9°) at alt 1.8 m, then jumps as `alpha` itself drifts −16° → −35° while MARKER_EXTENT_PX
+  saturates 276 → 318. = `alpha` feature corruption from TERMINAL OVERFILL (~10°/s smooth drift,
+  under the 17°/s YAW_ALPHA_MAX_RATE cap so `_yaw_hold` doesn't catch it). Same class as the #1
+  blocker (`h_y`/`w_z` overfill), now on `alpha`; asymmetric for off-center ICs. Land 0.026 m.
+
+**Verdict: KEEP `bcee431c`** (default: extent trigger OFF). Correct, improves IC1, no regression.
+The off-center terminal residual needs the `alpha` channel protected from overfill (a perception
+job, same as `h_y`/`w_z`), NOT a yaw-controller fix. `PLASMC_YAW_RL_GATE_EXTENT=1` restores the old
+trigger if ever wanted.
