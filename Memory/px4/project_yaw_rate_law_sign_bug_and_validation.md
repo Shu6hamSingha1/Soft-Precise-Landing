@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T13:53:06.315Z
+  modified: 2026-09-08T17:32:31.203Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -268,6 +268,42 @@ sweep + cross-marker cal re-derive (needs phased cal recordings — user-run).
 **Still open (thread):** (1) `FLOW_KF_Q_WZ` sweep + recal; (2) turning-target IC gate (the law's
 actual purpose — all validation so far is stationary); (3) IC5 terminal-1/Z overfill = separate
 blocker; (4) ASMC/`psi_d` removal — keep deferred until (1)+(2) done.
+
+### 2026-09-08 — `FLOW_KF_Q_WZ` sweep + n=5 gate → best config found, residual e_a NOT closed
+
+**Sweep** (IC1+IC5, n=3, `WZ_SCALE=2.5` fixed, `test_data/YawRLQwzSweep/`): sharp threshold at
+`FLOW_KF_Q_WZ ≈ 1.0`. IC5: `Q_wz` 10/5/2 → 3/3 crash+TL (7-16 m); `Q_wz` 1.0/0.5 → **3/3 precise
+0.03-0.10 m**. IC1 clean throughout. Confirms `w_z` is **noise-limited, not lag-limited** —
+`Q_wz`=10 (less smoothing) is the WORST; "less delay for w → higher Q" intuition falsified for `w_z`.
+
+**n=5 gate** `FLOW_KF_Q_WZ=1.0` + `WZ_SCALE=2.5` (`test_data/ICValidation/20260908-222553`,
+collision-clean): **24/25 acceptable (≤0.5 m), 0 TL.** IC1 5/5 (0.067) · IC2 5/5 (**0.069**,
+tightest off-center yet) · IC3 5/5 (0.112) · IC4 5/5 (0.098, all soft) · IC5 **4/5 ≤0.10 m** (rep4
+crash = terminal-1/Z, `hz_min −6.6`, yaw_cmd bounded).
+vs: `WZ_SCALE=1.0` 21/25 IC5 3/5 IC2 0.21 · `WZ_SCALE=2.5` alone 20/25 **IC5 0/5** · this 24/25 IC5 4/5.
+
+⚠ **`e_a` residual did NOT improve** — per-IC `|e_a|` tail ~10-17°, same as `WZ_SCALE=1.0`. The
+sweep's rationale (close the residual) did not pan out; residual is the ~3× magnitude deficit +
+weak `k_p=0.3` + likely a terminal alpha offset, not `w_z` noise. `Q_wz=1.0`+`2.5` = a modest
+robustness/precision gain, not a residual fix.
+
+**Recal DEFERRED — not a clean "just run it":**
+- ⚠ Methodology Q: `record_cross_marker_calibration.py:262` logs `getRawOptFlowAngVel()` which for
+  CROSS-marker returns `self._hw` = KF-FILTERED (unlike `img_data.py`'s pre-KF raw), then
+  `derive_cross_marker_cal.py:184` applies `kf_filter_causal` AGAIN → cross-marker cal is fit to a
+  DOUBLE-filtered signal while runtime KFs once. Pre-existing (affects current `s_wz=0.587`),
+  probably benign (2nd KF pass ≈ idempotent on a smooth signal), but verify before any recal.
+- Needs ≥5 user-run phased cross-marker cal flights with `FLOW_KF_Q_WZ=1.0`.
+- Low marginal value: moves the gain from a runtime knob into `s_wz`; e_a residual unaffected.
+
+### STOPPING POINT
+
+`PLASMC_YAW_RATE_LAW=1` (default OFF) = a working opt-in on stationary. Best config: `WZ_SIGN=-1`
+(auto) + `WZ_GATE=1` + **`FLOW_KF_Q_WZ=1.0` + `WZ_SCALE=2.5`** → 24/25 land, 0 TL, tightest
+off-center. NOT a clear win over the ASMC for stationary (residual e_a ~15°, IC5 terminal blocker).
+Its value is turning targets — UNTESTED. Next real step for the thread = the turning-target gate,
+not the recal. (`8884f43d` visibility_projection.py = new CBF module, NOT wired into controller.py,
+inert — base stable.)
 
 ## Next step (not started)
 
