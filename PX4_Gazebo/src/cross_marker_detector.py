@@ -700,6 +700,12 @@ def _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center):
                            # (see the cross-arm pairing fix in detect() for why this exists)
 
 HOUGH_DIAG_LOG = []   # 2026-08-04 root-cause diagnostic, see detect()'s hough_lt2_lines path
+CLUSTER_DIAG_LOG = []  # 2026-09-05 root-cause diagnostic, see detect()'s lt2_angle_clusters path --
+                        # mirrors HOUGH_DIAG_LOG's pattern but for the angle-clustering failure
+                        # (terminal-overfill investigation: HOUGH_DIAG_LOG only instruments
+                        # hough_lt2_lines, which is a far-range/acquisition failure in every
+                        # captured run so far -- lt2_angle_clusters, the dominant terminal-overfill
+                        # miss reason, has never been instrumented). Populated on EVERY occurrence.
 PAIR_SELECT_DIAG = []  # 2026-09-04: per-frame (picked pair, all candidate pairs + support)
                         # diagnostic behind CROSS_DIAG_PAIR_SELECT=1 -- used to find and
                         # verify the _best_pair support-priority fix (see its comment);
@@ -773,6 +779,22 @@ class CrossMarkerDetection:
     line_points_i: tuple = ()          # real detected pixels fit to cross-arm line i
     line_points_j: tuple = ()          # real detected pixels fit to cross-arm line j
     stub_points: Optional[tuple] = None    # real detected pixels fit to the stub line, if found
+    # PRE-PRUNE points (2026-09-08, line-width investigation): line_points_i/j above are
+    # _robust_fit_line's SURVIVING INLIERS -- purpose-built to DISCARD perpendicular
+    # scatter (contamination like a cast shadow) so the line direction/intersection is
+    # clean. That makes them structurally wrong for measuring arm WIDTH: the pruning
+    # threshold is self-referential (scale = median residual of whatever currently
+    # survives), so the inlier set's own transverse spread reflects how aggressively that
+    # frame's fit happened to converge, not real stroke thickness (confirmed: measured
+    # width from line_points_i/j collapses to near-zero on some frames with no
+    # corresponding dip in true size, and correlates only ~0.1-0.4 with GT altitude even
+    # from a fresh successful detection). These fields carry _cluster_points_from_mask's
+    # COARSE, un-pruned perpendicular-band selection instead -- every mask pixel within
+    # the band of the representative line, crossing-region excluded -- which preserves
+    # the real transverse extent. Use THESE for any width/thickness measurement;
+    # line_points_i/j remain correct for direction/intersection/alpha as before.
+    line_points_i_raw: tuple = ()
+    line_points_j_raw: tuple = ()
     isolated_mask: Optional[np.ndarray] = None   # final (ROI+shape-isolated) binary mask this frame
     in_fov: bool = True    # False when `center` is a valid off-frame extrapolation (see the
                             # off-frame sanity path in detect()) -- callers that treat s as a
@@ -1394,6 +1416,21 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     angles = [a for a, k in zip(angles, _corner_keep) if k]
     clusters = _cluster_line_angles(angles)
     if len(clusters) < 2:
+        # DIAG (2026-09-05, terminal-overfill root-cause investigation): mirrors
+        # HOUGH_DIAG_LOG. n_lines_raw is the Hough count BEFORE stroke-validate/seg-cap/
+        # corner-join; n_segs_kept is what actually reached the angle clustering above.
+        # cluster_sizes lets a genuine 1-cluster collapse (all survivors agree on one
+        # direction -- consistent with the wide-stroke/single-visible-arm hypothesis) be
+        # told apart from a near-empty-input case (corner-join or stroke-validate ate
+        # almost everything, consistent with the tracked-ROI-lag hypothesis).
+        CLUSTER_DIAG_LOG.append({
+            'mask_px': int(len(xs)), 'bbox': bbox,
+            'n_lines_raw': int(len(lines)), 'n_segs_kept': int(len(segs)),
+            'angles_kept': [round(float(a), 1) for a in angles],
+            'n_clusters': int(len(clusters)),
+            'cluster_sizes': [len(c) for c in clusters],
+            'stage_px': _stage_px,
+        })
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='lt2_angle_clusters')
 
     # Pick the two clusters that are the real cross arms. Closest-to-90-degrees-apart
@@ -1562,6 +1599,9 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         # See MIN_FIT_POINTS' 2026-08-03 comment: a fit through too few points is
         # unconstrained regardless of what angle it happens to land on.
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='insufficient_fit_points')
+    # Saved BEFORE _robust_fit_line's inlier-pruning overwrites pts_i/pts_j below --
+    # see CrossMarkerDetection.line_points_i_raw's docstring for why this matters.
+    pts_i_raw, pts_j_raw = pts_i, pts_j
 
     vx_i, vy_i, x0_i, y0_i, mask_i = _robust_fit_line(pts_i)
     vx_j, vy_j, x0_j, y0_j, mask_j = _robust_fit_line(pts_j)
@@ -1822,7 +1862,8 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
 
     return CrossMarkerDetection((float(center[0]), float(center[1])), heading, True, bbox,
                                  line_points_i=tuple(pts_i), line_points_j=tuple(pts_j),
-                                 stub_points=stub_points_out, isolated_mask=mask, in_fov=in_fov)
+                                 stub_points=stub_points_out, isolated_mask=mask, in_fov=in_fov,
+                                 line_points_i_raw=tuple(pts_i_raw), line_points_j_raw=tuple(pts_j_raw))
 
 
 def _shift_detection(det, x0, y0, full_shape):
@@ -1840,6 +1881,14 @@ def _shift_detection(det, x0, y0, full_shape):
     shift = np.array([x0, y0], dtype=np.float64)
     new_line_i = tuple(map(tuple, np.asarray(det.line_points_i, dtype=np.float64) + shift)) if det.line_points_i else ()
     new_line_j = tuple(map(tuple, np.asarray(det.line_points_j, dtype=np.float64) + shift)) if det.line_points_j else ()
+    # Shift line_points_i_raw/j_raw the same way -- an omission here would silently
+    # reset them to the dataclass default () on every cropped detection, which is most
+    # detections (see the ROI-crop path above), quietly breaking width measurement for
+    # the majority of frames while leaving line_points_i/j (and everything else) intact.
+    new_line_i_raw = (tuple(map(tuple, np.asarray(det.line_points_i_raw, dtype=np.float64) + shift))
+                       if det.line_points_i_raw else ())
+    new_line_j_raw = (tuple(map(tuple, np.asarray(det.line_points_j_raw, dtype=np.float64) + shift))
+                       if det.line_points_j_raw else ())
     new_stub = (tuple(map(tuple, np.asarray(det.stub_points, dtype=np.float64) + shift))
                 if det.stub_points else None)
     full_mask = None
@@ -1849,6 +1898,7 @@ def _shift_detection(det, x0, y0, full_shape):
         full_mask[y0:y0 + ch, x0:x0 + cw] = det.isolated_mask
     return replace(det, center=new_center, mask_bbox=new_bbox,
                    line_points_i=new_line_i, line_points_j=new_line_j,
+                   line_points_i_raw=new_line_i_raw, line_points_j_raw=new_line_j_raw,
                    stub_points=new_stub, isolated_mask=full_mask)
 
 
@@ -2069,12 +2119,16 @@ def _scale_detection(det, f, crop_shape):
            det.mask_bbox[2] * f, det.mask_bbox[3] * f) if det.mask_bbox else None)
     li = tuple(map(tuple, np.asarray(det.line_points_i, float) * f)) if det.line_points_i else ()
     lj = tuple(map(tuple, np.asarray(det.line_points_j, float) * f)) if det.line_points_j else ()
+    # See _shift_detection's comment -- same silent-drop-to-default risk applies here.
+    li_raw = tuple(map(tuple, np.asarray(det.line_points_i_raw, float) * f)) if det.line_points_i_raw else ()
+    lj_raw = tuple(map(tuple, np.asarray(det.line_points_j_raw, float) * f)) if det.line_points_j_raw else ()
     sp = (tuple(map(tuple, np.asarray(det.stub_points, float) * f))
           if det.stub_points else None)
     im = det.isolated_mask
     if im is not None:
         im = cv2.resize(im, (crop_shape[1], crop_shape[0]), interpolation=cv2.INTER_NEAREST)
     return replace(det, center=c, mask_bbox=bb, line_points_i=li, line_points_j=lj,
+                   line_points_i_raw=li_raw, line_points_j_raw=lj_raw,
                    stub_points=sp, isolated_mask=im)
 
 

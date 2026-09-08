@@ -1,0 +1,133 @@
+=================================================================
+[retry] Attempt 1 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] FLYING: WORLD=cross_marker  MARKER_TYPE=cross
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear .... ready after 8s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TD_V2=1: perception touchdown detector v2 (frame_min=240px; overfill/backstop/flow-freeze; no |s_e_n| gate)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0.0 x3 within a 3-frame window + |s_e_n|<0.6, armed after h_z<-0.1) + extent corroboration (growth flattened, |d(ln extent)/dt|<0.3/s over 6 samples, AND extent>=0.6x running max)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+-- Waiting for is_armable (EKF / lockstep ready)...
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-4.785465717315674 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.0288199745118618, y_m: 0.02810095250606537, z_m: -5.30712890625]
+[landing_test] Hover to MATLAB-IC ENU (2.0,2.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=6.80s (pos_err=0.046 m, speed=0.033 m/s, yaw_err=0.59°, tilt=0.31°)
+[landing_test] board alpha (settled) = 4.2° std=6.9°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[controller] TOUCHDOWN-DETECT v2 [overfill]: extent=318/240px  n_corn=100 (airborne ref 168)  flow_disp=3.87px  |s_e_n|=0.03 -> LANDED (disarm before bounce)
+[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming
+[landing_test] descent loop exited: FC_node.LANDED=True EC_node.is_alive()=True (2026-08-03 diag: distinguishing PX4-landed-state vs img-thread-death vs impact-spike as the exit cause)
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: PRECISE-only  (xy_err=0.087 m [≤0.1], rel_vel=0.590 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.042 m, rel_vel=0.381 m/s, min_alt=0.02 m (endpoint xy=0.087 m is post-kick if it ballooned)
+[landing_test] IMG_RECORD: capturing 5 s post-touchdown video tail…
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+Status: INFO: Landing detected	
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+Status: INFO: Disarmed by landing	
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[CrossMarkerNode] diag: 1296 process_frame() calls over 34.99s (mean call rate 37.0 Hz), detect ok 1296/1296 (100%), centroid jump-outlier rejects: 8
+[CrossMarkerNode] HOUGH_DIAG (4 hough_lt2_lines events): mask_px min/med/max=32/36/42, bbox_extent min/med/max=13/15/19
+    extent   0- 50px:    4 events -- stage_px med: raw=80 close=87 blobby=76 roi=76 shape=36
+    4 DISTINCT (bbox, mask_px) patterns out of 4 events (top 5 by count): [(((41, 42, 14, 10), 37), 1), (((44, 44, 17, 8), 32), 1), (((40, 43, 13, 12), 36), 1), (((43, 36, 19, 13), 42), 1)]
+    WARNING: hough_ts count (0) != HOUGH_DIAG_LOG count (4) -- positional alignment assumption broken
+[CrossMarkerNode] CLUSTER_DIAG (3 lt2_angle_clusters events): mask_px min/med/max=45/46/50, bbox_extent min/med/max=22/23/25
+    extent   0- 50px:    3 events -- n_lines_raw med=2, n_segs_kept med=2, 1-cluster=3, 0-cluster=0
+      sample (1-cluster) angles_kept=[175.4, 177.4], cluster_sizes=[2], stage_px=(80, 83, 83, 83, 45)
+      sample (1-cluster) angles_kept=[4.4, 2.1], cluster_sizes=[2], stage_px=(68, 76, 76, 76, 50)
+      sample (1-cluster) angles_kept=[92.4, 92.6], cluster_sizes=[2], stage_px=(67, 74, 74, 74, 46)
+[CrossMarkerNode] IMG_RECORD: stitched 376 frames -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/Tue Sep  8 13-49-55 2026.mp4
+image_subscriber closed
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+image_subscriber deleted...
+Saved to CSV!
+Flight Controller is disconnected...
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 946089 + group)
+[run]   killing px4_sitl (pid 946098 + group)
+[run]   killing bridge_clock (pid 946351 + group)
+[run]   killing bridge_pose (pid 946440 + group)
+[run]   killing bridge_image (pid 946461 + group)
+[run]   killing qgc (pid 946481 + group)
+[run] done.
+[retry] SUCCESS after attempt 1

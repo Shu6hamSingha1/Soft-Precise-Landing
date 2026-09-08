@@ -104,3 +104,21 @@ PX4_Gazebo/test_data/GtfbMulti_col/**
 # frames are irrelevant to it. Same policy as DetectorFrameset -- bulk ignored, evidence tracked.
 PX4_Gazebo/test_data/Q8_SpinFF*/*/Img_Data.npy
 PX4_Gazebo/test_data/YawRateLaw/*/*/Img_Data.npy
+
+# OverfillCapture_IC1 / IC2to5 (2026-09-08): fresh real-perception SITL captures used to
+# validate the line-width mask-scan loom method + origin_ratio fix against the actual
+# terminal-overfill regime (see project_20260908_line_width_loom_investigation memory).
+# Raw frames live separately under test_data/Test_Videos/*_raw (already ignored above).
+# Same policy as GtfbMulti_col/RobustnessFrameset -- bulk npy ignored (regenerable via
+# run.sh), manifest + harness + logs tracked.
+PX4_Gazebo/test_data/OverfillCapture_IC1/**
+!PX4_Gazebo/test_data/OverfillCapture_IC1/MANIFEST.md
+!PX4_Gazebo/test_data/OverfillCapture_IC1/run.sh
+!PX4_Gazebo/test_data/OverfillCapture_IC1/*.log
+!PX4_Gazebo/test_data/OverfillCapture_IC1/driver.out
+PX4_Gazebo/test_data/OverfillCapture_IC2to5/**
+!PX4_Gazebo/test_data/OverfillCapture_IC2to5/MANIFEST.md
+!PX4_Gazebo/test_data/OverfillCapture_IC2to5/run.sh
+!PX4_Gazebo/test_data/OverfillCapture_IC2to5/*.log
+!PX4_Gazebo/test_data/OverfillCapture_IC2to5/driver.out
+!PX4_Gazebo/test_data/OverfillCapture_IC2to5/raw_dirs.txt

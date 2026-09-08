@@ -507,6 +507,124 @@ def _fill_A(centered_pts):
     return A
 
 
+# ─── LINE-WIDTH LOOM (shadow, 2026-09-08) ──────────────────────────────────────
+# SHADOW-MODE ONLY: logged as a diagnostic (Width Loom Log below), NOT consumed by
+# any control path yet. See project_20260908_line_width_loom_investigation memory
+# for the full derivation. Replaces an earlier, worse-performing design (measuring
+# width from _robust_fit_line's own pruned inlier set, or from a fixed-fraction-of-
+# bbox coarse band) with a direct mask-thickness scan -- both prior approaches were
+# found to be structurally wrong: the pruned set self-referentially suppresses the
+# transverse spread it's supposed to measure (collapses near zero on some frames),
+# and the coarse band is wide enough at close range to admit a second real
+# structure (confirmed on real data: a clean bimodal split, ~25px gap matching the
+# predicted band diameter almost exactly).
+#
+# This method instead: takes the arm's already-reliable fitted direction (from
+# det.line_points_i/j -- pruning corrupts transverse spread, not direction, per
+# this session's own aspect-ratio checks), picks several REAL detected points
+# (not idealized straight-line interpolations -- an early version of this
+# collapsed to 0 on some frames despite abundant real points, because the actual
+# point cloud isn't perfectly straight and a synthetic in-between point can land
+# off the true mask) as scan origins, and walks a sub-pixel bilinear-sampled
+# perpendicular ray through det.isolated_mask from each, counting the continuous
+# on-mask run. Median across stations that (a) are independently confirmed
+# on-mask and (b) meet a quorum (>=3 of 5), else the caller holds last-good.
+#
+# Validated (script-only, this session) at 0.89-1.00 correlation with GT altitude
+# across 7 fresh real-perception reps spanning IC1-5 (`test_data/OverfillCapture_
+# IC1`, `OverfillCapture_IC2to5`, plain cross_marker world), beating the
+# pruned-inlier method (0.54-0.97) in every single rep.
+#
+# ⚠ KNOWN GAP, not yet checked: operates on RAW camera-plane points/mask, no
+# _getVirtualPts leveling -- unlike h_V/s_V/alpha (alpha's own history: an
+# un-leveled version aliased tilt-foreshortening as signal, r flipped +0.31 low-tilt
+# -> -0.87 high-tilt). The validation reps had real (mostly-hover) tilt and still
+# came back strong, which is reassuring but not the same as an explicit
+# tilt-stratified check. Do not remove this comment until that check is done.
+_WLOOM_DS = 0.4          # bilinear scan step, px
+_WLOOM_MAX_STEPS = 60    # per-side step cap (~24px max half-thickness)
+_WLOOM_THRESH = 127.0    # on-mask bilinear-sample threshold (mask is 0/255)
+_WLOOM_N_STATIONS = 5
+_WLOOM_MIN_QUORUM = 3    # of _WLOOM_N_STATIONS, must independently confirm on-mask
+
+
+def _wloom_bilinear(mask, x, y):
+    h, w = mask.shape
+    if x < 0 or y < 0 or x >= w - 1 or y >= h - 1:
+        return 0.0
+    x0, y0 = int(np.floor(x)), int(np.floor(y))
+    fx, fy = x - x0, y - y0
+    v00 = mask[y0, x0]; v10 = mask[y0, x0 + 1]
+    v01 = mask[y0 + 1, x0]; v11 = mask[y0 + 1, x0 + 1]
+    return float(v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy)
+                 + v01 * (1 - fx) * fy + v11 * fx * fy)
+
+
+def _wloom_scan_thickness(mask, p0, nrm):
+    """Sub-pixel perpendicular thickness through p0 along nrm, via a bilinear-
+    sampled binary-mask walk (both directions) -- see this block's module comment."""
+    total = 0.0
+    for sign in (1.0, -1.0):
+        s = 0.0
+        for _ in range(_WLOOM_MAX_STEPS):
+            s_next = s + _WLOOM_DS
+            x = p0[0] + sign * s_next * nrm[0]
+            y = p0[1] + sign * s_next * nrm[1]
+            if _wloom_bilinear(mask, x, y) < _WLOOM_THRESH:
+                break
+            s = s_next
+        total += s
+    return total + _WLOOM_DS
+
+
+def _wloom_width_at_points(mask, pts_for_dir):
+    """Width of ONE arm from its (pruned) detected points + the isolated mask.
+    Returns None if fewer than _WLOOM_MIN_QUORUM stations land on-mask (caller
+    should hold last-good, not treat None as zero)."""
+    pts_for_dir = np.asarray(pts_for_dir, dtype=np.float64)
+    if len(pts_for_dir) < 4:
+        return None
+    c = pts_for_dir.mean(axis=0)
+    ctr = pts_for_dir - c
+    _, _, VT = np.linalg.svd(ctr, full_matrices=False)
+    v = VT[0]
+    nrm = np.array([-v[1], v[0]])
+    tproj = ctr @ v
+    order = np.argsort(tproj)
+    n = len(order)
+    lo, hi = int(0.15 * n), int(0.85 * n)
+    if hi <= lo:
+        idxs = order
+    else:
+        idxs = order[np.linspace(lo, hi - 1, min(_WLOOM_N_STATIONS, hi - lo)).astype(int)]
+    thicknesses = []
+    for k in idxs:
+        p = pts_for_dir[k]
+        if _wloom_bilinear(mask, p[0], p[1]) < _WLOOM_THRESH:
+            continue   # station itself not confirmed on-mask -- skip, don't scan blind
+        thicknesses.append(_wloom_scan_thickness(mask, p, nrm))
+    if len(thicknesses) < _WLOOM_MIN_QUORUM:
+        return None
+    return float(np.median(thicknesses))
+
+
+def width_loom_from_detection(det):
+    """Shadow-mode arm-width measurement for a single detection: median of both
+    arms' mask-scan widths (raw camera-plane px), or None if det.ok is False, the
+    mask is unavailable, or too few stations confirm on-mask on either arm (hold
+    last-good is the caller's job, not this function's)."""
+    if det is None or not det.ok or det.isolated_mask is None:
+        return None
+    widths = []
+    for pts in (det.line_points_i, det.line_points_j):
+        w = _wloom_width_at_points(det.isolated_mask, pts)
+        if w is not None:
+            widths.append(w)
+    if not widths:
+        return None
+    return float(np.median(widths))
+
+
 class CrossMarkerPerception:
     """Stateful, ROS-independent core -- call process_frame(img, t) once per
     captured frame. Kept separate from any ROS/threading wrapper so it can be
@@ -935,6 +1053,32 @@ class CrossMarkerPerception:
                                      # see _log_frame_data's comment for the z_v-reject gap
         self._marker_extent_log = []  # MARKER_EXTENT_PX per frame
         self._center_px_log = []  # raw pixel center (for CBF use)
+        self._width_loom_log = []   # SHADOW-MODE, see width_loom_from_detection's module
+                                     # comment -- mask-scan arm-width px, hold-last-good
+                                     # across a None reading, NaN before the first valid one.
+        self._last_width_loom = np.nan
+        # WIDTH-LOOM RATE KF (2026-09-08, still SHADOW-MODE -- see project_20260908_line_
+        # width_loom_investigation memory's "remaining open item"). Turns the width
+        # MEASUREMENT (validated 0.89-1.00 corr with GT altitude, a static quantity) into
+        # a Tz-like RATE for eventual control use: d(ln width)/dt via a 2-state
+        # (value, rate) KF on ln(width), reusing _kf_step verbatim (single-channel, same
+        # math as the 6-channel hw KF above) rather than a windowed-derivative filter
+        # (Savitzky-Golay was tried and rejected earlier this session for its ~0.5s lag
+        # at the smoothing needed for acceptable noise -- a KF gives a
+        # causal/low-lag estimate instead). z=None (predict-only coast) on a frame with
+        # no valid width reading -- same convention as the hw KF's marker-loss coast.
+        # Tz sign convention: GT loom is defined so it's NEGATIVE during approach (see
+        # gt_optical_flow.py); width INCREASES during approach, so d(ln width)/dt is
+        # POSITIVE then -- the reported Tz-like value is therefore the NEGATED rate,
+        # matching every other Tz estimator's sign convention in this file.
+        self._wloom_kf_q = float(os.environ.get("CROSS_WLOOM_KF_Q", "5.0"))
+        self._wloom_kf_r = float(os.environ.get("CROSS_WLOOM_KF_R", "0.05"))
+        self._wloom_kf_dt_unc_max = float(os.environ.get("CROSS_WLOOM_KF_DT_UNC_MAX", "2.0"))
+        self._wloom_kf_x = np.zeros((1, 2))
+        self._wloom_kf_P = np.tile(np.eye(2) * 1.0, (1, 1, 1))
+        self._wloom_kf_prev_t = None
+        self._wloom_kf_initialized = False
+        self._width_loom_rate_log = []   # Tz-like d(ln width)/dt estimate, NaN before init
 
         # 2026-08-05: parity fields ported from img_data.py's IMG_PROCESSOR getLogData()
         # (see that class's own field list) -- everything here has a direct, generic
@@ -1009,6 +1153,24 @@ class CrossMarkerPerception:
         self._hw_kf_coast_streak = 0
         self._hw_kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
         self._hw_kf_frozen = None
+        # ORIGIN-RATIO Tz VETO (2026-09-08, see project_20260908_line_width_loom_
+        # investigation memory). Set by _solve_jacobian when origin_ratio fails its
+        # own gate (see that gate's comment) -- read+reset by _kf_update_hw, which
+        # inflates r[2] instead of trusting the fallback. THE BUG THIS FIXES: when
+        # origin_ratio is too low for moment-loom to be trusted, the code used to
+        # silently fall back to the joint pinv solve's sol[2] -- but pinv's Tz
+        # column is corrupted by the EXACT SAME degenerate point geometry
+        # origin_ratio is detecting (both are position-weighted-column estimators;
+        # neither has real signal when tracked points cluster tightly relative to
+        # their distance from the image center). Confirmed on the real failed rep
+        # (ICValidation/20260831-144626/IC1_rep1): origin_ratio decayed 1.8->0.15
+        # over ~0.3s while h_z simultaneously spiked from pinv's own output
+        # (+1.1->+5.6, GT +0.6) -- the "safety net" caught nothing because both
+        # paths shared the weakness. Fix: veto BOTH estimators together (hold via
+        # KF predict-only on the Tz channel specifically), not just switch which
+        # one gets consumed.
+        self._tz_unreliable_this_solve = False
+        self.CROSS_TZ_VETO_R_MULT = float(os.environ.get("CROSS_TZ_VETO_R_MULT", "1e6"))
         # TERMINAL h_x/h_y via CENTROID-RATE (2026-08-28, DEFAULT ON -- perception
         # change: changes how h is COMPUTED, not the control law). Root-cause
         # (project_20260827 memory 2026-08-28 h-correlation dig): near touchdown
@@ -1188,6 +1350,17 @@ class CrossMarkerPerception:
                 if np.ndim(r) == 0:          # np.isscalar() is False for np.float64 -- use ndim
                     r = np.full(6, float(r))
                 r[2] *= _lr
+            # ORIGIN-RATIO Tz VETO (see __init__'s _tz_unreliable_this_solve comment).
+            # Same lever as the loom-R schedule above (inflate r[2]), different trigger
+            # (a per-frame geometric-conditioning flag from _solve_jacobian, not extent) --
+            # applied independently/multiplicatively so both can fire the same frame.
+            # Consumed once then reset, so a solve that doesn't run this frame (miss,
+            # z is None) can't leave a stale veto armed for a future real measurement.
+            if self._tz_unreliable_this_solve:
+                if np.ndim(r) == 0:
+                    r = np.full(6, float(r))
+                r[2] *= self.CROSS_TZ_VETO_R_MULT
+            self._tz_unreliable_this_solve = False
             self._hxy_derate_log.append(float(_frac))
             self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
@@ -1528,6 +1701,11 @@ class CrossMarkerPerception:
 
     def _solve_jacobian(self, prev_pts, curr_pts, dt, prev_quat=None, curr_quat=None,
                          prev_angvel=None, curr_angvel=None):
+        # Reset each call -- see __init__'s _tz_unreliable_this_solve comment. Only the
+        # origin-ratio gate below sets this True; a solve that never reaches that gate
+        # (too few points for a moment estimate at all) leaves it False, i.e. unchanged
+        # pre-existing behavior for that separate, pre-existing degradation path.
+        self._tz_unreliable_this_solve = False
         # Level EACH frame's points with THAT frame's own quaternion -- img_data.py's
         # comment on this exact point ("aruco_pts_0 belongs to frame-0 -> level with
         # quats[0], not quats[1]") warns that using the wrong quat leaves a residual
@@ -1645,45 +1823,84 @@ class CrossMarkerPerception:
         # specific documented case. Not yet re-validated at scale -- watch for
         # whether 6 introduces its OWN instability (a smaller n makes the mean
         # itself noisier) on the next batch of live flights.
-        moment_min_pts = int(os.environ.get("CROSS_MOMENT_LOOM_MIN_PTS", "6"))
-        if len(prev_n) >= moment_min_pts:
+        # RESTRUCTURED 2026-09-08 (decoupled from moment-loom's own point-count floor --
+        # see project_20260908_line_width_loom_investigation memory). PREVIOUSLY,
+        # origin_ratio only got computed nested inside moment-loom's own prerequisite
+        # (len(prev_n) >= moment_min_pts, then a MAD-valid subset >= moment_min_pts//2)
+        # -- meaning that whenever the tracked point count fell between
+        # MIN_FLOW_POINTS_SOLVE (4, the absolute floor the pinv solve itself already
+        # required) and moment_min_pts (6), the veto below could never even run: the
+        # pinv solve went out completely unvetted. This is exactly the regime the
+        # reference failed rep (ICValidation/20260831-144626/IC1_rep1) fell through
+        # immediately AFTER its h_z spike (ext->76, n_corners 165->27->15->0) -- so the
+        # veto's coverage gap was concentrated right where a corrupted Tz would do the
+        # most damage. Fix: compute origin_ratio (and the shared M0/M1/c0 the moment
+        # estimate ALSO needs) at the solve's own point floor, independent of
+        # moment-loom's stricter floor. moment_min_pts still gates ONLY whether the
+        # MOMENT ESTIMATE specifically gets trusted as the reported Tz (its own,
+        # separate concern: a smaller n makes the mean-based moment noisier, not a
+        # conditioning question) -- origin_ratio's veto of pinv applies whenever
+        # origin_ratio is computable at all, moment_min_pts or not.
+        origin_ratio = None
+        M0 = M1 = None
+        if len(prev_n) >= MIN_FLOW_POINTS_SOLVE:
             fm = np.linalg.norm(curr_n - prev_n, axis=1)
             med = np.median(fm)
             mad = np.median(np.abs(fm - med)) + 1e-6
             valid = fm < med + 3.0 * 1.4826 * mad
-            if valid.sum() >= max(4, moment_min_pts // 2):
+            if valid.sum() >= MIN_FLOW_POINTS_SOLVE:
                 pv, cv_ = prev_n[valid], curr_n[valid]
                 c0, c1 = pv.mean(0), cv_.mean(0)
                 M0 = float(np.mean(np.sum((pv - c0) ** 2, axis=1)))
                 M1 = float(np.mean(np.sum((cv_ - c1) ** 2, axis=1)))
-                # ORIGIN-SPREAD GATE (2026-08-13, user-proposed, quantified same day --
-                # see project_20260812_cross_marker_flow_architecture_investigation
-                # memory's t=39.444 case). Tz's per-point contribution is -Tz*(x,y):
-                # when the validated points all sit at nearly the SAME (x,y) -- i.e.
-                # clustered in one region FAR from the image origin, regardless of how
-                # internally consistent their tracking is -- that contribution is
-                # nearly IDENTICAL for every point, which looks like a uniform shift
-                # of the whole cluster, not a spread change. Centroid-relative variance
-                # is insensitive to a uniform shift BY CONSTRUCTION (same reason Tx/Ty
-                # don't affect it), so the real Tz signal barely reaches this
-                # computation in that geometry, regardless of point count or
-                # cleanliness. ratio = M0 (the cluster's own internal spread) /
-                # ||centroid||^2 (how far the whole cluster sits from the origin)
-                # quantifies this directly: a real, decisive separation was measured
-                # on 4 real documented cases -- the one KNOWN-FAILED case (wrong sign
-                # despite clean, consistent tracking) had ratio=0.028; all 3 KNOWN-
-                # WORKING cases had ratio 5.3-8823, orders of magnitude higher.
-                # CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO=1.0 sits with huge margin on both
-                # sides of that measured gap. Below it, hold the pinv Tz instead --
-                # moment-loom has no real signal to work with in this geometry, no
-                # matter how the point set is otherwise filtered/cleaned.
-                origin_dist2 = float(np.sum(c0 ** 2))
-                origin_ratio = M0 / max(origin_dist2, 1e-9)
-                min_origin_ratio = float(os.environ.get("CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO", "1.0"))
-                if M0 > 1e-12 and M1 > 1e-12 and dt > 0 and origin_ratio >= min_origin_ratio:
-                    sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
-        # else: too few points for a stable moment estimate (untested below
-        # ~8-10 points) -- hold the pinv-solved Tz unmodified.
+                if M0 > 1e-12 and M1 > 1e-12 and dt > 0:
+                    # ORIGIN-SPREAD RATIO (2026-08-13, user-proposed, quantified same day --
+                    # see project_20260812_cross_marker_flow_architecture_investigation
+                    # memory's t=39.444 case). Tz's per-point contribution is -Tz*(x,y):
+                    # when the validated points all sit at nearly the SAME (x,y) -- i.e.
+                    # clustered in one region FAR from the image origin, regardless of how
+                    # internally consistent their tracking is -- that contribution is
+                    # nearly IDENTICAL for every point, which looks like a uniform shift
+                    # of the whole cluster, not a spread change. Centroid-relative variance
+                    # is insensitive to a uniform shift BY CONSTRUCTION (same reason Tx/Ty
+                    # don't affect it), so the real Tz signal barely reaches this
+                    # computation in that geometry, regardless of point count or
+                    # cleanliness. ratio = M0 (the cluster's own internal spread) /
+                    # ||centroid||^2 (how far the whole cluster sits from the origin)
+                    # quantifies this directly: a real, decisive separation was measured
+                    # on 4 real documented cases -- the one KNOWN-FAILED case (wrong sign
+                    # despite clean, consistent tracking) had ratio=0.028; all 3 KNOWN-
+                    # WORKING cases had ratio 5.3-8823, orders of magnitude higher. Also
+                    # confirmed on the reference failed rep (2026-09-08 offline replay):
+                    # ratio decayed 1.8->0.15 over ~0.3s, LEADING the h_z spike by ~0.3s.
+                    origin_dist2 = float(np.sum(c0 ** 2))
+                    origin_ratio = M0 / max(origin_dist2, 1e-9)
+        min_origin_ratio = float(os.environ.get("CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO", "1.0"))
+        moment_min_pts = int(os.environ.get("CROSS_MOMENT_LOOM_MIN_PTS", "6"))
+        if origin_ratio is None:
+            pass   # too few points even for the general conditioning check (below
+                    # MIN_FLOW_POINTS_SOLVE, or the MAD-valid subset didn't clear it, or
+                    # M0/M1 degenerate) -- hold the pinv-solved Tz unmodified, same as
+                    # the pre-existing behavior below the old moment_min_pts floor.
+        elif origin_ratio < min_origin_ratio:
+            # FIX (2026-09-08, see __init__'s _tz_unreliable_this_solve comment): this
+            # used to silently fall through to the pinv-solved sol[2] below, which is
+            # corrupted by the SAME degenerate point geometry this check just detected
+            # (both are position-weighted-column estimators). Flag it instead of
+            # trusting either -- _kf_update_hw inflates r[2] this frame (predict-only
+            # on Tz specifically) rather than correcting against a value we've just
+            # proven has no real signal.
+            self._tz_unreliable_this_solve = True
+        elif len(prev_n) >= moment_min_pts:
+            # Geometry is adequate (origin_ratio passed) AND there are enough points
+            # for the mean-based moment estimate to have its intended averaging
+            # benefit (moment_min_pts's own, separate concern -- see its comment
+            # above) -- trust the moment-loom Tz over the joint pinv value.
+            sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
+        # else: origin_ratio passed but point count is below moment_min_pts -- hold
+        # the pinv-solved Tz (origin_ratio only vetoes BAD geometry; it doesn't by
+        # itself certify pinv as trustworthy, but there's no better alternative
+        # available at this point count either -- moment's own floor stands).
 
         px_disp = np.linalg.norm(curr_pts - prev_pts, axis=1)   # raw pixel displacement per point
         # TEMP DIAG (2026-08-03, Wx/Wy investigation): radial extent of the
@@ -2363,6 +2580,34 @@ class CrossMarkerPerception:
             # Marker extent (scale-free proximity proxy) -- from the cross-arm
             # inlier bbox when available (front-end-stable), else the mask bbox.
             self._marker_extent_log.append(self._currentExtentPx())
+            # SHADOW-MODE width-loom (see width_loom_from_detection's module comment) --
+            # hold-last-good on a None reading (quorum failure / det miss), matching the
+            # convention every other hold-last-good signal in this file already uses.
+            try:
+                _w = width_loom_from_detection(det)
+            except Exception:
+                _w = None   # never let a diagnostic-only signal take down real logging
+            if _w is not None:
+                self._last_width_loom = _w
+            self._width_loom_log.append(self._last_width_loom)
+            # WIDTH-LOOM RATE KF (see __init__'s comment) -- fed the FRESH per-frame
+            # reading (_w), NOT the hold-last-good value: feeding a repeated hold value
+            # as if it were a new independent measurement would falsely suppress the
+            # KF's own uncertainty growth and bias the rate estimate toward zero during
+            # a hold streak. z=None (predict-only) on a None/non-positive reading.
+            try:
+                _t = float(t) if t is not None else np.nan
+                _z = np.array([np.log(_w)]) if (_w is not None and _w > 0 and np.isfinite(_t)) else None
+                if _z is not None or self._wloom_kf_initialized:
+                    (self._wloom_kf_x, self._wloom_kf_P, self._wloom_kf_prev_t,
+                     self._wloom_kf_initialized) = _kf_step(
+                        self._wloom_kf_x, self._wloom_kf_P, self._wloom_kf_prev_t,
+                        self._wloom_kf_initialized, _z, _t,
+                        self._wloom_kf_q, self._wloom_kf_r, dt_unc_max=self._wloom_kf_dt_unc_max)
+                _rate = float(-self._wloom_kf_x[0, 1]) if self._wloom_kf_initialized else np.nan
+            except Exception:
+                _rate = np.nan   # never let a diagnostic-only signal take down real logging
+            self._width_loom_rate_log.append(_rate)
             # Center px as simple tuple
             if self._center_px is not None:
                 self._center_px_log.append(tuple(float(x) for x in self._center_px))
@@ -2828,6 +3073,13 @@ class CrossMarkerNode(Thread):
             "Detection Status": self._perception._detection_reason_log,
             "Fail Reason": self._perception._fail_reason_log,  # 2026-08-29: granular det.fail_reason per miss (see _log_frame_data)
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
+            "Width Loom Px": self._perception._width_loom_log,  # 2026-09-08: SHADOW-MODE mask-scan
+                                                                  # arm width, see width_loom_from_detection's
+                                                                  # module comment -- not consumed by control.
+            "Width Loom Rate": self._perception._width_loom_rate_log,  # 2026-09-08: SHADOW-MODE
+                                                                  # Tz-like d(ln width)/dt via a dedicated
+                                                                  # KF -- see __init__'s _wloom_kf_* comment.
+                                                                  # Not yet validated for control use.
             "Loom R Mult": self._perception._loomr_log,   # 2026-09-03: applied r[2] multiplier (1.0 = schedule off/inert)
             "Center Px": self._perception._center_px_log,
             # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
@@ -3027,6 +3279,40 @@ class CrossMarkerNode(Thread):
             else:
                 print(f"    WARNING: hough_ts count ({len(hough_ts)}) != HOUGH_DIAG_LOG count "
                       f"({len(cmd.HOUGH_DIAG_LOG)}) -- positional alignment assumption broken")
+
+        # 2026-09-05: lt2_angle_clusters root-cause breakdown -- mirrors the HOUGH_DIAG
+        # block above, but for CLUSTER_DIAG_LOG (terminal-overfill investigation: this is
+        # the dominant miss reason at overfill, and was previously uninstrumented).
+        clog = cmd.CLUSTER_DIAG_LOG
+        if clog:
+            mask_px = np.array([e['mask_px'] for e in clog])
+            bboxes = np.array([e['bbox'] for e in clog])  # (N,4): x,y,w,h
+            n_raw = np.array([e['n_lines_raw'] for e in clog])
+            n_kept = np.array([e['n_segs_kept'] for e in clog])
+            n_clusters = np.array([e['n_clusters'] for e in clog])
+            bbox_extent = np.maximum(bboxes[:, 2], bboxes[:, 3])
+            print(f"[CrossMarkerNode] CLUSTER_DIAG ({len(clog)} lt2_angle_clusters events): "
+                  f"mask_px min/med/max={mask_px.min()}/{int(np.median(mask_px))}/{mask_px.max()}, "
+                  f"bbox_extent min/med/max={bbox_extent.min()}/{int(np.median(bbox_extent))}/{bbox_extent.max()}")
+            for lo, hi in [(0, 50), (50, 100), (100, 200), (200, 300), (300, 500)]:
+                bmask = (bbox_extent >= lo) & (bbox_extent < hi)
+                if np.any(bmask):
+                    nr, nk, nc = n_raw[bmask], n_kept[bmask], n_clusters[bmask]
+                    # how many events in this bucket collapsed to exactly 1 cluster
+                    # (all surviving segments agree on one direction -- wide-stroke/
+                    # single-visible-arm signature) vs 0 (corner-join/stroke-validate
+                    # ate everything -- tracked-ROI-lag / mask-truncation signature)
+                    n_one = int(np.sum(nc == 1))
+                    n_zero = int(np.sum(nc == 0))
+                    print(f"    extent {lo:3d}-{hi:3d}px: {np.sum(bmask):4d} events -- "
+                          f"n_lines_raw med={int(np.median(nr))}, n_segs_kept med={int(np.median(nk))}, "
+                          f"1-cluster={n_one}, 0-cluster={n_zero}")
+                    if np.any(bmask & (n_clusters == 1)):
+                        _idx = np.where(bmask & (n_clusters == 1))[0][:3]
+                        for _i in _idx:
+                            print(f"      sample (1-cluster) angles_kept={clog[_i]['angles_kept']}, "
+                                  f"cluster_sizes={clog[_i]['cluster_sizes']}, "
+                                  f"stage_px={clog[_i]['stage_px']}")
 
     def close(self):
         self._running = False

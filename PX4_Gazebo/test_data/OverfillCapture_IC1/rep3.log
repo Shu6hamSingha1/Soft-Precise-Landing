@@ -1,0 +1,382 @@
+=================================================================
+[retry] Attempt 1 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] FLYING: WORLD=cross_marker  MARKER_TYPE=cross
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear .... ready after 8s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TD_V2=1: perception touchdown detector v2 (frame_min=240px; overfill/backstop/flow-freeze; no |s_e_n| gate)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0.0 x3 within a 3-frame window + |s_e_n|<0.6, armed after h_z<-0.1) + extent corroboration (growth flattened, |d(ln extent)/dt|<0.3/s over 6 samples, AND extent>=0.6x running max)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+-- Waiting for is_armable (EKF / lockstep ready)...
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-4.689118385314941 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.006764332298189402, y_m: 0.02170582115650177, z_m: -5.2024431228637695]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=6.90s (pos_err=0.011 m, speed=0.009 m/s, yaw_err=0.62°, tilt=0.04°)
+[landing_test] board alpha (settled) = 8.7° std=8.3°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[controller] TOUCHDOWN-DETECT v2 [overfill]: extent=238/240px  n_corn=88 (airborne ref 170)  flow_disp=1.67px  |s_e_n|=0.42 -> LANDED (disarm before bounce)
+[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming
+[landing_test] descent loop exited: FC_node.LANDED=True EC_node.is_alive()=True (2026-08-03 diag: distinguishing PX4-landed-state vs img-thread-death vs impact-spike as the exit cause)
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL  (xy_err=0.267 m [≤0.1], rel_vel=0.240 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.280 m, rel_vel=0.325 m/s, min_alt=0.06 m (endpoint xy=0.267 m is post-kick if it ballooned)
+[landing_test] IMG_RECORD: capturing 5 s post-touchdown video tail…
+[Z_V_DIAG] t=44.868 npts=136 min_z_v=0.4961 tilt_deg=26.9 x,y(worst)=-0.859,0.363 max|out|=2.463
+[Z_V_DIAG] t=44.868 npts=136 min_z_v=0.4910 tilt_deg=27.1 x,y(worst)=-0.858,0.363 max|out|=2.473
+[Z_V_DIAG] t=44.884 npts=155 min_z_v=0.4980 tilt_deg=27.1 x,y(worst)=-0.874,-0.230 max|out|=2.482
+[Z_V_DIAG] t=44.884 npts=155 min_z_v=0.4980 tilt_deg=27.5 x,y(worst)=-0.863,-0.227 max|out|=2.471
+[Z_V_DIAG] t=44.96 npts=101 min_z_v=0.4921 tilt_deg=28.7 x,y(worst)=-0.741,0.652 max|out|=2.259
+[Z_V_DIAG] t=44.96 npts=101 min_z_v=0.4903 tilt_deg=29.0 x,y(worst)=-0.738,0.655 max|out|=2.270
+[Z_V_DIAG] t=44.996 npts=59 min_z_v=0.4911 tilt_deg=29.3 x,y(worst)=-0.741,0.556 max|out|=2.286
+[Z_V_DIAG] t=44.996 npts=59 min_z_v=0.4916 tilt_deg=29.4 x,y(worst)=-0.738,0.564 max|out|=2.284
+[Z_V_DIAG] t=45.028 npts=75 min_z_v=0.4922 tilt_deg=30.0 x,y(worst)=-0.741,0.578 max|out|=2.313
+[Z_V_DIAG] t=45.028 npts=75 min_z_v=0.4956 tilt_deg=30.0 x,y(worst)=-0.734,0.585 max|out|=2.285
+[Z_V_DIAG] t=45.076 npts=145 min_z_v=0.4207 tilt_deg=30.3 x,y(worst)=-0.874,-0.274 max|out|=2.990
+[Z_V_DIAG] t=45.076 npts=145 min_z_v=0.4184 tilt_deg=30.5 x,y(worst)=-0.867,-0.274 max|out|=2.994
+[Z_V_DIAG] t=45.092 npts=106 min_z_v=0.4206 tilt_deg=30.6 x,y(worst)=-0.874,0.304 max|out|=3.005
+[Z_V_DIAG] t=45.092 npts=106 min_z_v=0.4177 tilt_deg=30.8 x,y(worst)=-0.859,-0.097 max|out|=3.003
+[Z_V_DIAG] t=45.124 npts=1418 min_z_v=0.4646 tilt_deg=31.2 x,y(worst)=-0.756,-0.030 max|out|=2.505
+[Z_V_DIAG] t=45.124 npts=1418 min_z_v=0.4615 tilt_deg=31.4 x,y(worst)=-0.752,-0.035 max|out|=2.520
+[Z_V_DIAG] t=45.172 npts=46 min_z_v=0.4512 tilt_deg=32.0 x,y(worst)=-0.741,0.548 max|out|=2.561
+[Z_V_DIAG] t=45.172 npts=46 min_z_v=0.4519 tilt_deg=32.1 x,y(worst)=-0.735,0.547 max|out|=2.548
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=45.2 npts=140 min_z_v=0.3749 tilt_deg=32.4 x,y(worst)=-0.874,0.222 max|out|=3.396
+[Z_V_DIAG] t=45.2 npts=140 min_z_v=0.3695 tilt_deg=32.8 x,y(worst)=-0.869,0.222 max|out|=3.443
+[Z_V_DIAG] t=45.268 npts=159 min_z_v=0.3502 tilt_deg=33.9 x,y(worst)=-0.859,-0.096 max|out|=3.629
+[Z_V_DIAG] t=45.268 npts=159 min_z_v=0.3506 tilt_deg=33.9 x,y(worst)=-0.859,-0.052 max|out|=3.624
+[Z_V_DIAG] t=45.284 npts=143 min_z_v=0.3419 tilt_deg=33.9 x,y(worst)=-0.874,-0.244 max|out|=3.754
+[Z_V_DIAG] t=45.284 npts=143 min_z_v=0.3399 tilt_deg=34.3 x,y(worst)=-0.863,-0.243 max|out|=3.755
+[Z_V_DIAG] t=45.332 npts=144 min_z_v=0.3187 tilt_deg=35.3 x,y(worst)=-0.859,0.037 max|out|=4.015
+[Z_V_DIAG] t=45.332 npts=144 min_z_v=0.3135 tilt_deg=35.6 x,y(worst)=-0.859,0.038 max|out|=4.084
+[Z_V_DIAG] t=45.38 npts=162 min_z_v=0.2809 tilt_deg=36.6 x,y(worst)=-0.874,0.644 max|out|=4.623
+[Z_V_DIAG] t=45.38 npts=162 min_z_v=0.2754 tilt_deg=37.3 x,y(worst)=-0.860,0.126 max|out|=4.684
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=45.396 npts=169 min_z_v=0.2667 tilt_deg=37.3 x,y(worst)=-0.874,-0.319 max|out|=4.877
+[Z_V_DIAG] t=45.396 npts=169 min_z_v=0.2606 tilt_deg=37.9 x,y(worst)=-0.860,0.083 max|out|=4.962
+[Z_V_DIAG] t=45.408 npts=147 min_z_v=0.2611 tilt_deg=37.9 x,y(worst)=-0.859,0.333 max|out|=4.951
+[Z_V_DIAG] t=45.408 npts=147 min_z_v=0.2543 tilt_deg=38.6 x,y(worst)=-0.844,-0.067 max|out|=5.046
+[Z_V_DIAG] t=45.444 npts=1670 min_z_v=0.2744 tilt_deg=40.3 x,y(worst)=-0.756,-0.185 max|out|=4.457
+[Z_V_DIAG] t=45.444 npts=1670 min_z_v=0.2721 tilt_deg=40.7 x,y(worst)=-0.744,-0.006 max|out|=4.470
+[Z_V_DIAG] t=45.504 npts=151 min_z_v=0.1371 tilt_deg=43.4 x,y(worst)=-0.859,0.089 max|out|=9.568
+[Z_V_DIAG] t=45.504 npts=151 min_z_v=0.1097 tilt_deg=44.6 x,y(worst)=-0.858,0.030 max|out|=11.971
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=45.524 npts=154 min_z_v=0.1194 tilt_deg=44.6 x,y(worst)=-0.844,0.052 max|out|=10.913
+[Z_V_DIAG] t=45.524 npts=154 min_z_v=0.0731 tilt_deg=46.6 x,y(worst)=-0.844,-0.067 max|out|=17.865
+[Z_V_DIAG] t=45.54 npts=160 min_z_v=0.0620 tilt_deg=46.6 x,y(worst)=-0.859,0.044 max|out|=21.254
+[Z_V_DIAG] t=45.54 npts=160 min_z_v=0.0455 tilt_deg=47.4 x,y(worst)=-0.858,0.045 max|out|=28.973
+[Z_V_DIAG] t=45.572 npts=1255 min_z_v=0.0677 tilt_deg=49.8 x,y(worst)=-0.756,0.467 max|out|=18.498
+[Z_V_DIAG] t=45.572 npts=1255 min_z_v=0.0615 tilt_deg=51.7 x,y(worst)=-0.713,-0.002 max|out|=19.959
+[Z_V_DIAG] t=45.684 npts=1 min_z_v=0.2114 tilt_deg=59.2 x,y(worst)=-0.347,0.203 max|out|=4.887
+[Z_V_DIAG] t=45.7 npts=90 min_z_v=0.0903 tilt_deg=60.6 x,y(worst)=-0.459,0.222 max|out|=12.113
+[Z_V_DIAG] t=45.7 npts=90 min_z_v=0.0954 tilt_deg=59.2 x,y(worst)=-0.483,0.169 max|out|=11.566
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=45.732 npts=1 min_z_v=0.1794 tilt_deg=60.0 x,y(worst)=-0.370,0.051 max|out|=5.862
+[Z_V_DIAG] t=45.76 npts=122 min_z_v=0.1149 tilt_deg=60.0 x,y(worst)=-0.444,0.030 max|out|=9.478
+[Z_V_DIAG] t=45.76 npts=122 min_z_v=0.1322 tilt_deg=61.1 x,y(worst)=-0.400,-0.014 max|out|=8.084
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=45.78 npts=2094 min_z_v=-0.0043 tilt_deg=63.6 x,y(worst)=-0.496,-0.289 max|out|=3465.188
+[Z_V_DIAG] t=45.78 npts=2094 min_z_v=-0.0266 tilt_deg=63.2 x,y(worst)=-0.528,-0.333 max|out|=3401.191
+[Z_V_DIAG] t=45.856 npts=151 min_z_v=0.0922 tilt_deg=55.5 x,y(worst)=-0.578,0.119 max|out|=12.512
+[Z_V_DIAG] t=45.856 npts=151 min_z_v=0.1101 tilt_deg=53.3 x,y(worst)=-0.613,0.154 max|out|=10.643
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=45.876 npts=142 min_z_v=-0.0739 tilt_deg=53.3 x,y(worst)=-0.837,-0.074 max|out|=18.304
+[Z_V_DIAG] t=45.876 npts=142 min_z_v=-0.0217 tilt_deg=51.0 x,y(worst)=-0.837,-0.074 max|out|=69.606
+[Z_V_DIAG] t=45.892 npts=162 min_z_v=-0.0336 tilt_deg=51.0 x,y(worst)=-0.852,-0.096 max|out|=44.406
+[Z_V_DIAG] t=45.892 npts=162 min_z_v=0.0016 tilt_deg=49.4 x,y(worst)=-0.854,-0.101 max|out|=812.263
+[Z_V_DIAG] t=45.94 npts=173 min_z_v=0.0481 tilt_deg=47.7 x,y(worst)=-0.844,-0.067 max|out|=27.186
+[Z_V_DIAG] t=45.94 npts=173 min_z_v=0.0439 tilt_deg=47.9 x,y(worst)=-0.844,0.052 max|out|=29.803
+[Z_V_DIAG] t=45.988 npts=171 min_z_v=0.1673 tilt_deg=49.7 x,y(worst)=-0.622,0.459 max|out|=6.932
+[Z_V_DIAG] t=45.988 npts=171 min_z_v=0.1670 tilt_deg=50.9 x,y(worst)=-0.592,0.488 max|out|=6.845
+[Z_V_DIAG] t=46.02 npts=678 min_z_v=0.1718 tilt_deg=53.6 x,y(worst)=-0.519,0.570 max|out|=6.448
+[Z_V_DIAG] t=46.02 npts=146 min_z_v=0.1699 tilt_deg=52.2 x,y(worst)=-0.556,0.541 max|out|=6.617
+[Z_V_DIAG] t=46.02 npts=146 min_z_v=0.1729 tilt_deg=53.6 x,y(worst)=-0.517,0.564 max|out|=6.405
+[Z_V_DIAG] t=46.116 npts=147 min_z_v=-0.2037 tilt_deg=58.2 x,y(worst)=-0.859,-0.096 max|out|=7.181
+[Z_V_DIAG] t=46.116 npts=147 min_z_v=-0.1939 tilt_deg=57.7 x,y(worst)=-0.859,-0.096 max|out|=7.694
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=46.132 npts=146 min_z_v=0.1520 tilt_deg=57.7 x,y(worst)=-0.452,0.022 max|out|=7.152
+[Z_V_DIAG] t=46.132 npts=146 min_z_v=0.1589 tilt_deg=57.5 x,y(worst)=-0.448,-0.036 max|out|=6.829
+[Z_V_DIAG] t=46.16 npts=139 min_z_v=0.1687 tilt_deg=58.3 x,y(worst)=-0.422,0.333 max|out|=6.385
+[Z_V_DIAG] t=46.16 npts=139 min_z_v=0.1723 tilt_deg=58.9 x,y(worst)=-0.404,0.297 max|out|=6.205
+[Z_V_DIAG] t=46.18 npts=133 min_z_v=0.1374 tilt_deg=58.9 x,y(worst)=-0.444,0.259 max|out|=7.931
+[Z_V_DIAG] t=46.18 npts=133 min_z_v=0.1299 tilt_deg=61.2 x,y(worst)=-0.403,0.196 max|out|=8.255
+[Z_V_DIAG] t=46.208 npts=138 min_z_v=0.1566 tilt_deg=61.2 x,y(worst)=-0.370,-0.111 max|out|=6.727
+[Z_V_DIAG] t=46.208 npts=138 min_z_v=0.1291 tilt_deg=62.5 x,y(worst)=-0.374,-0.123 max|out|=8.207
+[Z_V_DIAG] t=46.228 npts=143 min_z_v=0.1242 tilt_deg=60.1 x,y(worst)=-0.422,0.822 max|out|=8.563
+[Z_V_DIAG] t=46.228 npts=143 min_z_v=0.1231 tilt_deg=57.7 x,y(worst)=-0.467,0.884 max|out|=8.679
+[Z_V_DIAG] t=46.256 npts=150 min_z_v=0.1352 tilt_deg=57.7 x,y(worst)=-0.474,-0.081 max|out|=8.140
+[Z_V_DIAG] t=46.256 npts=150 min_z_v=0.1468 tilt_deg=56.1 x,y(worst)=-0.498,-0.059 max|out|=7.556
+[Z_V_DIAG] t=46.276 npts=152 min_z_v=0.1527 tilt_deg=55.1 x,y(worst)=-0.496,0.526 max|out|=7.178
+[Z_V_DIAG] t=46.276 npts=152 min_z_v=0.1522 tilt_deg=54.3 x,y(worst)=-0.517,0.554 max|out|=7.263
+[Z_V_DIAG] t=46.304 npts=2476 min_z_v=-0.0037 tilt_deg=53.6 x,y(worst)=-0.719,0.993 max|out|=13990.736
+[Z_V_DIAG] t=46.304 npts=2476 min_z_v=0.0039 tilt_deg=53.2 x,y(worst)=-0.730,1.036 max|out|=314.969
+[Z_V_DIAG] t=46.388 npts=1623 min_z_v=0.0377 tilt_deg=52.3 x,y(worst)=-0.726,-0.119 max|out|=32.772
+[Z_V_DIAG] t=46.388 npts=1623 min_z_v=0.0412 tilt_deg=52.3 x,y(worst)=-0.720,0.365 max|out|=29.926
+[Z_V_DIAG] t=46.42 npts=1556 min_z_v=0.0352 tilt_deg=52.9 x,y(worst)=-0.711,-0.111 max|out|=34.832
+[Z_V_DIAG] t=46.42 npts=1556 min_z_v=0.0271 tilt_deg=53.8 x,y(worst)=-0.698,0.029 max|out|=44.981
+[Z_V_DIAG] t=46.532 npts=152 min_z_v=0.1246 tilt_deg=58.5 x,y(worst)=-0.467,-0.015 max|out|=8.802
+[Z_V_DIAG] t=46.532 npts=152 min_z_v=0.1157 tilt_deg=58.3 x,y(worst)=-0.483,-0.081 max|out|=9.541
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=46.58 npts=142 min_z_v=0.1289 tilt_deg=60.0 x,y(worst)=-0.430,0.230 max|out|=8.386
+[Z_V_DIAG] t=46.58 npts=142 min_z_v=0.1566 tilt_deg=60.0 x,y(worst)=-0.398,0.186 max|out|=6.801
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=46.596000000000004 npts=144 min_z_v=-0.2432 tilt_deg=60.0 x,y(worst)=-0.859,-0.096 max|out|=7.577
+[Z_V_DIAG] t=46.596000000000004 npts=144 min_z_v=-0.2778 tilt_deg=61.5 x,y(worst)=-0.859,-0.096 max|out|=7.590
+[Z_V_DIAG] t=46.628 npts=133 min_z_v=0.1399 tilt_deg=62.8 x,y(worst)=-0.356,-0.156 max|out|=7.518
+[Z_V_DIAG] t=46.628 npts=133 min_z_v=0.1369 tilt_deg=60.8 x,y(worst)=-0.402,0.122 max|out|=7.813
+[Z_V_DIAG] t=46.656 npts=143 min_z_v=-0.2152 tilt_deg=58.7 x,y(worst)=-0.859,-0.096 max|out|=6.500
+[Z_V_DIAG] t=46.656 npts=143 min_z_v=-0.1443 tilt_deg=55.6 x,y(worst)=-0.859,-0.096 max|out|=9.083
+[Z_V_DIAG] t=46.692 npts=167 min_z_v=0.1446 tilt_deg=54.6 x,y(worst)=-0.533,-0.311 max|out|=7.765
+[Z_V_DIAG] t=46.692 npts=167 min_z_v=0.1489 tilt_deg=52.5 x,y(worst)=-0.580,-0.053 max|out|=7.698
+[Z_V_DIAG] t=46.724 npts=170 min_z_v=-0.0081 tilt_deg=51.7 x,y(worst)=-0.800,-0.089 max|out|=170.295
+[Z_V_DIAG] t=46.724 npts=170 min_z_v=0.0170 tilt_deg=50.4 x,y(worst)=-0.805,-0.092 max|out|=75.683
+[Z_V_DIAG] t=46.752 npts=178 min_z_v=-0.0067 tilt_deg=50.4 x,y(worst)=-0.837,0.089 max|out|=195.871
+[Z_V_DIAG] t=46.752 npts=178 min_z_v=-0.0071 tilt_deg=50.4 x,y(worst)=-0.837,-0.060 max|out|=186.930
+[Z_V_DIAG] t=46.788 npts=174 min_z_v=0.0207 tilt_deg=50.4 x,y(worst)=-0.800,0.059 max|out|=61.823
+[Z_V_DIAG] t=46.788 npts=174 min_z_v=0.0194 tilt_deg=50.5 x,y(worst)=-0.800,0.059 max|out|=65.870
+[Z_V_DIAG] t=46.836 npts=165 min_z_v=0.1443 tilt_deg=51.1 x,y(worst)=-0.622,0.370 max|out|=8.100
+[Z_V_DIAG] t=46.836 npts=165 min_z_v=0.1461 tilt_deg=51.6 x,y(worst)=-0.606,0.372 max|out|=7.942
+[Z_V_DIAG] t=46.884 npts=171 min_z_v=0.1553 tilt_deg=53.1 x,y(worst)=-0.556,0.385 max|out|=7.297
+[Z_V_DIAG] t=46.884 npts=171 min_z_v=0.1531 tilt_deg=54.2 x,y(worst)=-0.533,0.379 max|out|=7.334
+[Z_V_DIAG] t=46.932 npts=160 min_z_v=0.1337 tilt_deg=56.1 x,y(worst)=-0.511,0.622 max|out|=8.342
+[Z_V_DIAG] t=46.932 npts=160 min_z_v=0.1442 tilt_deg=56.8 x,y(worst)=-0.481,0.606 max|out|=7.632
+[Z_V_DIAG] t=46.948 npts=157 min_z_v=0.1788 tilt_deg=57.6 x,y(worst)=-0.422,-0.015 max|out|=5.989
+[Z_V_DIAG] t=46.948 npts=157 min_z_v=0.1403 tilt_deg=59.1 x,y(worst)=-0.436,0.340 max|out|=7.715
+[Z_V_DIAG] t=46.996 npts=143 min_z_v=0.1471 tilt_deg=58.6 x,y(worst)=-0.437,-0.074 max|out|=7.346
+[Z_V_DIAG] t=46.996 npts=143 min_z_v=0.1513 tilt_deg=59.4 x,y(worst)=-0.415,-0.111 max|out|=7.085
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=47.008 npts=136 min_z_v=0.1341 tilt_deg=60.0 x,y(worst)=-0.422,-0.341 max|out|=8.027
+[Z_V_DIAG] t=47.008 npts=136 min_z_v=0.1114 tilt_deg=62.5 x,y(worst)=-0.395,-0.369 max|out|=9.598
+[Z_V_DIAG] t=47.044 npts=136 min_z_v=0.1796 tilt_deg=62.5 x,y(worst)=-0.319,0.519 max|out|=5.761
+[Z_V_DIAG] t=47.044 npts=136 min_z_v=0.1617 tilt_deg=64.0 x,y(worst)=-0.308,0.652 max|out|=6.404
+[Z_V_DIAG] t=47.056 npts=142 min_z_v=0.1345 tilt_deg=62.0 x,y(worst)=-0.378,-0.370 max|out|=7.864
+[Z_V_DIAG] t=47.056 npts=142 min_z_v=0.1286 tilt_deg=61.0 x,y(worst)=-0.406,-0.352 max|out|=8.308
+[Z_V_DIAG] t=47.14 npts=166 min_z_v=0.1203 tilt_deg=52.8 x,y(worst)=-0.615,0.274 max|out|=9.773
+[Z_V_DIAG] t=47.14 npts=166 min_z_v=0.1449 tilt_deg=50.7 x,y(worst)=-0.640,0.310 max|out|=8.194
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=47.152 npts=177 min_z_v=-0.0288 tilt_deg=50.7 x,y(worst)=-0.852,-0.096 max|out|=54.790
+[Z_V_DIAG] t=47.152 npts=177 min_z_v=0.0019 tilt_deg=49.3 x,y(worst)=-0.856,-0.101 max|out|=691.736
+[Z_V_DIAG] t=47.22 npts=181 min_z_v=0.0546 tilt_deg=47.7 x,y(worst)=-0.837,0.059 max|out|=23.882
+[Z_V_DIAG] t=47.22 npts=181 min_z_v=0.0501 tilt_deg=47.9 x,y(worst)=-0.836,0.060 max|out|=26.021
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=47.236 npts=181 min_z_v=0.0392 tilt_deg=47.9 x,y(worst)=-0.852,-0.074 max|out|=33.542
+[Z_V_DIAG] t=47.236 npts=181 min_z_v=0.0212 tilt_deg=48.7 x,y(worst)=-0.851,-0.073 max|out|=62.034
+[Z_V_DIAG] t=47.36 npts=179 min_z_v=0.1404 tilt_deg=55.7 x,y(worst)=-0.511,0.000 max|out|=7.935
+[Z_V_DIAG] t=47.36 npts=179 min_z_v=0.1312 tilt_deg=57.4 x,y(worst)=-0.485,0.022 max|out|=8.414
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=47.38 npts=165 min_z_v=0.1847 tilt_deg=57.4 x,y(worst)=-0.422,0.622 max|out|=5.800
+[Z_V_DIAG] t=47.38 npts=165 min_z_v=0.1614 tilt_deg=58.9 x,y(worst)=-0.416,0.574 max|out|=6.641
+[Z_V_DIAG] t=47.408 npts=174 min_z_v=0.1565 tilt_deg=58.8 x,y(worst)=-0.422,0.533 max|out|=6.861
+[Z_V_DIAG] t=47.408 npts=174 min_z_v=0.1618 tilt_deg=59.1 x,y(worst)=-0.410,0.506 max|out|=6.607
+[Z_V_DIAG] t=47.492 npts=170 min_z_v=0.1440 tilt_deg=60.2 x,y(worst)=-0.407,0.037 max|out|=7.434
+[Z_V_DIAG] t=47.492 npts=170 min_z_v=0.1481 tilt_deg=58.9 x,y(worst)=-0.433,0.038 max|out|=7.289
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=47.504 npts=170 min_z_v=0.1440 tilt_deg=60.2 x,y(worst)=-0.407,0.037 max|out|=7.434
+[Z_V_DIAG] t=47.504 npts=170 min_z_v=0.1481 tilt_deg=58.9 x,y(worst)=-0.433,0.038 max|out|=7.289
+[Z_V_DIAG] t=47.54 npts=177 min_z_v=0.1379 tilt_deg=56.9 x,y(worst)=-0.489,0.000 max|out|=7.972
+[Z_V_DIAG] t=47.54 npts=177 min_z_v=0.1505 tilt_deg=54.9 x,y(worst)=-0.521,0.004 max|out|=7.368
+[Z_V_DIAG] t=47.652 npts=182 min_z_v=0.0185 tilt_deg=52.8 x,y(worst)=-0.770,0.237 max|out|=69.260
+[Z_V_DIAG] t=47.652 npts=182 min_z_v=0.0221 tilt_deg=52.9 x,y(worst)=-0.763,0.237 max|out|=57.782
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=47.684 npts=184 min_z_v=0.1467 tilt_deg=53.7 x,y(worst)=-0.585,0.296 max|out|=8.017
+[Z_V_DIAG] t=47.684 npts=184 min_z_v=0.1453 tilt_deg=54.3 x,y(worst)=-0.567,0.301 max|out|=8.020
+[Z_V_DIAG] t=47.716 npts=179 min_z_v=0.1617 tilt_deg=55.5 x,y(worst)=-0.519,0.474 max|out|=7.095
+[Z_V_DIAG] t=47.716 npts=179 min_z_v=0.1724 tilt_deg=56.1 x,y(worst)=-0.488,0.461 max|out|=6.535
+[Z_V_DIAG] t=47.76 npts=177 min_z_v=0.1139 tilt_deg=58.7 x,y(worst)=-0.474,-0.119 max|out|=9.660
+[Z_V_DIAG] t=47.76 npts=177 min_z_v=0.1078 tilt_deg=59.7 x,y(worst)=-0.459,-0.144 max|out|=10.169
+[Z_V_DIAG] t=47.796 npts=996 min_z_v=0.4645 tilt_deg=58.7 x,y(worst)=-0.044,1.170 max|out|=2.581
+[Z_V_DIAG] t=47.796 npts=1319 min_z_v=0.1365 tilt_deg=58.7 x,y(worst)=-0.444,0.252 max|out|=7.901
+[Z_V_DIAG] t=47.796 npts=163 min_z_v=-0.2125 tilt_deg=58.7 x,y(worst)=-0.859,-0.104 max|out|=6.598
+[Z_V_DIAG] t=47.796 npts=163 min_z_v=-0.2125 tilt_deg=58.7 x,y(worst)=-0.859,-0.104 max|out|=7.279
+[Z_V_DIAG] t=47.856 npts=158 min_z_v=0.1173 tilt_deg=57.3 x,y(worst)=-0.504,0.000 max|out|=9.491
+[Z_V_DIAG] t=47.856 npts=158 min_z_v=0.1152 tilt_deg=57.4 x,y(worst)=-0.504,-0.052 max|out|=9.664
+[Z_V_DIAG] t=47.904 npts=164 min_z_v=0.1349 tilt_deg=60.9 x,y(worst)=-0.393,-0.385 max|out|=7.775
+[Z_V_DIAG] t=47.904 npts=164 min_z_v=0.1284 tilt_deg=60.2 x,y(worst)=-0.416,-0.355 max|out|=8.257
+[Z_V_DIAG] t=47.94 npts=1287 min_z_v=0.2569 tilt_deg=57.5 x,y(worst)=-0.356,1.067 max|out|=4.277
+[Z_V_DIAG] t=47.94 npts=1340 min_z_v=0.1382 tilt_deg=57.5 x,y(worst)=-0.474,0.074 max|out|=7.961
+[Z_V_DIAG] t=47.94 npts=166 min_z_v=0.1232 tilt_deg=58.3 x,y(worst)=-0.474,0.030 max|out|=8.927
+[Z_V_DIAG] t=47.94 npts=166 min_z_v=0.1246 tilt_deg=57.5 x,y(worst)=-0.490,0.078 max|out|=8.899
+[Z_V_DIAG] t=48.1 npts=161 min_z_v=0.1241 tilt_deg=63.4 x,y(worst)=-0.363,-0.089 max|out|=8.526
+[Z_V_DIAG] t=48.1 npts=161 min_z_v=0.1659 tilt_deg=58.8 x,y(worst)=-0.399,-0.415 max|out|=6.288
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=48.132 npts=168 min_z_v=0.1379 tilt_deg=57.7 x,y(worst)=-0.467,-0.059 max|out|=7.899
+[Z_V_DIAG] t=48.132 npts=168 min_z_v=0.1197 tilt_deg=56.6 x,y(worst)=-0.513,-0.067 max|out|=9.280
+[Z_V_DIAG] t=48.16 npts=177 min_z_v=0.1178 tilt_deg=54.4 x,y(worst)=-0.578,0.059 max|out|=9.759
+[Z_V_DIAG] t=48.16 npts=177 min_z_v=0.1303 tilt_deg=53.2 x,y(worst)=-0.593,0.058 max|out|=8.865
+[Z_V_DIAG] t=48.208 npts=169 min_z_v=-0.0574 tilt_deg=52.0 x,y(worst)=-0.852,-0.059 max|out|=37.524
+[Z_V_DIAG] t=48.208 npts=169 min_z_v=-0.0436 tilt_deg=51.5 x,y(worst)=-0.852,-0.059 max|out|=60.866
+[Z_V_DIAG] t=48.244 npts=178 min_z_v=-0.0389 tilt_deg=50.7 x,y(worst)=-0.859,-0.119 max|out|=89.938
+[Z_V_DIAG] t=48.244 npts=178 min_z_v=-0.0364 tilt_deg=50.6 x,y(worst)=-0.860,-0.119 max|out|=118.233
+[Z_V_DIAG] t=48.34 npts=1507 min_z_v=0.1700 tilt_deg=52.6 x,y(worst)=-0.593,0.296 max|out|=6.944
+[Z_V_DIAG] t=48.34 npts=174 min_z_v=0.1598 tilt_deg=51.6 x,y(worst)=-0.637,0.296 max|out|=7.546
+[Z_V_DIAG] t=48.34 npts=174 min_z_v=0.1513 tilt_deg=52.6 x,y(worst)=-0.616,0.292 max|out|=7.892
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=48.452 npts=151 min_z_v=0.1463 tilt_deg=58.7 x,y(worst)=-0.437,-0.030 max|out|=7.376
+[Z_V_DIAG] t=48.452 npts=151 min_z_v=0.1363 tilt_deg=59.9 x,y(worst)=-0.423,-0.056 max|out|=7.908
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=48.548 npts=861 min_z_v=0.2290 tilt_deg=54.6 x,y(worst)=-0.415,1.022 max|out|=4.548
+[Z_V_DIAG] t=48.548 npts=2405 min_z_v=0.1311 tilt_deg=54.6 x,y(worst)=-0.548,0.074 max|out|=8.627
+[Z_V_DIAG] t=48.548 npts=164 min_z_v=0.1409 tilt_deg=57.3 x,y(worst)=-0.467,0.444 max|out|=7.694
+[Z_V_DIAG] t=48.548 npts=164 min_z_v=0.1423 tilt_deg=54.6 x,y(worst)=-0.529,0.438 max|out|=7.834
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_VDS_KF_GATE=9.0 (rate 1σ=2.0 u/s → trip ≈6.0 u/s): per-axis inter-step glitch gate on the s_dot_meas CV-KF (q=10.0 kept; spike frames get R∝d²/gate, clean bit-identical)
+[Z_V_DIAG] t=48.58 npts=835 min_z_v=0.2461 tilt_deg=51.2 x,y(worst)=-0.489,0.919 max|out|=4.416
+[Z_V_DIAG] t=48.58 npts=2583 min_z_v=0.1414 tilt_deg=51.2 x,y(worst)=-0.622,0.030 max|out|=8.269
+[Z_V_DIAG] t=48.58 npts=145 min_z_v=-0.0424 tilt_deg=51.9 x,y(worst)=-0.837,0.059 max|out|=31.728
+[Z_V_DIAG] t=48.58 npts=145 min_z_v=-0.0272 tilt_deg=51.2 x,y(worst)=-0.839,0.060 max|out|=49.317
+[Z_V_DIAG] t=48.656 npts=893 min_z_v=0.2328 tilt_deg=54.6 x,y(worst)=-0.444,0.785 max|out|=4.694
+[Z_V_DIAG] t=48.656 npts=2459 min_z_v=0.1564 tilt_deg=54.6 x,y(worst)=-0.519,-0.059 max|out|=7.117
+[Z_V_DIAG] t=48.656 npts=156 min_z_v=0.1576 tilt_deg=53.0 x,y(worst)=-0.556,-0.059 max|out|=7.178
+[Z_V_DIAG] t=48.656 npts=156 min_z_v=0.1478 tilt_deg=54.6 x,y(worst)=-0.529,-0.081 max|out|=7.570
+[Z_V_DIAG] t=48.74 npts=148 min_z_v=0.1244 tilt_deg=61.2 x,y(worst)=-0.407,-0.178 max|out|=8.616
+[Z_V_DIAG] t=48.74 npts=148 min_z_v=0.1090 tilt_deg=59.6 x,y(worst)=-0.462,-0.121 max|out|=10.064
+[Z_V_DIAG] t=48.8 npts=918 min_z_v=0.2466 tilt_deg=55.6 x,y(worst)=-0.370,1.037 max|out|=4.296
+[Z_V_DIAG] t=48.8 npts=1252 min_z_v=0.1366 tilt_deg=55.6 x,y(worst)=-0.519,0.074 max|out|=8.173
+[Z_V_DIAG] t=48.8 npts=168 min_z_v=0.1327 tilt_deg=55.5 x,y(worst)=-0.526,0.030 max|out|=8.447
+[Z_V_DIAG] t=48.8 npts=168 min_z_v=0.1356 tilt_deg=55.6 x,y(worst)=-0.520,0.065 max|out|=8.241
+[Z_V_DIAG] t=48.868 npts=997 min_z_v=0.2720 tilt_deg=58.4 x,y(worst)=-0.296,1.156 max|out|=4.301
+[Z_V_DIAG] t=48.868 npts=2595 min_z_v=0.1457 tilt_deg=58.4 x,y(worst)=-0.444,0.178 max|out|=7.447
+[Z_V_DIAG] t=48.868 npts=163 min_z_v=0.1267 tilt_deg=58.4 x,y(worst)=-0.467,-0.178 max|out|=8.655
+[Z_V_DIAG] t=48.868 npts=163 min_z_v=0.1458 tilt_deg=58.4 x,y(worst)=-0.444,-0.155 max|out|=7.439
+[Z_V_DIAG] t=48.948 npts=1036 min_z_v=0.3332 tilt_deg=59.9 x,y(worst)=-0.237,1.156 max|out|=3.316
+[Z_V_DIAG] t=48.948 npts=1789 min_z_v=0.1140 tilt_deg=59.9 x,y(worst)=-0.459,0.281 max|out|=9.729
+[Z_V_DIAG] t=48.948 npts=164 min_z_v=0.1473 tilt_deg=60.6 x,y(worst)=-0.393,-0.059 max|out|=7.202
+[Z_V_DIAG] t=48.948 npts=164 min_z_v=0.1376 tilt_deg=59.9 x,y(worst)=-0.420,-0.042 max|out|=7.789
+[Z_V_DIAG] t=48.996 npts=1165 min_z_v=0.4408 tilt_deg=55.9 x,y(worst)=-0.267,1.141 max|out|=2.515
+[Z_V_DIAG] t=48.996 npts=2568 min_z_v=0.1396 tilt_deg=55.9 x,y(worst)=-0.548,0.341 max|out|=8.367
+[Z_V_DIAG] t=48.996 npts=165 min_z_v=0.1362 tilt_deg=56.3 x,y(worst)=-0.526,0.207 max|out|=8.364
+[Z_V_DIAG] t=48.996 npts=165 min_z_v=0.1315 tilt_deg=55.9 x,y(worst)=-0.546,0.226 max|out|=8.757
+[CrossMarkerNode] diag: 1327 process_frame() calls over 34.88s (mean call rate 38.0 Hz), detect ok 1320/1327 (99%), fail reasons: {'centroid_mismatch': 6, 'insufficient_fit_points': 1}, bgflow-fallback fires: 5, centroid jump-outlier rejects: 26
+[CrossMarkerNode] SPAN RESCUE: legacy centroid check failed 27x -> rescued 8 (30%); of those, OVERFILL(fill>=0.6) consulted 18 rescued 0
+[CrossMarkerNode] CLUSTER_DIAG (9 lt2_angle_clusters events): mask_px min/med/max=228/2553/2749, bbox_extent min/med/max=39/119/119
+    extent   0- 50px:    1 events -- n_lines_raw med=2, n_segs_kept med=2, 1-cluster=1, 0-cluster=0
+      sample (1-cluster) angles_kept=[137.5, 147.5], cluster_sizes=[2], stage_px=(4852, 4978, 3957, 3957, 228)
+    extent 100-200px:    8 events -- n_lines_raw med=3, n_segs_kept med=3, 1-cluster=8, 0-cluster=0
+      sample (1-cluster) angles_kept=[173.4, 167.3, 166.7, 166.9], cluster_sizes=[4], stage_px=(2822, 2824, 2749, 2749, 2749)
+      sample (1-cluster) angles_kept=[175.2, 166.0], cluster_sizes=[2], stage_px=(2742, 2748, 2730, 2730, 2730)
+      sample (1-cluster) angles_kept=[175.4, 165.4], cluster_sizes=[2], stage_px=(2526, 2528, 2480, 2480, 2480)
+[Z_V_DIAG] t=49.076 npts=2681 min_z_v=0.1646 tilt_deg=54.4 x,y(worst)=-0.593,0.430 max|out|=7.367
+[Z_V_DIAG] t=49.076 npts=173 min_z_v=-0.0235 tilt_deg=54.4 x,y(worst)=-0.756,0.000 max|out|=311.241
+[Z_V_DIAG] t=49.076 npts=173 min_z_v=-0.0195 tilt_deg=54.4 x,y(worst)=-0.748,-0.015 max|out|=181.099
+[CrossMarkerNode] IMG_RECORD: stitched 416 frames -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/Tue Sep  8 13-40-12 2026.mp4
+image_subscriber closed
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+image_subscriber deleted...
+Saved to CSV!
+Flight Controller is disconnected...
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 944961 + group)
+[run]   killing px4_sitl (pid 944970 + group)
+[run]   killing bridge_clock (pid 945225 + group)
+[run]   killing bridge_pose (pid 945312 + group)
+[run]   killing bridge_image (pid 945333 + group)
+[run]   killing qgc (pid 945353 + group)
+[run] done.
+[retry] SUCCESS after attempt 1
