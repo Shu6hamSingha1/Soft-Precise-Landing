@@ -229,44 +229,19 @@ class Controller(Thread):
         # shrinks the (h_rd − dot(cross(w,s), e3))·s cross-coupling on x/y
         # which alters SMC stability. Direct MATLAB-style use of h_ref
         # is the cleanest.
-        # DESCENT-GATE (2026-06-22, reference-governor): RE-ATTEMPT of the above with
-        # the failure mode fixed. The 05-18 gate failed because varying h_ref made h_d[z]
-        # non-steady -> dh_d transients -> c-term destabilization. Fix = RATE-LIMIT the
-        # gate (1-pole LPF, tau) so d(h_ref)/dt is tiny -> no dh_d spike, while still
-        # slowing descent when off-center. Goal: null the lateral offset BEFORE Z (and
-        # the FoV footprint ~0.89*Z) shrinks, so the marker never reaches the edge ->
-        # corners stay decoded -> lateral flow stays honest (GT-verified honest at
-        # altitude, corrupted <0.8m). g_min floor avoids permanent hover. Scale-free
-        # (gates on normalized |s_e_n|). Default-OFF.
-        self._descent_gate = os.environ.get("PLASMC_DESCENT_GATE", "0") == "1"
-        self._dgate_slo  = float(os.environ.get("PLASMC_DGATE_SLO",  "0.4"))   # |s_e_n| <= slo -> g=1 (full descent)
-        self._dgate_shi  = float(os.environ.get("PLASMC_DGATE_SHI",  "0.8"))   # |s_e_n| >= shi -> g=g_min (engages before the FoV edge 1.0)
-        self._dgate_gmin = float(os.environ.get("PLASMC_DGATE_GMIN", "0.15"))  # descent floor (avoid permanent hover)
-        self._dgate_tau  = float(os.environ.get("PLASMC_DGATE_TAU",  "0.5"))   # LPF tau on g -> rate-limit -> no dh_d transient (the 05-18 failure)
-        self._dgate_g    = 1.0                                                 # filtered gate state
-
-        # AZ VISIBILITY FILTER v3 (2026-08-24 follow-up, user design): CONTINUOUS h_ref
-        # compensation keyed on dtheta (th_desired-th_safe norm, the CBF-suppressed lateral
-        # authority signal), replacing _descent_gate's stepped/thresholded (slo/shi
-        # plateau) shape for this trigger. g(dtheta) is smooth and everywhere-differentiable
-        # -- no dead zone, no flat plateau -- decaying from 1 at dtheta=0 toward g_min as
-        # dtheta grows. Acts UPSTREAM of cbf2_filter: this cycle's h_ref_eff shapes THIS
-        # cycle's theta_desired coherently, unlike the direct I_a[2] correction below (applied
-        # AFTER cbf2_filter, invisible to that cycle's QP) which is the mechanism responsible
-        # for the self-defeating attitude-history loop -- see
-        # project_20260824_dtheta_az_filter_self_defeating_feedback memory. Reads the PREVIOUS
-        # cycle's dtheta (this cycle's isn't known yet -- cbf2_filter hasn't run), same lag
-        # structure as cbf2_filter's own th_curr reference. Independent of PLASMC_DESCENT_GATE
-        # (s_e_n-gated, stepped); default-OFF.
-        self._dtheta_href = os.environ.get("PLASMC_DTHETA_HREF", "0") == "1"
-        self._dtheta_href_gmin = float(os.environ.get("PLASMC_DTHETA_HREF_GMIN", "0.15"))   # descent floor, mirrors _dgate_gmin
-        self._dtheta_scale = float(os.environ.get("PLASMC_DTHETA_SCALE", "0.18"))    # dtheta at which g has decayed to 1/e of its range; ~ mean active-frame dtheta at gain=5-10 (measured 0.16-0.23)
-        self._dtheta_href_tau = float(os.environ.get("PLASMC_DTHETA_HREF_TAU", "0.5"))   # LPF tau on g, same role/value as _dgate_tau
-        self._dtheta_href_g = 1.0
-        # NB the former direct I_a[2] "dtheta correction" (a downstream bolt-on, with a
-        # crossfade-weight bridge) was REMOVED 2026-08-31 -- the descent-rate / lateral-
-        # margin trade now lives inside the joint QP (cbf_visibility.py CBF_AZ_COST_GAIN).
-        # PLASMC_DTHETA_HREF still gates the SEPARATE upstream h_ref_eff shaping below.
+        # h_ref IS CONSTANT (user-mandated 2026-09-08). Two mechanisms that scaled
+        # the descent reference down at runtime -- PLASMC_DESCENT_GATE (2026-06-22,
+        # |s_e_n|-gated smoothstep on _h_ref) and PLASMC_DTHETA_HREF (2026-08-24,
+        # AZ VISIBILITY FILTER v3, a continuous exp() gate keyed on the CBF-suppressed
+        # lean dtheta) -- have been REMOVED. Both were default-OFF and neither ever
+        # passed a validation gate; the "slow the descent to buy the lateral loop
+        # time" idea has failed in every form (see
+        # project_20260908_visibility_cbf_simplification_audit and
+        # feedback_descent_softness). h_d's descent term now always uses the constant
+        # self._h_ref. Do NOT reintroduce a time-varying descent reference.
+        # (The former direct I_a[2] "dtheta correction" downstream bolt-on was already
+        # removed 2026-08-31; the descent-rate/lateral-margin trade last lived inside
+        # the joint QP as cbf_visibility.py CBF_AZ_COST_GAIN -- also under review.)
 
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
@@ -783,7 +758,9 @@ class Controller(Thread):
         # h_xy->0 (ring lateral is unobservable) + h_z->ring loom (marker-less) — gated on img
         # HANDOVER_LATCHED + centered (|s_e_n|<TC_SEN) + settled (|ds_e_n|<TC_DSEN). Does NOT zero zeta_r
         # (centered gate => zeta_r already small). Default off; A/B vs the (disabled) TERMINAL_COMMIT.
-        # Co-enable PLASMC_DESCENT_GATE=1 so the handover->centered window descends cautiously.
+        # (Historical note: this used to suggest co-enabling PLASMC_DESCENT_GATE=1 for a
+        # cautious handover descent -- that h_ref-scaling gate was REMOVED 2026-09-08,
+        # h_ref is constant now.)
         self._terminal_ring_commit = os.environ.get("PLASMC_TERMINAL_RING_COMMIT", "0") == "1"
         self._ring_committed = False
         # LOOM-RING-ON-LOSS (2026-07-05, user): the SIMPLE rule — when the terminal decode is lost
@@ -797,7 +774,7 @@ class Controller(Thread):
         # corrupted lateral flow spikes a_u -> launch. Once committed (marker fills FoV at the
         # centered-low state), STOP active lateral steering: ramp a_u_xy -> COMMIT_LAT_FLOOR so
         # the controller can't react to the garbage flow; coast laterally + descend level. Stronger
-        # than COMMIT_AU_MAX (a cap still pushes on bad flow). Rate-ramped. Stacks on DESCENT_GATE.
+        # than COMMIT_AU_MAX (a cap still pushes on bad flow). Rate-ramped.
         self._commit_lat_taper = os.environ.get("PLASMC_COMMIT_LAT_TAPER", "0") == "1"
         self._commit_lat_floor = float(os.environ.get("PLASMC_COMMIT_LAT_FLOOR", "0.0"))   # a_u_xy scale floor once committed
         self._commit_ramp_s    = float(os.environ.get("PLASMC_COMMIT_RAMP_S", "0.5"))      # taper time const
@@ -2133,7 +2110,6 @@ class Controller(Thread):
         # project_20260824_dtheta_az_filter_self_defeating_feedback memory, "not yet done" item.
         # NaN when th_desired is None (Phase-2 fallback, no projection ran).
         self._theta_desired_log = []
-        self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
         self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
         # joint-QP convergence residual (2026-09-08) -- cbf_visibility.py stashes a
         # per-outer-iterate command-move norm in self._cbf_state each call; surface
@@ -2734,29 +2710,10 @@ class Controller(Thread):
         # +dot). On z that cancels to h_rd at s≈[0,0,1] so descent worked, but
         # x/y picked up doubled cross-coupling — V_h_d[0,1] excursions hit ±20
         # vs MATLAB's ±4, over-driving the SMC and giving 8× MATLAB descent rate.
-        # Direct h_ref (MATLAB-equivalent). Previously had a soft-engage ramp
-        # and a lateral-error gate here — both removed (see __init__ note).
+        # Direct h_ref (MATLAB-equivalent). h_ref IS CONSTANT: the runtime
+        # descent-reference scaling (PLASMC_DESCENT_GATE / PLASMC_DTHETA_HREF) was
+        # removed 2026-09-08 (user-mandated). See __init__ note.
         h_ref_eff = self._h_ref
-        if self._descent_gate and len(self._s_e_n) > 0:
-            sen = float(np.linalg.norm(self._s_e_n[-1]))
-            if sen <= self._dgate_slo:
-                g_t = 1.0
-            elif sen >= self._dgate_shi:
-                g_t = self._dgate_gmin
-            else:
-                u = (sen - self._dgate_slo) / max(self._dgate_shi - self._dgate_slo, 1e-6)
-                g_t = 1.0 - (u * u * (3.0 - 2.0 * u)) * (1.0 - self._dgate_gmin)   # smoothstep
-            # rate-limit g via 1-pole LPF -> bounded d(h_ref)/dt -> no destabilizing dh_d transient
-            _dt = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
-            self._dgate_g += (_dt / max(self._dgate_tau, _dt)) * (g_t - self._dgate_g)
-            h_ref_eff = self._h_ref * self._dgate_g
-        if self._dtheta_href:
-            _dth_prev = self._dtheta_az_log[-1] if len(self._dtheta_az_log) > 0 else 0.0
-            g_t2 = self._dtheta_href_gmin + (1.0 - self._dtheta_href_gmin) * np.exp(-_dth_prev / max(self._dtheta_scale, 1e-6))
-            _dt2 = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
-            self._dtheta_href_g += (_dt2 / max(self._dtheta_href_tau, _dt2)) * (g_t2 - self._dtheta_href_g)
-            h_ref_eff = h_ref_eff * self._dtheta_href_g
-        self._dtheta_href_g_log.append(self._dtheta_href_g)
         cross_ws = np.cross(w, self._s[-1][:3])
         if self._combined_barrier:
             # blended surface: h_d = MEASURED s_dot + transport + descent (NO back-mapped ds_d).
@@ -4445,7 +4402,6 @@ class Controller(Thread):
             "theta_current(t)": self._theta_current_log,
             "dtheta_az(t)": self._dtheta_az_log,
             "theta_desired(t)": self._theta_desired_log,
-            "dtheta_href_g(t)": self._dtheta_href_g_log,
             "az_joint_delta(t)": self._az_joint_log,
             "jqp_resid_final(t)": self._jqp_resid_final_log,   # joint-QP last-outer-iterate command move (m/s^2); ~0 => converged, NaN => QP didn't run
             "jqp_resid_max(t)": self._jqp_resid_max_log,       # max per-iterate move over the 6 outer iterates
