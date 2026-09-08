@@ -581,7 +581,18 @@ class Controller(Thread):
         # Computed UNCONDITIONALLY (cheap; lets the ASMC path run alongside for offline
         # comparison even when this law isn't driving the output) -- gate only the
         # APPLICATION in _attCtrl.
-        self._yaw_rate_law = os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
+        # Gated to MARKER_TYPE=cross: validated only there (BODY_YAW_ALPHA_K=-1.0,
+        # CROSS_ALPHA_0, the cross-marker w_iz calibration). The ArUco alpha
+        # convention (-0.949) and its stale w_z cal are UNtested with this law.
+        self._yaw_rate_law = (os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
+                              and MARKER_TYPE == "cross")
+        if os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1" and MARKER_TYPE != "cross":
+            print("[Controller] ⚠ PLASMC_YAW_RATE_LAW ignored — validated for MARKER_TYPE=cross only")
+        # ⚠ COMPANION CONFIG (the validated bundle): PLASMC_YAW_RATE_LAW=1 was
+        # gated stationary IC1-5 n=5 (24/25) ONLY with FLOW_KF_Q_WZ=1.0 +
+        # PLASMC_YAW_RL_WZ_SCALE=2.5. Those are NOT baked (FLOW_KF_Q_WZ default
+        # would change the shared w_z KF for the ASMC lateral path too; WZ_SCALE
+        # compensates a cal deficit pending a recal). Run this law WITH that bundle.
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
         # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-09: unified on manuscript) ──
