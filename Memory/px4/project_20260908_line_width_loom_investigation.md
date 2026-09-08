@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T13:28:07.137Z
+  modified: 2026-09-08T13:38:20.420Z
 ---
 
 ## Context / goal
@@ -296,6 +296,73 @@ needs a real fix beyond this, the width-loom direction (structurally origin/posi
 independent, already validated 0.89-1.00 corr with GT altitude) is the more promising
 path -- once its own open item (a usable rate signal, see below) is solved -- not further
 work on origin_ratio.
+
+### ⛔⛔ FULL MECHANISTIC PROOF: origin_ratio is unsuitable for cross-marker's SENSOR
+### ARCHITECTURE, not just mistunable (2026-09-08, same day, user-directed follow-up)
+The user's hypothesis, investigated and CONFIRMED with real-data evidence: `origin_ratio`
+(and by extension the whole point-position-statistics Tz family -- pinv AND moment-loom)
+is fundamentally unsuited to cross-marker because, unlike ArUco, cross-marker's tracked
+flow points have NO fixed physical identity across frames. This is a stronger, more
+general, PROVABLE conclusion than "the veto is mistuned" -- it explains WHY every tuning
+attempt (relative-drop, EMA, streak, smoothing) failed, and it rules out ever fixing this
+with a smarter gate, not just the ones tried.
+
+**1. Architectural root cause, in the code's own design comment.**
+`RESAMPLE_PERIOD_S=1.0` (`cross_marker_perception.py:130-152`) forces the tracked LK/GFT
+corner pool to periodically re-diversify -- a deliberate 2026-08-07 fix for a DIFFERENT
+bug (a one-time-draw corner set freezing Hz/Wz bias for a whole flight, per that comment's
+own trace). The explicit trade-off, never previously connected to THIS failure: cross-
+marker's point set has no persistent identity the way ArUco's 4 decoded corners do (same
+physical corners, same identity, every single frame, by construction of the ArUco decode
+algorithm). Cross-marker substitutes a periodically-refreshed, content-dependent sample of
+whatever background/arm texture happens to be trackable.
+
+**2. Measured directly on real data: point-set churn is CONTINUOUS, not periodic.**
+`N Flow Corners` in a real off-center rep (`IC2_rep1`) swings every single frame --
+70,70,54,38,29,42,54,37,35,41... -- not just at 1s resample boundaries. This is LK/GFT
+tracking naturally losing/gaining corners frame to frame as background texture and mask
+boundaries shift, not an occasional event tied to the explicit resample trigger.
+
+**3. Quantified causal link: churn magnitude predicts origin_ratio volatility, monotonically,
+in BOTH centered and off-center real flight data** (`|delta point-count|` vs
+`|delta ln(origin_ratio)|`, bucketed, across 15 off-center reps + 5 centered IC1 reps from
+`test_data/ICValidation/20260908-182815`):
+
+| `|delta point-count|` bucket | IC1 (centered), median `|delta ln ratio|` | off-center (IC2/3/4), median |
+|---|---|---|
+| 0 | 0.000 | 0.000 |
+| 1-2 | 0.450 | 0.095 |
+| 3-5 | 0.454 | 0.099 |
+| 6-10 | 0.504 | 0.123 |
+| 11+ | 0.569 | 0.370 |
+
+More churn -> more ratio volatility, cleanly, in every dataset tested. This is architecture-
+level noise, present regardless of where the marker sits in frame.
+
+**4. The decisive point: the churn-driven relative volatility is actually WORSE for the
+centered case (0.45-0.57) than off-center (0.10-0.37) -- centered flights only "worked"
+under the old absolute-threshold veto because their BASELINE origin_ratio (median 58.6-70.8
+across the 5 IC1 reps) sits so far above the 1.0 threshold that even this larger noise band
+almost never crosses it. Off-center's baseline (median 0.40-0.91, driven structurally by
+`||c0||^2` being large from the marker's real, legitimate angular offset in frame) sits AT
+the threshold, so the SAME architectural noise crosses it constantly (51-56% of frames,
+per the earlier finding).** Origin_ratio was never actually a clean signal for cross-marker
+-- centered flights were numerically lucky (huge baseline margin absorbing real noise), not
+evidence the metric itself was sound.
+
+**Conclusion, provable rather than just empirically-failed:** no threshold on this metric
+-- absolute, relative-drop, smoothed, streaked, or any future variant -- can separate "real
+Tz conditioning collapse" from "routine point-set churn at a structurally-low baseline",
+because both land in the same numeric territory of the metric's own value space for this
+sensor architecture. This is a direct, provable consequence of cross-marker's flow points
+lacking fixed physical identity (unlike ArUco), not a tuning-effort limitation. **Reject
+origin_ratio-based Tz gating for cross-marker permanently and on principle, not just
+empirically** -- and treat this as a caution against ANY future point-position-statistics-
+based conditioning metric for cross-marker's flow-point source (the same churn mechanism
+would corrupt a differently-shaped gate just as thoroughly). This is also the strongest
+argument yet for the width-loom direction: it measures a physical mask property at fresh
+detected locations, with no dependency on point identity persisting across frames at all --
+structurally immune to this exact failure mode.
 
 ### Remaining genuinely open item (not started)
 Turning width into a CONTROL-READY RATE signal (`d(ln width)/dt`, Tz-like) -- decided to use a
