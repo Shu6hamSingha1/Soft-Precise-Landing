@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T18:55:41.413Z
+  modified: 2026-09-08T20:19:03.322Z
 ---
 
 ## Context / goal
@@ -528,6 +528,22 @@ detector replay, FIXED `gt_optical_flow.py`), scripts in scratchpad `diag_wloom_
   the width-loom-rate block, exposed via `getLogData()` as **`"Scale Loom Rate"`**. +67 lines,
   purely additive, consumed by NO control path. SITL not running when edited (checked).
 - **STILL SHADOW-MODE.** Wiring into `h_z` (inverse-variance blend with pinv, or spike-veto on
-  pinv in the 0.5-2m band) is a SEPARATE, SITL-GATED step — not done. Off-center validation so
-  far only IC2-5 *static-start* OverfillCapture reps; a fresh real off-center flight capture with
-  `IMG_RECORD=1` is still owed before promotion.
+  pinv in the 0.5-2m band) is a SEPARATE, SITL-GATED step — not done.
+
+**Off-center de-risk (2026-09-09, no SITL) — the EXTENT half validated on 25 real off-center
+descents.** `20260908-182815` IC1-5 rep1-5 have no raw frames (no detector replay → no per-frame
+width), but `MARKER_EXTENT_PX`+`Time`+`Ground_Truth` are logged, so ran the a=0 (extent-only)
+limit of the KF (`diag_scalerate_offcenter.py`) against fixed `gt_optical_flow`:
+- **IC1-IC4 (20/20 reps): strong + consistent** — **0.5-2m band corr 0.85-0.98**, >2m 0.40-0.52,
+  `|rate|` bounded ≤0.82 every rep. The 0.5-2m danger band (where pinv h_z spikes) is *excellent*
+  on real off-center flight — better than the static-start OverfillCapture reps. The prior worry
+  that off-center geometry (large centroid offset) would break it is DISCONFIRMED.
+- **IC5 (5 reps): breaks down** — rep2/3/4/5 go negative in 0.5-2m (-0.05..-0.49), `|rate|max`
+  1.06-1.70 (vs ≤0.82 elsewhere), boundedness weakens. Consistent with the standing memory note
+  that **IC5 is a separate, not-yet-understood terminal-loom blocker** (its h_z spike to -7.22 has
+  no clean signature). Do not force-fit IC5 here either. If this ever feeds control: add an
+  explicit output clamp (`|scale rate| ≤ ~1.0`) and an IC5-style hold/reject.
+- Still owed before promotion: (a) live-path parity check (drive real `process_frame`, confirm
+  logged `"Scale Loom Rate"` reproduces the offline ~0.90/0.80 — width-signal parity was 0.886 vs
+  0.89 so expected fine); (b) a fresh off-center capture WITH `IMG_RECORD=1` to test the actual
+  blend (a=0.3, both-fresh) rather than just its extent-only limit. Both need HEADLESS SITL.
