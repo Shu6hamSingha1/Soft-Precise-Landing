@@ -37,6 +37,20 @@ from scipy.signal import savgol_filter as sgf
 NED_FROM_ENU = np.array([[0., 1., 0.], [1., 0., 0.], [0., 0., -1.]])   # self-inverse
 FRD_2_FLU    = np.diag([1., -1., -1.])                                  # DCM(x=180°)
 
+# Rigid mount offsets (mirrors src/gt_feedback.py exactly — see its header comment
+# for the SDF provenance). BUG FIX (2026-09-08): this file previously used the raw
+# UAV/target ORIGIN poses with NO offset correction at all, i.e. it computed
+# (target_origin - uav_base_link) instead of (marker - camera). Camera sits 0.15 m
+# off base_link -> at touchdown this alone was a >10x relative error on zB (e.g.
+# rep1 IC1 last sample: raw zB=+0.014 m vs camera-corrected +0.162 m), i.e. the
+# tool's own "near-zero depth blowup" in the terminal window was largely an
+# artifact of measuring depth from the wrong point on the airframe, not real
+# perception-relevant loom. Default 0.0 marker offset is correct for flat-marker
+# worlds (aruco/cross_marker); rover worlds need PLASMC_GT_MARKER_DZ=0.5 like
+# gt_feedback.py, or this tool will still under-read depth by 0.5 m for rover reps.
+_CAM_OFF_FLU    = np.array([0., 0., float(os.environ.get("PLASMC_GT_CAM_DZ",    "0.15"))])
+_MARKER_OFF_FLU = np.array([0., 0., float(os.environ.get("PLASMC_GT_MARKER_DZ", "0.00"))])
+
 
 def _robust_vel(x, t):
     """d/dt of x(t) the right way: uniform-dt interp -> savgol -> gradient -> interp back.
@@ -85,7 +99,11 @@ def compute_gt_flow(rep_dir):
         Ru[i] = NED_FROM_ENU @ Rfu @ FRD_2_FLU                       # body-FRD -> NED
         up  = NED_FROM_ENU @ np.array([p.position.x, p.position.y, p.position.z])
         tpp = NED_FROM_ENU @ np.array([t.position.x, t.position.y, t.position.z])
-        W_x_tu[i] = tpp - up                                          # target-UAV, NED
+        Rft = Quaternion([t.orientation.w, t.orientation.x, t.orientation.y, t.orientation.z]).to_DCM()
+        Rt  = NED_FROM_ENU @ Rft @ FRD_2_FLU                          # target body-FRD -> NED
+        cam_ned    = up  + Ru[i] @ (FRD_2_FLU @ _CAM_OFF_FLU)         # camera position, NED
+        marker_ned = tpp + Rt @ (FRD_2_FLU @ _MARKER_OFF_FLU)         # marker position, NED
+        W_x_tu[i] = marker_ned - cam_ned                              # marker-camera, NED
         # FIXED 2026-07-28 (ported from the analogous Pi derive_pi_cal.py fix,
         # itself validated against this repo's own gt_feedback.py:146 formula
         # -- "ry = _yaw_of(qu) - _yaw_of(qt)", PLASMC_GT_ALPHA_SIGN default 1.0,
@@ -105,15 +123,25 @@ def compute_gt_flow(rep_dir):
     B_h_g = np.full((n, 3), np.nan); V_h_g = np.full((n, 3), np.nan)
     V_s_g = np.full((n, 2), np.nan)                                   # GT V-frame centroid bearing
     for i in range(n):
-        zB = W_x_tu[i, 2]                                             # depth (= rel altitude)
         B_x = Ru[i].T @ W_x_tu[i]                                     # NED -> body-FRD (target rel pos)
         V_x = _v_frame(Ru[i]) @ B_x                                   # body -> V (leveled)
-        V_s_g[i] = [V_x[0] / (V_x[2] + 0.01), V_x[1] / (V_x[2] + 0.01)]  # bearing; 1/(z+0.01) regularized (gear-bounded depth)
+        # BUG FIX (2026-09-08, matches gt_feedback.py's clamp exactly): depth must be
+        # non-negative -- the camera is physically above the marker (gear/mount keeps
+        # z>0), but a transient/post-touchdown GT glitch could give z<0, which would
+        # flip (z+Z_REG)'s sign and wrong-sign the bearing/loom. Previously used the
+        # raw signed V_x[2]/W_x_tu[2] with no clamp.
+        _zb_s = max(float(V_x[2]), 0.0) + 0.2
+        V_s_g[i] = [V_x[0] / _zb_s, V_x[1] / _zb_s]                   # bearing; 1/(z+0.2) regularized (gear-bounded depth)
         B_v = Ru[i].T @ W_v_tu[i]                                     # NED -> body-FRD
         V_v = _v_frame(Ru[i]) @ B_v                                   # body -> V (leveled)
-        if abs(zB) >= 0.1:
-            B_h_g[i] = B_v / (zB + 0.01)
-            V_h_g[i] = V_v / (zB + 0.01)
+        zB = max(float(W_x_tu[i, 2]), 0.0)                            # rel depth, non-negative
+        # BUG FIX (2026-09-08): the old abs(zB)>=0.1 gate was a leftover from the
+        # stale Z_REG=0.01 era (nan-blanked B_h_g/V_h_g/loom below 0.1 m -- exactly
+        # the terminal window this tool exists to score). gt_feedback.py's own
+        # comment: "no altitude gate: 1/(z+Z_REG) stays bounded to the deck" once
+        # Z_REG=0.2 -- matched here, no gate.
+        B_h_g[i] = B_v / (zB + 0.2)
+        V_h_g[i] = V_v / (zB + 0.2)
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2], W_x_tu=W_x_tu,
                B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
 

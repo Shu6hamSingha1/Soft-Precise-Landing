@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T14:03:44.359Z
+  modified: 2026-09-08T16:43:44.004Z
 ---
 
 ## Context / goal
@@ -405,6 +405,88 @@ only tested on 4 reps. Before considering this for control: (a) validate on more
 including off-center ICs (only IC4 tested off-center so far), (b) check whether the
 weaker reps (0.15-0.18) have their own specific, findable bug the way the strong ones did
 after the first two fixes, rather than assuming this is the signal's natural ceiling.
+
+### ⚠⚠ CRITICAL: `tools/gt_optical_flow.py` had 3 real bugs — every terminal-window
+### correlation in this file (both hypothesis tests + the retracted "breakthrough") was
+### scored against a corrupted reference. FIXED 2026-09-08.
+
+User flagged (from prior-project-history instinct, not a re-derivation): `V_h_g = V_v/(zB+0.01)`
+in `tools/gt_optical_flow.py` is the OLD formula; `gt_feedback.py` (the maintained sibling doing
+the identical job for the online GT-FEEDBACK path) baked `Z_REG` 0.01->0.2 back on 2026-06-30/07-02,
+but this file — the canonical **offline** GT-scoring tool this entire session used as ground truth
+— was never touched (`git log --follow` shows exactly 2 commits ever, neither about Z_REG).
+Comparing the two files side by side surfaced two MORE bugs beyond the one the user named:
+
+1. **`Z_REG` 0.01 -> 0.2** (the one the user flagged). Confirmed via `PLASMC_GT_Z_REG` default in
+   `gt_feedback.py:191`.
+2. **Missing camera/marker mount-offset correction (the dominant one).** `gt_feedback.py` computes
+   `W_x_tu = marker_ned - cam_ned` (camera +0.15 m off base_link via `_CAM_OFF_FLU`; marker offset
+   0/0.5 via `_MARKER_OFF_FLU` for flat/rover targets). `gt_optical_flow.py` used the RAW
+   `target_origin - uav_base_link` vector with **zero** offset correction. Measured on rep1 IC1's
+   last logged sample: raw zB=+0.014 m vs camera-corrected +0.162 m — an **11x relative error at
+   the exact touchdown instant**. This alone explains most of the "near-zero-depth blowup" in the
+   terminal window that both rejected hypotheses (point-count churn, tilt-leveling) were built to
+   explain, and that the self-corrected "0.85 breakthrough" was implicitly fit against.
+3. **Unclamped signed depth + a stale `abs(zB)>=0.1` gate.** `gt_feedback.py` clamps
+   `zB=max(W_x_tu[2],0.0)` and explicitly has NO altitude gate ("1/(z+Z_REG) stays bounded to the
+   deck" once Z_REG=0.2). `gt_optical_flow.py` kept the old unclamped signed zB AND the
+   `abs(zB)>=0.1` gate (a leftover from the 0.01-regularizer era) — `nan`-blanking `loom`/`B_h_g`/
+   `V_h_g` below 0.1 m altitude, i.e. a hard reference gap in exactly the terminal window under
+   dispute.
+
+**Net effect after all 3 fixes** (rep1 IC1, near-ground band): the old reference showed a sharp
+loom ramp to -0.96..-1.10 approaching 0.10-0.13 m alt then `nan` below it. The corrected reference
+is smooth and bounded through the whole descent (no nan anywhere), peaks around -0.6 near
+alt~0.18m, and never reads the fake near-zero depths the old version reported (true min
+camera-marker depth this rep ~0.16 m, not ~0.01-0.05 m).
+
+**Implication: every terminal-window conclusion earlier in this file (point-count-churn hypothesis,
+tilt-leveling hypothesis, the retracted small-sample "breakthrough") was validated against a
+reference that stacked all 3 of these artifacts, concentrated in the exact window under dispute.**
+The real sensor-vs-GT discrepancy in that window may be smaller than characterized, or may not
+match the shape previously assumed. **Any correlation number computed before 2026-09-08 against
+`gt_optical_flow.py` in the sub-0.3m altitude band should be treated as unreliable** until
+re-validated against the fixed tool. Re-validation was queued next (rebuild width_loom offline
+from `Line Points I/J Raw` per-frame, since masks weren't logged in `OverfillCapture_*`) but not
+yet completed as of this entry.
+
+### Re-validation against the fixed GT reference — REGRESSES, not confirms, the earlier "0.38" win
+
+Reconstructed real (not approximated) `isolated_mask`+`line_points_i/j` by re-running the ACTUAL
+production `cross_marker_detector.detect()` on the raw `IMG_RECORD` PNG frames (all 7 reps have
+them, paired to their `*_data` dir by mtime order: rep1-3 -> 13:38/39/40, IC2-5 -> 13:49-53 on
+2026-09-08) — no rotation needed, `gz_subscriber.py` already rotates 90° CW upstream of the
+detector, matching the stored frames. Ran the SAME `width_loom_from_detection` + `_kf_step`
+(Q=10.0, R=0.005) machinery live code uses, then correlated the resulting rate against the fully
+FIXED `gt_optical_flow.py` (all 3 bugs above). Script: replay_wloom.py (scratchpad, not yet
+committed to tools/).
+
+| rep | corr (whole descent) | corr (alt<0.5m, terminal) |
+|---|---|---|
+| IC1 rep1 | 0.31 | 0.04 |
+| IC1 rep2 | 0.25 | 0.10 |
+| IC1 rep3 | 0.19 | -0.02 |
+| IC2 | 0.22 | -0.03 |
+| IC3 | 0.29 | 0.13 |
+| IC4 | 0.10 | -0.10 |
+| IC5 | 0.31 | 0.29 |
+| **mean** | **0.24** | **0.06** |
+
+**This is WORSE than the previously reported 0.38 mean, not better.** The earlier "breakthrough"
+was computed against `gt_optical_flow.py` while it still had all 3 bugs (stale Z_REG, missing
+mount offset, unclamped-depth altitude gate) — i.e. against a reference whose terminal-window
+shape was itself a sharp artificial ramp-then-nan. The width-loom-rate KF output apparently
+correlated with THAT ARTIFACT'S SHAPE, not with real physical loom. Once the artifact is removed,
+there is no reliable terminal-window signal left (-0.10 to +0.29, essentially noise).
+
+**Honest conclusion: the width-loom-rate signal, as currently built, does NOT solve the
+terminal-overfill loom problem.** The whole-descent correlation (0.10-0.31, consistently positive
+across all 7 reps) says the signal carries SOME real information about loom in general -- just not
+specifically where it's needed (the terminal window). This re-validation should be treated as
+closing this particular thread's "is width-rate control-ready" question with a NO for now, not as
+a bug to chase further without a new idea for what's actually missing. The STATIC width measure
+(0.89-1.00 corr, no derivative) remains solid and unaffected by any of this -- only the RATE/
+derivative signal is in question.
 
 ### Remaining genuinely open item (not started)
 Turning width into a CONTROL-READY RATE signal (`d(ln width)/dt`, Tz-like) -- decided to use a
