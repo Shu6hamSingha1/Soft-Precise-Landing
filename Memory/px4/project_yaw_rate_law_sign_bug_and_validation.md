@@ -371,3 +371,17 @@ flip or further real-perception testing.
   on. Recommendation stands: keep the ASMC running (cheap, useful for comparison/fallback — and
   now, per the gating need above, likely load-bearing as the fallback target) until the confidence
   gate is built and the real-perception path is proven safe; only then reconsider removal.
+
+### 2026-09-09 — stationary residual e_a ~15° is NOT alpha_0 (checked)
+
+User asked if re-deriving `alpha_0` (`CROSS_ALPHA_0`) would fix the ~15° stationary residual.
+RULED OUT: (a) `e_a` itself sits at ~±15° — the law isn't nulling its OWN metric (an alpha_0
+bias leaves e_a→0 with the physical yaw carrying the offset; here e_a and GT yaw agree, both
+~15°); (b) the sign is IC-dependent — IC1 consistently +9..+18°, offset ICs consistently
+−3..−29° — a single constant offset can't do that; it's yaw↔lateral coupling during the offset
+approach. `alpha_0` is also recently re-derived (radians(0.58), `derive_cross_alpha0.py`,
+2026-08-31 `b963e207`/`aad0f57b`), not stale. Couldn't fit offset/slope from the stationary
+reps (drone barely yaws → near-zero-variance regression, slopes came out −5..+8 = noise).
+The residual is control-side: weak `−w_z` term (3× lstsq magnitude deficit) + `k_p=0.3` can't
+null the last 15° vs the 38 ms lag. Levers = `k_i` (0.0, untested) or larger effective `w_z`
+(recal / `WZ_SCALE`), NOT `alpha_0`.
