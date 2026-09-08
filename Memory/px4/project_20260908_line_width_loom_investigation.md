@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T20:42:39.979Z
+  modified: 2026-09-08T21:09:41.496Z
 ---
 
 ## Context / goal
@@ -598,9 +598,48 @@ stated reservation that there is zero closed-loop evidence.
 - **Smoke test only:** `_kf_update_hw` with no scale KF → bit-identical `_hw`, NaN log; with a
   primary h_z spike to 5.0 + a valid `scale_rate=-0.4` → fused h_z pulled to ~0.94 in one frame
   (converges toward -0.42 over a few); out-of-clamp `scale_rate=-5` → skipped, NaN logged.
-- **STILL OWED:** live sanity (blocked at commit time by a concurrent SITL session on ports
-  14540/8888) + the IC1-5 n=5 outcome check. If it regresses ANY IC → `CROSS_SCALE_RATE_FUSE=0`
-  is the instant revert. Watch specifically: IC5 (signal breaks there), the >2m/engage-transient
-  window (live scale-rate corr only ~0.4 full-descent), and terminal touchdown (scale-rate ~0 /
-  sign-unstable — the `_scale_rate_measured_this_frame` guard should stop it firing there but
-  confirm in a real rep).
+- **1-frame lag:** the scale KF steps in `_log_frame_data` which runs AFTER `_kf_update_hw`, so
+  the fusion consumes the previous frame's `scale_rate` (~26 ms @ 38 Hz).
+
+### ⛔⛔ WIRE-IN GATED AND REVERTED — DEFAULT-OFF again (2026-09-09, `3137d4cd`)
+Sanity A/B (IC1+IC2 fuse-ON vs IC2 fuse-OFF, n=1, on `c843a7a1`): all PRECISE, no fly-away, and
+the fusion visibly CAPPED a pinv h_z positive excursion (1.71→1.00). But fuse-ON xy was 3-4×
+worse than fuse-OFF (0.06-0.08 vs 0.019) with rel_vel 0.4-0.56 vs 0.02-0.41 — an early warning
+I under-weighted. Also found the coast-guard doesn't stop the fusion firing in deep overfill
+(width stays valid, scale-rate just decays to ~0), so added `CROSS_SCALE_FUSE_MAX_EXT=310`
+(`cd6dc57f`) — skip fusion near frame saturation.
+
+**IC1-5 n=3 gate on `cd6dc57f` (`test_data/Multi_IC/20260909-022319`): HARD REGRESSION.**
+13 reps scored: **3 PRECISE-only / 1 SOFT+PRECISE / 8 FAIL / 1 NOT_LANDED**, xy up to 0.41 m,
+**rel_vel up to 1.44 m/s**, one false-touchdown 2.55 m up (flow-freeze). Baseline: a clean
+concurrent **fuse-OFF** gate on the SAME `visibility_projection` control code minutes earlier
+(`test_data/ICValidation/20260909-021038`, n=1) had IC2/3/4 all **SOFT+PRECISE, xy ~0.017 m,
+rel_vel ~0.02** — i.e. the control stack was in excellent shape and the fusion broke it.
+
+**Answer to "how does the loom rate perform in TOUCHDOWN DETECTION": the touchdown DETECTOR is
+not implicated.** `_touchdownDetectV2` (the default for cross-marker perception) reads
+n_flow_corners / MARKER_EXTENT_PX / background-flow-freeze — **never h_z**. Every gate rep +
+every sanity rep latched via `[overfill]` or `[flow-freeze]`. The legacy `_touchdownDetect`
+loom-spike path DOES use `h_z` but is only active for ArUco/GT-FB (V2 `return`s first for
+cross-marker), and it needs `h_z>0` sustained + extent-flattened — and `CROSS_SCALE_FUSE_MAX_EXT`
+disables the fusion in exactly that near-saturation regime anyway. So the fusion has ~zero
+effect on the touchdown *decision*. **The regression is in the DESCENT-RATE control that h_z
+feeds** (loom-error → middle-loop SMC): `scale_rate` correlates 0.84-0.98 with GT loom but is
+NOT unbiased; fused at `r=0.05` (tight) it biased the loom-setpoint tracking → fast/erratic
+arrival → the detector correctly fires `[overfill]` on contact, just too late/too fast.
+
+**Kept:** all machinery, the shadow logs (`"Scale Loom Rate"`, `"Scale Fuse Z"`), every env flag.
+`CROSS_SCALE_RATE_FUSE=1` re-enables. **Before any retry:** (a) characterise `scale_rate`'s BIAS
+vs GT loom (not just correlation) and de-bias it; (b) much looser `r` (≥ the primary `FLOW_KF_R`
+= 0.1, probably 0.3-0.5) so it's a gentle sanity nudge, not a co-equal sensor; (c) consider
+limiting it to only VETO a pinv spike (|pinv h_z − scale_rate| large) rather than continuously
+correcting; then (d) a full IC1-5 n=5 gate. The shadow signal + its 0.84-0.98 mid-descent
+correlation are unaffected and still the best loom-value candidate — it's the naive KF-fusion
+wiring that failed, not the signal.
+
+### METHODOLOGY NOTE
+Landing a control-feeding change **default-ON** without a gate (even when classified "perception")
+cost a wasted 13-rep gate and risked confusing a concurrent session's own control work. The
+sanity A/B's 3-4× xy degradation was already the reject signal per
+[[feedback_reject_on_single_failure]] — should have flipped to default-OFF THEN, gated, and only
+promoted on a pass.
