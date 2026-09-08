@@ -379,12 +379,20 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                     # 0.58->0.97, 1.17->1.93, 1.88->2.34, 0.71->1.49 m) and nearly
                     # DOUBLED target-loss (4 -> 7 TL total; worse or equal at every
                     # IC). validate_cbf.py 17/17 was misleading -- same pattern as
-                    # Rz_p90b and CBF_MARGIN_RESERVE. Mechanism: the "principled"
-                    # fix under-relieves vs what the off-center terminal geometry
-                    # needs; the self-inflating relief, ugly as it is, empirically
-                    # buys the descent-slowing that keeps the marker in frame while
-                    # the lateral loop converges. LEFT default OFF as an A/B hatch;
-                    # do NOT bake / re-try as an untested win.
+                    # Rz_p90b and CBF_MARGIN_RESERVE. MECHANISM (traced from the
+                    # bundle): the corrected relief is PROPORTIONAL + PERSISTENT, so
+                    # at a tight off-center touchdown -- box binding EVERY frame -- it
+                    # relieves every frame, pins I_a[2] at -g -> B_T->0 -> descent
+                    # FREEZES for seconds at 0.4-1.5 m. The freeze doesn't fix the
+                    # off-center condition, so the box keeps binding, so the relief
+                    # keeps firing: a box<->relief DEADLOCK. The buggy self-inflation
+                    # is UNSTABLE -- it spikes, perturbs the state, breaks its own
+                    # trigger, relief collapses, descent resumes -- an accidental
+                    # dither that never deadlocks. A real fix must break the loop
+                    # (cap cumulative relief DURATION, gate on lateral error actually
+                    # shrinking, or back off the BOX not just the descent after N
+                    # bound frames); a "correct" per-cycle relief alone makes it
+                    # worse. LEFT default OFF as an A/B hatch; do NOT bake / re-try.
                     # See project_20260908_jqp_relief_refaz0_gate_failed.
                     _az_ref = _az0 if _relief_ref_az0 else _az_now
                     _th_safe_ref = P @ (Ia_lat / _az_ref)

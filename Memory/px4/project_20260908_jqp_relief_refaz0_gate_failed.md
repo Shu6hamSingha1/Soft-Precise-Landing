@@ -92,3 +92,58 @@ the reverted `Rz_p90b` / the reversed-direction `CBF_MARGIN_RESERVE`
   `Rz_p90b`, 12/12 for `CBF_MARGIN_RESERVE`) is NOT evidence a CBF change helps. Only
   an IC2-5 cross-marker SITL A/B is. Three synthetic-clean CBF "fixes" have now
   regressed in SITL.
+
+## MECHANISM — box<->relief closed-loop DEADLOCK (traced 2026-09-08 from the bundle)
+
+Terminal-window (last 25-40%) trace of the regressed `relief_on` reps (IC2 rep2/rep3,
+IC3 rep2, IC5 rep2) vs their matched `relief_off` reps, from `Control_Data.npy`
+(`I_a`/`I_a_raw`/`az_joint_delta` -> relief proxy, `B_T`, `s_e_n`, `a_u`, `kappa`,
+`theta_cone`, `MARKER_EXTENT_PX`) + GT altitude:
+
+| | regressed `relief_on` | matched `relief_off` |
+|---|---|---|
+| terminal mean relief (m/s^2) | **0.73** (0.24 / 0.56 / 1.34 / 0.79) | 0.09 (0.01 / 0.08 / 0.10 / 0.18) |
+| frac of terminal frames `I_a[2]` pinned at exactly `-g` | up to **0.71** | ~0.00-0.19 |
+| frac of terminal frames `B_T < 0.1` (thrust collapsed) | **0.48-0.82** | 0.26-0.35 |
+| descent stall (consec. frames \|vz\|<0.1 at alt 0.3-1.6 m) | **4-8 s** | 0-0.2 s (except IC3) |
+| terminal `s_e_n` (lateral error; FoV edge = 1.0) | 0.47-0.96, **not shrinking** | similar-or-higher but flight ends |
+| terminal `a_u` max | 5 -> **115 -> 1666** | 30-85 |
+
+The corrected relief is **proportional and persistent**: while the FoV box binds it
+relieves a steady ~0.7-1.3 m/s^2 EVERY frame. Near a tight-margin off-center
+touchdown the box binds every frame (marker fills the frame + off-centre -- the exact
+condition IC2-5 are built to stress), so the relief fires every frame, and with the
+`min(Ia_z, ...)` it **pins `I_a[2]` at `-g` -> `B_T` -> 0 -> the descent freezes**
+for seconds at 0.4-1.5 m. The freeze does NOT fix the off-centre condition (the box
+is suppressing the very lateral authority that would centre it), so the box keeps
+binding, so the relief keeps firing: **bind -> relieve -> freeze -> still bind.** A
+closed-loop deadlock. `s_e_n` sits pinned near the FoV edge the whole stall, often
+drifting out to TARGET_LOST, then a terminal `a_u` blow-up (kappa integrating against
+a frozen error) ends it.
+
+**Why the BUGGY self-inflation avoids the deadlock:** it is unstable, so it SPIKES
+(0.3 -> 0.9 -> 1.5 in a couple of frames) and in doing so perturbs the state enough
+that the box momentarily stops binding -> relief collapses to ~0 -> the descent
+resumes. It is an accidental **dither / limit-cycle** that keeps the vehicle creeping
+down instead of freezing. Ugly, over-reactive, theoretically wrong -- but it never
+deadlocks. The "fix" removed the accidental escape and turned a bursty limiter into a
+sustained descent lock.
+
+**When the fix is benign:** reps where the box does NOT bind hard terminally (IC2
+rep1/4/5, IC5 rep1/3/4/5) show `relief_on` terminal relief 0.02-0.14, ~= `relief_off`,
+and land fine. The fix only bites when the box binds every frame -- which is exactly
+the stress case.
+
+**IC4 rep3 (`relief_on`, xy 8.50) is NOT this mechanism** -- `MARKER_EXTENT_PX` stuck
+~40 px the whole flight (vs 280-318 normal) and the z-SMC itself (`I_a_raw[2]` -10.0
+-> -10.2, relief=0) drove a climb 7 m -> 12.5 m: a perception non-acquisition flake,
+counts as SITL variance, not a relief effect.
+
+**Takeaway for `CBF_visibility.pdf` S4 #2:** the within-solver "relief and box fight
+across iterates" is real, but the deployed relief's *closed-loop* danger is a
+box<->relief DEADLOCK, and the current (buggy) code is inadvertently immune to it
+because it is unstable. A correct fix has to break the deadlock loop itself -- e.g.
+cap the relief's cumulative/duration (not just per-cycle), or require evidence the
+lateral error is actually shrinking before continuing to relieve, or make the box
+back off (not just the descent) when both have been binding for N frames. Just making
+the per-cycle relief "correct" makes it worse.
