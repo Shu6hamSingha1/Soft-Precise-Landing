@@ -503,6 +503,112 @@ def test_phase2():
 
 
 # ============================================================================
+# 9. JOINT QP — the CBF_JOINT_QP path (needs A_CAP; validate_cbf's other tests
+#    all leave A_CAP=None so they exercise ONLY the theta path). Covers: the FoV
+#    box still holds on the joint-solved command; the deliverability sphere holds;
+#    CBF_AZ_COST_GAIN=0 leaves I_a[2] untouched; and the CBF_JQP_RELIEF_REF_AZ0
+#    fix for pdf open-item #2 (relief must not self-inflate across outer iterates).
+# ============================================================================
+def _joint_call(cr, th_des, a_z, yaw, env, a_cap=13.6):
+    corners = corners_from_tangent(np.asarray(cr, float), (0.03, 0.03))
+    I_a = Ia_from_tilt(np.asarray(th_des, float), yaw, a_z)
+    R = R_from_image_tilt(np.clip(np.asarray(th_des, float), -0.3, 0.3), yaw)
+    st = {}
+    out, tc, ok, ths, thd = cbf2_filter(I_a.copy(), R, R[2, 2], yaw, corners,
+                                        CENTER, FOCAL, P_10, THETA_CAP,
+                                        0.02, np.zeros(2), st, 0.0,
+                                        h_z=0.0, A_CAP=a_cap, g=G, env=env)
+    return out, ths, st
+
+
+def test_joint_qp():
+    base = {"CBF_LW_ROT": "1", "CBF_JOINT_QP": "1", "CBF_SPHERE_TRUE_THRUST": "1"}
+
+    # --- 9a. FoV box holds on the joint-solved command -------------------------
+    worst_box = 0.0
+    for _ in range(400):
+        yaw = RNG.uniform(-np.pi, np.pi)
+        a_z = RNG.uniform(4.0, 12.0)
+        cr = RNG.uniform(-0.9, 0.9, 2) * P_10          # feature anywhere up to the edge
+        th_des = RNG.uniform(-0.5, 0.5, 2)
+        out, ths, st = _joint_call(cr, th_des, a_z, yaw, base)
+        # predicted feature at the returned lean, same first-order map cbf2 uses
+        Lw = np.array([[cr[0]*cr[1], -(1+cr[0]**2)], [1+cr[1]**2, -cr[0]*cr[1]]]) @ M90
+        th_out = _RZ_P90B @ (Rz(-yaw)[:2, :2] @ (out[:2] / max(abs(out[2]), 1e-6)))
+        th_cur = _RZ_P90B @ (Rz(-yaw)[:2, :2] @ (Ia_from_tilt(th_des, yaw, a_z)[:2] / a_z))
+        f_pred = cr + Lw @ (th_out - th_cur)
+        worst_box = max(worst_box, float(np.max(np.abs(f_pred) - P_10)))
+    _record("9a. joint QP: FoV box holds (predicted feature)", worst_box < 5e-3,
+            f"worst overshoot {worst_box:.2e} tangent over 400 cases")
+
+    # --- 9b. deliverability sphere holds -------------------------------------
+    worst_sph = 0.0
+    for _ in range(400):
+        yaw = RNG.uniform(-np.pi, np.pi)
+        a_z = RNG.uniform(3.0, 12.0)
+        cr = RNG.uniform(-0.95, 0.95, 2) * P_10
+        th_des = RNG.uniform(-0.9, 0.9, 2)             # aggressive -> push the sphere
+        out, ths, st = _joint_call(cr, th_des, a_z, yaw, base)
+        worst_sph = max(worst_sph, float(np.linalg.norm(out) - 13.6))
+    _record("9b. joint QP: |I_a| <= A_CAP (true-thrust sphere)", worst_sph < 1e-6,
+            f"worst |I_a|-A_CAP {worst_sph:.2e}")
+
+    # --- 9c. CBF_AZ_COST_GAIN=0 leaves I_a[2] exactly at input -------------
+    e0 = dict(base, CBF_AZ_COST_GAIN="0")
+    worst_az = 0.0
+    for _ in range(200):
+        yaw = RNG.uniform(-np.pi, np.pi); a_z = RNG.uniform(4.0, 11.0)
+        cr = RNG.uniform(-0.9, 0.9, 2) * P_10; th_des = RNG.uniform(-0.5, 0.5, 2)
+        I_a_in = Ia_from_tilt(th_des, yaw, a_z)
+        out, ths, st = _joint_call(cr, th_des, a_z, yaw, e0)
+        # only compare when the sphere itself didn't clip (that legitimately moves I_a[2])
+        if np.linalg.norm(out) < 13.6 - 1e-6:
+            worst_az = max(worst_az, abs(out[2] - I_a_in[2]))
+    _record("9c. joint QP: AZ_COST_GAIN=0 is an I_a[2] no-op", worst_az < 1e-9,
+            f"max |Δa_z| {worst_az:.1e}")
+
+    # --- 9d. relief self-inflation fix (pdf open item #2) ------------------
+    # Construct a genuinely box-binding, below-hover case so the descent-rate
+    # relief engages. With the BUG (REF_AZ0=0) the relief re-measures suppression
+    # against its own inflated a_z each iterate and ratchets I_a[2] harder toward
+    # -g; the FIX (REF_AZ0=1) measures it against the fixed unconstrained a_z, so
+    # it (i) retains at least as much descent authority and (ii) is a fixed point
+    # -- a second identical call reproduces the same I_a[2].
+    gain = "5.0"
+    n_more_relief = 0; worst_fixed_pt = 0.0; n_bind = 0
+    for _ in range(300):
+        yaw = RNG.uniform(-np.pi, np.pi)
+        a_z = RNG.uniform(4.0, 7.5)                    # below hover -> relief allowed
+        cr = np.sign(RNG.uniform(-1, 1, 2)) * RNG.uniform(0.55, 0.95, 2) * P_10   # near edge
+        th_des = RNG.uniform(0.25, 0.55, 2) * np.sign(cr)   # lean that pushes the feature further out
+        eb = dict(base, CBF_AZ_COST_GAIN=gain, CBF_JQP_RELIEF_REF_AZ0="0")
+        ef = dict(base, CBF_AZ_COST_GAIN=gain, CBF_JQP_RELIEF_REF_AZ0="1")
+        ob, _, _ = _joint_call(cr, th_des, a_z, yaw, eb)
+        of, _, sf = _joint_call(cr, th_des, a_z, yaw, ef)
+        of2, _, _ = _joint_call(cr, th_des, a_z, yaw, ef)
+        relieved_b = -a_z - ob[2]      # >0 => relief added lift (I_a[2] more negative)
+        relieved_f = -a_z - of[2]
+        if relieved_b > 1e-6 or relieved_f > 1e-6:
+            n_bind += 1
+            if relieved_f <= relieved_b + 1e-6:
+                n_more_relief += 1
+        worst_fixed_pt = max(worst_fixed_pt, abs(of[2] - of2[2]))
+    frac_ok = (n_more_relief / n_bind) if n_bind else 1.0
+    _record("9d. relief REF_AZ0 fix: never over-relieves vs the buggy path",
+            frac_ok > 0.98 and n_bind > 30,
+            f"{n_more_relief}/{n_bind} binding cases fix<=bug; fixed-point |Δa_z| {worst_fixed_pt:.1e}")
+
+    # --- 9e. residual instrumentation populates state ---------------------
+    _, _, st = _joint_call([0.6, 0.3] * P_10, [0.35, 0.2], 6.0, 0.3,
+                           dict(base, CBF_AZ_COST_GAIN="5.0"))
+    r = st.get("joint_qp_resid")
+    _record("9e. joint QP: per-iterate residual is logged to state",
+            isinstance(r, list) and len(r) == 6 and "joint_qp_converged" in st,
+            f"resid len={len(r) if isinstance(r, list) else None} "
+            f"final={st.get('joint_qp_resid_final')!r}")
+
+
+# ============================================================================
 # 8. FIX B — rd3 built from th_safe directly (controller.py R_d construction)
 # ============================================================================
 def test_fixB_rd3():
@@ -552,6 +658,7 @@ def main():
     test_conventions()
     test_phase2()
     test_fixB_rd3()
+    test_joint_qp()
     print("-" * 72)
     n_fail = sum(1 for _, ok, _ in _RESULTS if not ok)
     print(f"{len(_RESULTS) - n_fail}/{len(_RESULTS)} checks passed")

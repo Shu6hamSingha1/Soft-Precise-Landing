@@ -319,6 +319,8 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
             P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
             Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel
             Ia_z = float(I_a[2])
+            _az0 = max(abs(float(I_a[2])), 1e-6)                       # FIXED unconstrained a_z ref (== th_desired's denominator)
+            _relief_ref_az0 = env.get("CBF_JQP_RELIEF_REF_AZ0", "0") == "1"   # see the relief block below; default OFF pending IC2-5 SITL gate
             # --- per-outer-iterate convergence residual (2026-09-08) ---
             # The solver runs a FIXED 6-outer x 5-inner budget with no convergence
             # test (CBF_visibility.pdf S4, "convergence is currently unobserved";
@@ -354,8 +356,28 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                 # climb. Only engages while the z-SMC is itself commanding a descent
                 # (I_a[2] > -g); if the SMC or the sphere already command lift, leave it.
                 if _az_cost_gain > 0.0 and float(I_a[2]) > -g:
-                    _th_safe_now = P @ (Ia_lat / _az_now)
-                    _lat_supp = float(np.linalg.norm(th_desired - _th_safe_now))
+                    # Δθ = ||y0 - y*||  (CBF_visibility.pdf eq 7): the lean the BOX
+                    # suppressed this cycle. BUG (CBF_visibility.pdf open item #2,
+                    # 2026-09-03 "relief and box can fight across outer iterates"):
+                    # `_th_safe_now = P@(Ia_lat/_az_now)` used the RUNNING `_az_now`,
+                    # which grows every iterate as the relief itself adds lift. A
+                    # larger `_az_now` shrinks `_th_safe_now` geometrically -> makes
+                    # ||th_desired - _th_safe_now|| look LARGER -> triggers MORE relief
+                    # -> `Ia_z` ratchets toward -g whenever the box binds at all
+                    # (terminal descent stall: project_20260901_rover_cross_perception_
+                    # diagnosis "folds ~5 m/s^2 UP into I_a[2] -> B_T->0 -> stall").
+                    # FIX (CBF_JQP_RELIEF_REF_AZ0=1): evaluate BOTH y0 and y* at the
+                    # FIXED unconstrained a_z (`_az0` == th_desired's own denominator),
+                    # so Δθ reflects only the box's lateral suppression, not the
+                    # relief's own geometric angle shrink. Then
+                    #   th_desired - P@(Ia_lat/_az0) == P@((I_a[:2]-Ia_lat)/_az0)
+                    # -- exactly "lateral accel the box removed, over the original a_z".
+                    # Default OFF pending the mandatory IC2-5 SITL gate (per the
+                    # CBF_SPHERE_TRUE_THRUST / Rz_p90b precedent: synthetic-only CBF
+                    # changes have regressed every IC twice in this project).
+                    _az_ref = _az0 if _relief_ref_az0 else _az_now
+                    _th_safe_ref = P @ (Ia_lat / _az_ref)
+                    _lat_supp = float(np.linalg.norm(th_desired - _th_safe_ref))
                     _az_relieved = float(I_a[2]) - _az_cost_gain * _lat_supp   # more negative = more lift = slower descent
                     Ia_z = min(Ia_z, max(_az_relieved, -g))                    # min: deliverability/SMC lift wins; max(-g): relief can't command a climb
                 # DELIVERABILITY SPHERE.
