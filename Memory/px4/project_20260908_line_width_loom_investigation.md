@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T21:09:41.496Z
+  modified: 2026-09-08T21:24:35.046Z
 ---
 
 ## Context / goal
@@ -643,3 +643,29 @@ cost a wasted 13-rep gate and risked confusing a concurrent session's own contro
 sanity A/B's 3-4× xy degradation was already the reject signal per
 [[feedback_reject_on_single_failure]] — should have flipped to default-OFF THEN, gated, and only
 promoted on a pass.
+
+### ⛔⛔⛔ DE-BIAS RETRY ALSO FAILED — scale-rate → h_z fusion is a CONFIRMED DEAD-END (2026-09-09)
+User: "de-bias scale_rate vs GT loom and retry with looser r". Did exactly that:
+- **Bias characterised** (`debias.py`, 13 gate reps + 2 clean live reps, `GT_loom = a·sr + b`
+  per band): NOT a constant gain. `.5-2m` band `a≈0.41, b≈−0.22` (sr over-reads the loom
+  slope ~2.4× + a consistent −0.22 offset); `>2m` band `a≈0.10` (sr ~10× hot — engage transient
+  / KF warmup, sr large+noisy while true loom ≈0). This is *why* r=0.05 fusion hard-landed:
+  continuously dragging h_z far too negative from altitude.
+- **Retry (`246e8260`, behind the still-OFF flag):** (1) band-limit to `150 ≤ MARKER_EXTENT_PX
+  ≤ 310` (the only regime with signal), (2) affine de-bias `sr_deb = 0.41·sr − 0.22`
+  (`CROSS_SCALE_FUSE_GAIN`/`_OFF`), (3) `r` 0.05 → 0.3. IC5 raw-`|sr|`≤clamp reject kept.
+- **IC1-5 ×3 gate (`gate_debias.log`): REJECTED on IC1 (centered!)** — rep1 FAIL xy 0.146,
+  rep2 FAIL xy 0.329. `rel_vel` DID recover (0.24–0.38 vs the 1.44 before), so the de-bias
+  fixed the *hard-landing* symptom — but it exposed/introduced an **xy-accuracy** regression on
+  the easiest IC. Killed on the reject-on-single-failure rule (2 FAIL).
+- **Mechanism:** `h_z` couples into the middle-loop SMC c-term `−(h·e3)h` and the sliding
+  surface (lateral gain scheduling), so a perturbed `h_z` moves the lateral solution too. The
+  pinv `h_z` is already good enough (fuse-OFF: xy ~0.017, rel_vel ~0.02) that there is nothing
+  to gain and only accuracy to lose.
+
+**VERDICT: do NOT feed `scale_rate` into `h_z` via a KF measurement, in any biasing/weighting.
+Three forms tried (naive / +overfill-gate / +de-bias+band+loose-r), all regress.** Marked in
+`cross_marker_perception.py` (`ff242d97`). The shadow `"Scale Loom Rate"` stays as a diagnostic;
+its 0.84–0.98 in-band correlation with GT loom is real. If it's ever revisited it needs a
+*fundamentally different consumer* — not a continuous correction of the live loom estimate.
+`CROSS_SCALE_RATE_FUSE` default-OFF is now PERMANENT, not a holding pattern.
