@@ -1180,6 +1180,22 @@ class CrossMarkerPerception:
                                                         # scale KF took a real correction, not a coast
         self._scale_loom_rate_log = []   # Tz-like -d(scale_z)/dt estimate, NaN before init
 
+        # ⛔⛔ SCALE-RATE -> h_z FUSION: CONFIRMED DEAD-END (2026-09-09). Tried THREE forms,
+        # all IC-gated in SITL, all regressed landings vs the clean pinv-only path
+        # (fuse-OFF baseline: xy ~0.017 m, rel_vel ~0.02):
+        #   (1) naive (r=0.05)                  -> 8 FAIL / 1 NOT_LANDED /13, rel_vel to 1.44
+        #   (2) + overfill gate (ext<=310)      -> same
+        #   (3) + affine de-bias (0.41*sr-0.22) + band-limit (150<=ext<=310) + r=0.3
+        #        -> rel_vel recovered (~0.24-0.38) but xy BLEW OUT on centered IC1
+        #           (0.146, 0.329 -- 2/2 FAIL, gate killed on the reject rule).
+        # The signal is genuinely well-correlated with GT loom in-band (0.84-0.98) but
+        # ANY perturbation of the live h_z estimate hurts -- h_z couples into the
+        # middle-loop SMC c-term -(h.e3)h and the sliding surface, and the pinv h_z is
+        # already good enough that there is nothing to gain. The shadow signal
+        # ("Scale Loom Rate") stays as a diagnostic; do NOT re-attempt feeding it into
+        # h_z without a fundamentally different consumer (not a KF measurement). The
+        # _scale_fuse_* machinery below is retained, flag default-OFF, for the record.
+        #
         # SCALE-RATE -> h_z FUSION (2026-09-09, DEFAULT-ON). Promotes the shadow signal
         # above into the perception's actual loom estimate: a SECOND sequential KF
         # correction on the hw-KF's loom channel (_hw_kf_x[2]) in _kf_update_hw, using
