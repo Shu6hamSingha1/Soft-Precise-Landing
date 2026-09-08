@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T20:19:03.322Z
+  modified: 2026-09-08T20:29:11.890Z
 ---
 
 ## Context / goal
@@ -543,7 +543,33 @@ limit of the KF (`diag_scalerate_offcenter.py`) against fixed `gt_optical_flow`:
   that **IC5 is a separate, not-yet-understood terminal-loom blocker** (its h_z spike to -7.22 has
   no clean signature). Do not force-fit IC5 here either. If this ever feeds control: add an
   explicit output clamp (`|scale rate| ≤ ~1.0`) and an IC5-style hold/reject.
-- Still owed before promotion: (a) live-path parity check (drive real `process_frame`, confirm
-  logged `"Scale Loom Rate"` reproduces the offline ~0.90/0.80 — width-signal parity was 0.886 vs
-  0.89 so expected fine); (b) a fresh off-center capture WITH `IMG_RECORD=1` to test the actual
-  blend (a=0.3, both-fresh) rather than just its extent-only limit. Both need HEADLESS SITL.
+**✅ LIVE-PATH PARITY + FRESH OFF-CENTER SITL (2026-09-09, HEADLESS, user-authorised).** Ran 2
+fresh `cross_marker` HEADLESS landings with `IMG_RECORD=1`, IC2 (`INITIAL_DRONE_ENU=2,2,5`) and
+IC3 (`-2,2,5`) — real perception, not GT-FB. Checked no concurrent SITL first. Both SUCCESS
+attempt 1. Data: `test_data/Landing_Test/Wed Sep  9 01-53-17 2026` (IC2) + `…01-56-11 2026` (IC3);
+raw frames `test_data/Test_Videos/Wed Sep  9 01-52-59 2026_raw` / `…01-55-54 2026_raw` (375 frames
+each = terminal portion only, IMG_RECORD doesn't capture the whole descent). Verify script:
+scratchpad `verify_live.py`.
+- **`"Scale Loom Rate"` IS in `getLogData()` output** — 1273 (IC2) / 1202 (IC3) finite rows,
+  bounded range [-0.46, 0.72] (IC2) / [-0.98, 1.15] (IC3).
+- **Live vs offline-replay PARITY: corr 0.965 (IC2) / 0.952 (IC3), RMSE 0.045 / 0.050** — the live
+  `process_frame` path reproduces the offline detector-replay signal. Implementation is faithful.
+- **Live `"Scale Loom Rate"` vs GT loom:** 0.5-2m band **0.91 (IC2) / 0.84 (IC3)** — matches the
+  offline off-center prediction (0.85-0.98). Beats live `"Width Loom Rate"` (0.33 / 0.16) decisively.
+- **>2m band weak LIVE** (0.46 / 0.36) vs offline-replay (0.92 / 0.94): the offline replay only
+  sees the last 375 frames; the live full-descent >2m band includes the settle/engage transient +
+  KF warmup. Not a concern — >2m has margin and pinv works there.
+- **<0.5m: 0.35 (IC2) / -0.44 (IC3)** — terminal still unreliable/sign-unstable per rep, but
+  bounded (|rate| ≤ 1.15). Confirmed yet again: no method works terminally.
+
+### SESSION VERDICT (2026-09-09)
+Width-loom RATE is now a **usable loom estimate for ~5m→0.5m** via extent fusion, validated
+offline (7 static + 20 off-center reps) AND live (2 fresh off-center SITL, parity confirmed):
+**0.5-2m band corr 0.84-0.98, >2m 0.77-0.94 (offline) / ~0.4 live-full-descent, <0.5m dead but
+bounded/fails-safe.** Shadow-mode `"Scale Loom Rate"` is LANDED + committed (`4a9213b0`).
+**NOT wired into control.** Remaining before promotion to h_z:
+- SITL-gated wire-in design: inverse-variance blend with pinv h_z, or a spike-veto on pinv when
+  |pinv h_z − scale_rate| large in the 0.5-2m band. Behind a default-OFF env flag.
+- Output clamp `|scale rate| ≤ ~1.0` + an IC5-style hold (IC5 breaks the signal — separate blocker).
+- The wire-in itself needs the full IC2-5 n=5 SITL gate (it's a control-path change, not a
+  perception fix).
