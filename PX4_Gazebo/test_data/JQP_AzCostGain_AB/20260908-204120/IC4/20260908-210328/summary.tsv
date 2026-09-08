@@ -1,0 +1,11 @@
+arm	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+gain5	1	YES	0.6601	1.7618	26.8	0	0	0	rep1
+gain0	1	YES	0.1152	0.1552	26.6	0	1	0	rep1
+gain5	2	YES	0.1262	0.5945	24.4	0	0	0	rep2
+gain0	2	YES	0.1195	0.7070	24.5	0	0	0	rep2
+gain5	3	YES	0.0446	0.5175	22.6	1	0	0	rep3
+gain0	3	YES	0.2133	0.1933	25.8	0	1	0	rep3
+gain5	4	YES	0.0461	0.2532	24.8	1	0	0	rep4
+gain0	4	YES	0.2255	0.1144	27.0	0	1	0	rep4
+gain5	5	YES	1.3048	3.1770	27.1	0	0	0	rep5
+gain0	5	YES	0.0483	0.4938	23.7	1	0	0	rep5
