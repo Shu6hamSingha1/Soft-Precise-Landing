@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T18:10:12.165Z
+  modified: 2026-09-08T18:42:18.698Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -326,8 +326,32 @@ The new law holds yaw error to a few degrees at a spin rate no `e_R`-routed comm
 `PLASMC_GT_ALPHA_SIGN=+1` (default); `gt_feedback.py:193-204` — `+ry` is "self-consistent at
 e_a≈0" (so yaw holds) but on a persistently rotating target "drives the loop through the inverted
 disturbance path", corrupting lateral coupling — IC1 (centered) survives, off-center flies off.
-`SIGN=-1` is the perception-matching convention for a rotating scene. Re-run in progress:
-`test_data/ICValidation/20260908-233929` + one more, `PLASMC_GT_ALPHA_SIGN=-1`.
+Re-run done (`test_data/ICValidation/{20260908-233929 LAW=1, 20260908-235435 ASMC}`,
+`PLASMC_GT_ALPHA_SIGN=-1`): **the `-1` flip BROKE the new law's yaw** — `|e_a|` tail 33-68° (vs
+1-4° at `+1`), huge `a_u_xy` 1600-3756 fly-offs on off-center. Cause: `WZ_SIGN` is auto-set on
+`PLASMC_GT_FEEDBACK` ONLY, so it did NOT follow the `_asign` flip → law's `-w_z` term wrong-signed
+again. **The FIRST run (`GT_ALPHA_SIGN=+1`, default) is the correct config for the new law.**
+
+### TURNING-TARGET GATE — CONCLUSION
+
+1. ✅ **Yaw-rate law validated for turning targets.** Correct config = `GT_ALPHA_SIGN=+1` +
+   `WZ_SIGN=+1` (auto under GT-FB). Holds `e_a` 1-4° on a 27°/s spin; `yaw_cmd` 0.62 rad/s (past
+   the ASMC 0.5 sin-ceiling); ASMC runs away to −200°. **This is the deliverable — done.**
+2. ⚠ `WZ_SIGN` must track `GT_ALPHA_SIGN` — the GT-FB auto-logic assumes `+1`. Harmless for real
+   perception (`_asign` fixed there, `WZ_SIGN=-1`); a note, not a bug.
+3. ❌ **Full landing on a spinning target NOT solved.** Even with perfect yaw (`e_a`~2°, config
+   #1), off-center ICs land ~6 m off with short flights. Root: the drone genuinely yaws ~0.48 rad/s
+   to track → `cross(w_i, s)` injects a persistent ROTATING lateral-flow disturbance (~0.3 m/s,
+   scales with offset) = the documented turning-target lateral limit cycle
+   ([[project_rover_turning_open]], proposed fix `PLASMC_AU_LEAD`). SEPARATE thread; the yaw law
+   neither addresses nor was meant to address it.
+
+**THREAD DONE.** `PLASMC_YAW_RATE_LAW` (default OFF, opt-in): sign bug fixed, `w_z` confidence gate
+built, stationary-validated (best config `WZ_SIGN=-1`+`WZ_GATE=1`+`FLOW_KF_Q_WZ=1.0`+`WZ_SCALE=2.5`,
+24/25 land), **turning-target YAW validated** (the actual purpose). Not a stationary win over ASMC
+(residual e_a ~15°). Its value is realised only once the turning-target LATERAL limit cycle is
+also fixed. Deferred/handed off: recal (methodology Q + user-run flights); lateral limit cycle
+(`project_rover_turning_open`); ASMC/`psi_d` removal (keep as fallback).
 
 ## Next step (not started)
 
