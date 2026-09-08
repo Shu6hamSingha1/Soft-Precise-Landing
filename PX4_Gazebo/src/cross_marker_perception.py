@@ -1202,6 +1202,18 @@ class CrossMarkerPerception:
         self._scale_fuse_on = os.environ.get("CROSS_SCALE_RATE_FUSE", "1") == "1"
         self._scale_fuse_r = float(os.environ.get("CROSS_SCALE_FUSE_R", "0.05"))
         self._scale_fuse_clamp = float(os.environ.get("CROSS_SCALE_FUSE_CLAMP", "1.0"))
+        # OVERFILL PROXIMITY GATE (2026-09-09, added after the first sanity A/B): the
+        # coast-skip guard alone doesn't stop the fusion firing in the deep-overfill
+        # terminal window -- width_loom_from_detection keeps returning a value there, so
+        # the scale KF stays "measured", just with a scale-rate that has collapsed
+        # toward ~0. Fusing that ~0 nudges h_z toward 0 exactly when GT loom is growing,
+        # i.e. slightly UNDER-brakes the touchdown (observed: IC2 endpoint rel_vel
+        # 0.565 fused vs 0.415 unfused, n=1). MARKER_EXTENT_PX (scale-free image
+        # observable, already the proximity proxy everywhere else in this file)
+        # saturates ~318 px at the frame; the .5-2m validated band sits <~290. Skip the
+        # fusion above this so the terminal window is left entirely to the primary
+        # (pinv) loom + the touchdown detector, keeping only the mid-descent benefit.
+        self._scale_fuse_max_ext = float(os.environ.get("CROSS_SCALE_FUSE_MAX_EXT", "310.0"))
         self._scale_fuse_log = []   # per-frame: applied scale-rate pseudo-measurement
                                      # on the RAW loom scale, or NaN when the fusion
                                      # didn't fire (guard failed / disabled).
@@ -1571,8 +1583,11 @@ class CrossMarkerPerception:
         # (deliberate marker-loss hold -- do NOT mutate the shared frozen array), when
         # the scale KF is coasting, or on an out-of-clamp excursion.
         _sfz = np.nan
+        _ext_now = self._marker_extent_log[-1] if self._marker_extent_log else None
+        _overfilled = _ext_now is not None and np.isfinite(_ext_now) and _ext_now > self._scale_fuse_max_ext
         if (self._scale_fuse_on and self._hw_kf_initialized and self._hw_kf_frozen is None
-                and self._scale_rate_kf_initialized and self._scale_rate_measured_this_frame):
+                and self._scale_rate_kf_initialized and self._scale_rate_measured_this_frame
+                and not _overfilled):
             sr = float(-self._scale_rate_kf_x[0, 1])
             if np.isfinite(sr) and abs(sr) <= self._scale_fuse_clamp:
                 c2 = self._sensor_cal_hw[2, 2] or 1.0
