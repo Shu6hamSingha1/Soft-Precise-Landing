@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T05:53:38.007Z
+  modified: 2026-09-08T12:42:26.157Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -177,6 +177,39 @@ isn't that file — behaviour confirms it applied). Next levers, in order: (1) r
 instead of freeze-hold; (2) fix/characterise real w_z bias+noise pre-terminal (this is the big
 one — filter, or bias-correct against alpha-rate); (3) earlier gate onset (EXT_ABS→250, WZ_MAX↓).
 Blend-to-ASMC is weak here: the ASMC `u_a` running alongside is itself saturated ±2 on IC4.
+
+## 2026-09-08 — WZ_SCALE=2.5 IC1-5 n=5 gate: FAILED, but the cause is a SEPARATE loom regression, NOT WZ_SCALE
+
+`test_data/ICValidation/20260908-165248` (n=5, `PLASMC_YAW_RATE_LAW=1 PLASMC_YAW_RL_WZ_SCALE=2.5`,
+collision-clean): IC1 4/5 precise (0.029 m); **IC2/IC3/IC5 catastrophic** (mean xy 0.54 / 5.40 /
+4.66 m, IC5 all 5 reps ~5 m/s impact, 3-8 s flights); IC4 mixed.
+
+⚠ I first said "the peer's commits regressed the landing" without proof — premature phrasing.
+Investigated; the direction is now well-supported:
+
+**Mechanism = loom (`h_z`) sign-flip for OFF-CENTER markers.** `h_z` in the first ~1 s of each rep
+vs outcome: IC1 (centered) `h_z_early ≈ 0.00` → PASS; IC2/IC3/IC5/IC4-fail (`h_z_early = +0.27..
++1.30`) → CRASH. **Perfect correlation** (`h_z_early > +0.1 ⟺ crash`) across 11 reps. Same
+off-center ICs on the OLD base (`20260908-110746`, pre-peer-commits): `h_z_early ≈ 0.00`, all PASS.
+Time-course (IC5_rep1): `h_z = +0.43` from t=0, holds +0.43→+0.54 the entire descent while GT alt
+drops 3.0→0.14 m in 3.2 s (a descending drone must read *negative* loom; every passing rep
+`h_z_min ≈ −0.45`). Loom stuck positive → descent goes open-loop → unbraked fast descent → terminal
+1/Z spike (`a_u_xy` 1219 in the last 2 frames only, not mid-flight).
+
+**Not WZ_SCALE:** it scales `w_z` (channel 5, yaw) — arithmetically cannot flip `h_z` (channel 2);
+IC1 passes cleanly at 2.5; `yaw_rl_cmd` bounded ±0.32, `e_a` ≤33° on every fail rep. Ruled out: my
+`FLOW_KF_Q` commit `5796816d` (numerically verified no-op), my yaw gate `5849ceaa` (writes
+`w_u[2]` only), `7b81ac1f` (additive logging).
+
+**Narrows to `c3a46d1a`** (cross-marker perception) — its `origin_ratio` Tz-veto was restructured
+to fire in a regime it never covered before, `r[2] *= 1e6` (≈ veto the loom measurement → KF
+coasts `h_z`). `origin_ratio` is lower for an off-center marker (centroid farther from image
+origin) → veto fires on IC2/3/5, freezes `h_z` at a small positive rest-noise value. Peer's own
+`c3a46d1a` validation checked the new *width* loom's GT correlation in shadow mode — no off-center
+landing gate on the restructured control-path moment-loom. Peer messaged 2026-09-08.
+
+**WZ_SCALE=2.5's own n=5 verdict is DEFERRED** until the loom regression is fixed (re-running on
+the broken base fails the same way). No further SITL until resolved.
 
 ## Next step (not started)
 
