@@ -1,210 +1,239 @@
 \documentclass[11pt]{article}
-\usepackage{amsmath,amssymb,booktabs,geometry,array}
+\usepackage{amsmath,amssymb,amsthm,booktabs,geometry,array}
 \geometry{margin=1in}
 \setlength{\parskip}{4pt}
 \renewcommand{\arraystretch}{1.3}
-\newcommand{\Cframe}{\mathcal{C}}
 \newcommand{\Iframe}{\mathcal{I}}
 \newcommand{\Lw}{L_\omega}
+\newtheorem{prop}{Proposition}
+\newtheorem{assumption}{Assumption}
 
-\title{\textbf{Two-Tier Visibility Conditioning of the Acceleration Command}\\[4pt]
-\large A minimal lean projection on the real camera plane, plus a self-releasing descent ease}
+\title{\textbf{Target-Visibility Control Barrier Function}\\[4pt]
+\large A minimal-intervention lean projection on the real camera plane,
+with a self-releasing descent governor}
 \author{Soft--Precise--Landing}
-\date{9 September 2026 \quad(supersedes the 31 Aug 2026 joint-QP note)}
+\date{9 September 2026}
 
 \begin{document}
 \maketitle
 
-\noindent\emph{Scope.} Keep the marker's \emph{measured centre} inside the \emph{real} camera image
-plane, with a fixed buffer from the field-of-view edge, by making the smallest useful change to the
-desired inertial acceleration $\,^\Iframe\boldsymbol{a}_\text{d}$ an outer loop produces. For the cross
-marker the visibility target is a \emph{single point} --- the crossed-lines intersection --- so no
-4-corner containment and no marker-size term. The command reaches that point through two channels on
-different timescales, handled as two tiers rather than one fused problem:
+\noindent\emph{Purpose.} Keep the marker's measured centre inside the \emph{real} camera image plane,
+with a fixed buffer from the field-of-view edge, by making the smallest change to the desired inertial
+acceleration $\,^\Iframe\boldsymbol{a}_\text{d}$ an outer loop produces. For the cross marker the
+visibility target is a \emph{single point}, the crossed-lines intersection --- no multi-corner
+containment, no marker-size term.
+
+The command influences that point through two channels on different timescales, so it is conditioned in
+two tiers rather than one problem:
 \begin{itemize}
-\item \textbf{Attitude (lean).} A body tilt rotates the FoV, so the projected centre shifts within one
-control step, depth-free. This is the \textbf{hard} constraint (Tier~1).
-\item \textbf{Descent rate.} $|\tilde{\boldsymbol{r}}|\approx|\text{offset}|/Z$ grows as $Z$ shrinks, at a
-rate $\sim|\tilde{\boldsymbol{r}}|\,(-\dot Z/Z)$. A change in the vertical command only affects the centre
-two integrators later, so descent is a \textbf{soft, predictive} influence (Tier~2): if the centre will
-reach the buffer before the lateral loop can re-centre it, ease off the descent to buy that loop time.
+\item \textbf{Attitude (lean).} A body tilt rotates the field of view, so the projected centre shifts
+\emph{within one control step}, and depth-independently. This channel carries a hard barrier
+(\S\ref{sec:tier1}) --- the CBF.
+\item \textbf{Descent rate.} $|\tilde{\boldsymbol{r}}|\approx|\text{offset}|/Z$, which grows as the
+altitude $Z$ shrinks. A change in the vertical command reaches the centre only two integrators later, so
+descent is treated as a \emph{soft, predictive} influence: a governor (\S\ref{sec:tier2}) that slows the
+descent when the centre is predicted to reach the buffer before the lateral loop can re-centre it.
 \end{itemize}
-The tilt$\to$feature coupling is the \textbf{rotational part of the IBVS interaction matrix}, $L_\omega$,
-evaluated at the measured point --- exact, \emph{depth-independent}, no de-rotation or virtual frame.
-The 31~Aug 2026 note posed one QP over $\,^\Iframe\boldsymbol{a}_\text{d}$ jointly enforcing visibility
-\emph{and} thrust deliverability with $a_z$ a solved variable; \S\ref{sec:retired} records why that was
-retired.
 
 \section*{Notation}
 \begin{tabular}{@{}l >{\raggedright\arraybackslash}p{0.66\textwidth}@{}}
 \toprule
 Symbol & Meaning \\
 \midrule
-$\tilde{\boldsymbol{r}},\ \tilde r_{k}$ & \emph{measured} camera-frame marker centre, tangent units ($\text{px}/f$), per axis $k$ \\
-$\boldsymbol\varphi=\tfrac{\mathcal{R}}{2f}(1-b)$ & FoV-edge tangent half-extent minus the buffer; $b=$ \texttt{CBF\_BUFFER\_FRAC} $=0.15$ \\
-$L_\omega(\tilde{\boldsymbol{r}})$ & rotational interaction matrix $\left[\begin{smallmatrix}xy & -(1+x^2)\\ 1+y^2 & -xy\end{smallmatrix}\right]$ at $(x,y)=\tilde{\boldsymbol r}$ --- \emph{no depth} \\
-$M=\left[\begin{smallmatrix}0&1\\-1&0\end{smallmatrix}\right]$ & lean$\to$rotation-axis map (fixed $90^\circ$): a lean along $\boldsymbol{y}$ is a rotation about $M\boldsymbol{y}$ \\
-$L_e=-(L_\omega M)$ & effective Jacobian $\partial\tilde{\boldsymbol{r}}/\partial\boldsymbol{y}$. \textbf{Sign negated} vs the old $L_\omega M$ (\S\ref{sec:tier1}) \\
-$P=R_z(90^\circ)R_z(-\psi_\text{b})$ & inertial $x$-$y$ $\to$ image axes (sim camera mounted yaw$+90^\circ$ on the down-pitch) \\
-$\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust}, NED. \textbf{Hover $=-g\boldsymbol{e}_3$}; $\|\cdot\|$ \emph{is} thrust/mass. Impl.\ \texttt{I\_a} \\
-$a_z=|\,^\Iframe a_{\text{d},z}|$ & vertical magnitude --- a \textbf{fixed input} to Tier~1, never solved \\
-$\boldsymbol{y}$ & commanded lean $P(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$, image axes; $\boldsymbol{y}_\text{d}$ from $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$; $\boldsymbol{y}_\text{curr}=P(-R_{[{:}2,3]}/R_{33})$ from the realized attitude \\
-$\tau,\boldsymbol{d}$ & drift look-ahead (s); measured centre drift rate (tangent$/$s, gyro-stripped). $\tau=0$ for a stationary target \\
-$A_\text{cap},\ g$ & vehicle max thrust-to-mass ratio; gravity \\
-$g_z\in[g_\text{min},1]$ & Tier-2 descent-ease scale (\S\ref{sec:tier2}); $g_\text{min}=$ \texttt{CBF\_GMIN} $=0.2$ \\
-$T_\text{react}$ & lateral-loop reaction timescale, \texttt{CBF\_TREACT} $=1.5$\,s \\
+$\tilde{\boldsymbol{r}},\ \tilde r_{k}$ & \emph{measured} camera-frame marker centre, tangent units ($\text{px}/f$), per axis $k\in\{1,2\}$ \\
+$\boldsymbol{c}_\text{next}$ & one-step predicted centre, \eqref{eq:lin} \\
+$\mathcal{R},f$ & sensor resolution and focal length (px) \\
+$b$ & FoV-edge buffer fraction, \texttt{CBF\_BUFFER\_FRAC} $=0.15$; $\boldsymbol\varphi=\tfrac{\mathcal{R}}{2f}(1-b)$ \\
+$L_\omega(\tilde{\boldsymbol{r}})$ & rotational IBVS interaction matrix $\left[\begin{smallmatrix}xy & -(1+x^2)\\ 1+y^2 & -xy\end{smallmatrix}\right]$ at $(x,y)=\tilde{\boldsymbol r}$ --- \textbf{contains no depth} \\
+$M=\left[\begin{smallmatrix}0&1\\-1&0\end{smallmatrix}\right]$ & fixed $90^\circ$ lean$\to$rotation-axis map: a lean along $\boldsymbol{y}$ is a body rotation about $M\boldsymbol{y}$ \\
+$L_e=-(L_\omega M)$ & effective Jacobian $\partial\boldsymbol{c}_\text{next}/\partial\boldsymbol{y}$ \\
+$P=R_z(90^\circ)R_z(-\psi_\text{b})$ & inertial $x$-$y$ $\to$ image axes ($\psi_\text{b}$ = body yaw; the $90^\circ$ is the camera mount offset) \\
+$\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust} (thrust/mass), NED. Hover $=-g\boldsymbol{e}_3$, so $\|\,^\Iframe\boldsymbol{a}_\text{d}\|$ \emph{is} the thrust magnitude per unit mass \\
+$a_z=|\,^\Iframe a_{\text{d},z}|$ & vertical component magnitude --- an \textbf{input}, never a decision variable \\
+$\boldsymbol{y}=P\,(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$ & commanded lean, image axes; $\boldsymbol{y}_\text{d}$ from the unconstrained $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$; $\boldsymbol{y}_\text{curr}=P(-R_{[{:}2,3]}/R_{33})$ from the realized attitude $R$ \\
+$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre (tangent$/$s, gyro-stripped); look-ahead horizon (s) \\
+$A_\text{cap},\ g$ & vehicle maximum thrust-to-mass ratio; gravitational acceleration \\
+$g_z\in[g_\text{min},1]$ & descent-governor scale (\S\ref{sec:tier2}); $g_\text{min}=$ \texttt{CBF\_GMIN} $=0.2$, $T_\text{react}=$ \texttt{CBF\_TREACT} $=1.5$\,s \\
 \bottomrule
 \end{tabular}
 
-\section{Barrier on the real camera plane}
-Per image axis $k$,
+\section{Barrier and safe set}\label{sec:barrier}
+Per image axis $k$, define
 \begin{equation}\label{eq:barrier}
-\boxed{\,h_{k}=\varphi_{k}-|\tilde r_{k}|\,}, \qquad h_k\ge0\iff\text{the centre is on the sensor on axis }k.
-\end{equation}
-$\tilde{\boldsymbol{r}}$ is the \emph{measured} centre --- nothing is de-rotated. $\boldsymbol\varphi$ is a
-fixed camera constant. The buffer $b$ absorbs, in one number, the intended edge margin, the one-cycle
-linearization residual of \eqref{eq:N}, and inner-loop attitude-tracking lag.
-
-\section{Tilt$\to$feature coupling, in acceleration units}\label{sec:coupling}
-A camera rotation moves the centre by $L_\omega$, a standard \emph{depth-independent} object at the
-measured point:
-$\dot{\tilde{\boldsymbol{r}}}=L_\omega\boldsymbol\omega_{\rm rp}+\boldsymbol{d}$.
-The quantity a lateral-acceleration command sets is not a rotation rate but the underactuated
-quadrotor's \emph{lean} $\boldsymbol{y}$; producing a steady lean requires a rotation about the
-perpendicular axis, $\boldsymbol\omega_{\rm rp}=M\boldsymbol{y}$. Hence the feature response to the
-lean is $L_\omega M\,\boldsymbol{y}$, and to the lateral acceleration directly
-\begin{equation}\label{eq:N}
-\tilde{\boldsymbol{r}}(\,^\Iframe\boldsymbol{a}_{\text{d},xy})\approx
-\tilde{\boldsymbol{r}}+L_e\big(\boldsymbol{y}-\boldsymbol{y}_\text{curr}\big)+\tau\boldsymbol{d},
-\qquad \boldsymbol{y}=P\,\frac{\,^\Iframe\boldsymbol{a}_{\text{d},xy}}{a_z},
-\end{equation}
-with $a_z$ a \emph{given} (the outer loop's commanded value). Equation~\eqref{eq:N} is the local
-linearization, accurate over one control step; $\boldsymbol{y}_\text{curr}$ is read from the realized
-attitude, so it needs no rotation from acceleration units.
-
-\section{Tier 1 --- the hard, this-cycle lean projection}\label{sec:tier1}
-\begin{equation}\label{eq:proj}
-\boxed{\;\,^\Iframe\boldsymbol{a}_\text{d}^\star\!:\quad
-\boldsymbol{y}^\star=\arg\min_{\boldsymbol{y}}\ \|\boldsymbol{y}-\boldsymbol{y}_\text{d}\|^2
-\quad\text{s.t.}\quad
-\big|\tilde{\boldsymbol{r}}+L_e(\boldsymbol{y}-\boldsymbol{y}_\text{curr})+\tau\boldsymbol{d}\big|_k\le\varphi_k
-\ \ (k=1,2)\;}
-\end{equation}
-solved by a few alternating projections of $\boldsymbol{y}_\text{d}$ onto the two affine rows, then
-$\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star=a_z\,P^{\!\top}\boldsymbol{y}^\star$ and
-$\,^\Iframe a_{\text{d},z}^\star=\,^\Iframe a_{\text{d},z}$ \textbf{unchanged}.
-
-\begin{itemize}
-\item \textbf{Minimal intervention.} A row is touched only when it is \emph{predicted} to breach. If
-$\boldsymbol{y}_\text{d}$ already keeps the centre in frame, $\boldsymbol{y}^\star=\boldsymbol{y}_\text{d}$
-exactly.
-\item \textbf{Outward-only.} Leaning \emph{toward} the marker (or tangentially) reduces $|\tilde r_k|$, so
-no row fires --- a re-centring command is never clipped.
-\item \textbf{Depth-free, scale-free.} Every term is a camera intrinsic, an attitude, an image-space
-measurement, or a ratio/pass-through of the caller's own command.
-\end{itemize}
-
-\paragraph{Jacobian sign.} $L_e=-(L_\omega M)$. The extra minus is not in the textbook
-forward-camera form; it was fixed against an \emph{independent} pinhole + attitude camera model
-(\texttt{tools/validate\_visibility\_projection.py} check~1): for the \emph{downward} camera the feature
-moves opposite to $L_\omega M\,\boldsymbol{y}$. The retired machinery used $L_\omega M$; its own offline
-validator carried a matching historical sign error, so the mistake was self-consistent and unseen.
-
-\paragraph{Linearization envelope.} \eqref{eq:N} uses $L_\omega$ at the \emph{measured} centre, fixed
-for the solve. It is $<8\%$ off for a per-cycle lean \emph{change} up to $\sim15^\circ$ --- the real
-regime at 50\,Hz with a smooth outer loop --- and the buffer $b$ absorbs the residual (offline: 0/3742
-true-sensor exits at $\le15^\circ$/cycle; 13/3762 at $\sim24^\circ$, worst $+0.07$ tangent). It is
-\emph{not} accurate for a one-shot $\sim50^\circ$ correction; the every-cycle incremental nature of the
-correction and the lean cap below cover that.
-
-\paragraph{Deliverability is separate.} Thrust deliverability is \emph{not} in \eqref{eq:proj}. The
-caller applies it afterward: a lean cap $\|\boldsymbol{y}^\star\|\le\arccos(a_z/A_\text{cap})$ (the true
-deliverable tilt at the actual $a_z$; $\theta_\text{cap}$ if $A_\text{cap}\le g$), then a thrust-vector
-cap $\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$. Folding these into the projection is what
-forced $a_z$ to become a solved variable and created the coupled iteration of the old note; keeping them
-out keeps $a_z$ a fixed input and the solve a plain feasibility projection.
-
-\section{Tier 2 --- the soft, self-releasing descent ease}\label{sec:tier2}
-While the box binds it suppresses lateral authority the outer loop asked for. Pressing on at the full
-closing rate spends the descent budget before the lateral error is corrected. Tier~2 spends part of that
-budget on time, but keyed on a \emph{measured} quantity, not on how much the box clipped:
-\begin{equation}\label{eq:ease}
-\text{rem}_k=\varphi_k-|\tilde r_k|,\quad
-\text{close}_k=\max\!\big(\operatorname{sgn}(\tilde r_k)\,\dot{\tilde r}_k,\,0\big),\quad
-t_\text{edge}=\min_k\frac{\text{rem}_k}{\text{close}_k},
-\end{equation}
-\begin{equation}\label{eq:gz}
-\boxed{\;g_z=g_\text{min}+(1-g_\text{min})\operatorname{clip}\!\Big(\frac{t_\text{edge}}{T_\text{react}},0,1\Big),
+\boxed{\,h_k(\tilde{\boldsymbol{r}})=\varphi_k-|\tilde r_k|\,},
 \qquad
-\,^\Iframe a_{\text{d},z}^{\star\star}=(\,^\Iframe a_{\text{d},z}^\star+g)\,g_z-g\;}
+\mathcal{S}=\{\tilde{\boldsymbol{r}}: h_k(\tilde{\boldsymbol{r}})\ge0,\ k=1,2\}.
 \end{equation}
-applied only while descending ($\,^\Iframe a_{\text{d},z}^\star+g>0$) and low-passed so $a_z$ does not
-step. $t_\text{edge}$ is an image-distance over an image-speed, i.e.\ \emph{seconds} --- scale-free.
+$\mathcal{S}$ is the closed rectangle $[-\varphi_1,\varphi_1]\times[-\varphi_2,\varphi_2]$: the set of centre
+positions that lie on the sensor with at least the fractional margin $b$ to each edge. $\tilde{\boldsymbol
+r}$ is the \emph{measured} centre --- nothing is de-rotated onto a virtual frame. $\boldsymbol\varphi$ is
+a fixed camera constant. The buffer $b$ is the robustness margin of the barrier: it absorbs, in one
+number, the intended visual margin, the one-step linearization residual of \eqref{eq:lin}, and residual
+inner-loop attitude-tracking lag, so that a barrier value computed from the linear model is a lower bound
+on the true one to within the design regime of \S\ref{sec:lin}.
 
-\paragraph{Why this is safe where the old descent relief was not.} The retired
-\texttt{CBF\_AZ\_COST\_GAIN} relief triggered on $\|\boldsymbol{y}_\text{d}-\boldsymbol{y}^\star\|$, a
-QP-internal norm that self-inflated as the relief's own prior-iterate lift changed the $a_z$ it was
-measured against, and it acted through $\min(\cdot,-g)$ which could \emph{pin} $a_z$ at hover
-(descent-freeze deadlock). Tier~2 instead: (i)~triggers on an external measured signal ($|\tilde r|$ and
-its rate); (ii)~runs \emph{after} Tier~1, so it never fights the lean solve; (iii)~is a \emph{bounded
-scale} with $g_\text{min}>0$ --- it can only slow a descent, and always leaves some; (iv)~\textbf{self-
-releases}: the bought time shrinks $|\tilde r|$, so $\text{rem}$ grows, $t_\text{edge}$ grows, $g_z\to1$.
+\section{Feature response to the acceleration command}\label{sec:lin}
+A camera rotation moves the centre by the rotational part of the IBVS interaction matrix, a standard
+\emph{depth-independent} object evaluated at the measured point:
+$\dot{\tilde{\boldsymbol{r}}}=L_\omega\,\boldsymbol\omega_{\rm rp}+\boldsymbol{d}$, with
+$\boldsymbol\omega_{\rm rp}$ the body roll/pitch rate.
 
-\section{Feasibility}
-\eqref{eq:proj} is infeasible iff $\varphi_k<0$ for some $k$ (the marker subtends the full FoV minus the
-buffer). Otherwise the alternating projection always converges. The large-tilt case where the linearized
-constraint and the true rotation homography diverge is not handled by a feasibility test but by the
-buffer plus the fact that the correction runs every 50\,Hz cycle on a smooth command --- a single cycle
-never demands a large lean change.
+The quantity a lateral-acceleration command sets is not a rotation rate but the underactuated
+quadrotor's \emph{lean} --- the ratio of lateral to vertical thrust, expressed in image axes,
+$\boldsymbol{y}=P(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$. Producing a steady lean along $\boldsymbol{y}$
+is a body rotation about the perpendicular axis, $\boldsymbol\omega_{\rm rp}=M\boldsymbol{y}$; a
+world-fixed point's image moves opposite to that rotation, so
+\begin{equation}\label{eq:lin}
+\boldsymbol{c}_\text{next}(\boldsymbol{y})\;=\;
+\tilde{\boldsymbol{r}}\;+\;L_e\,(\boldsymbol{y}-\boldsymbol{y}_\text{curr})\;+\;\tau\,\boldsymbol{d},
+\qquad L_e=-(L_\omega M).
+\end{equation}
+The exact map of $\tilde{\boldsymbol{r}}$ under a finite lean change is the rotation homography of its
+ray; \eqref{eq:lin} is its first-order term about the current lean, and the sign of $L_e$ is verified
+against an independent pinhole-plus-attitude camera model (\texttt{tools/validate\_visibility\_projection.py}
+check~1). $\boldsymbol{y}_\text{curr}$ is read from the realized attitude, so it needs no rotation from
+acceleration units. The $\tau\boldsymbol{d}$ term extrapolates measured \emph{target} motion over the
+horizon $\tau$; it is zero for a stationary target.
+
+\paragraph{Validity envelope.} $L_e$ is evaluated at the measured $\tilde{\boldsymbol{r}}$ and held fixed
+for the solve. The model error of \eqref{eq:lin} is under $8\%$ for a per-cycle lean \emph{change}
+$\|\boldsymbol{y}-\boldsymbol{y}_\text{curr}\|\lesssim 15^\circ$. At the $50$\,Hz control rate with a
+smooth outer loop this is the operating regime; a single cycle never demands a large lean change. Empirically
+(4000 randomized geometries per bin): $0$ true-sensor exits at $\le15^\circ$/cycle; a $0.35\%$ rate at
+$\sim24^\circ$/cycle with worst overshoot $+0.07$ tangent, well inside $b\,\mathcal{R}/(2f)$.
+
+\section{Tier 1 --- the visibility CBF}\label{sec:tier1}
+Each control step, given the outer loop's unconstrained command $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$
+(hence $\boldsymbol{y}_\text{d}$) and the measurement $(\tilde{\boldsymbol{r}},\boldsymbol{d},R)$,
+\begin{equation}\label{eq:qp}
+\boxed{\;
+\boldsymbol{y}^\star=\arg\min_{\boldsymbol{y}\in\mathbb{R}^2}\ \tfrac12\|\boldsymbol{y}-\boldsymbol{y}_\text{d}\|^2
+\quad\text{s.t.}\quad
+\big|\,\boldsymbol{c}_\text{next}(\boldsymbol{y})\,\big|_k\le\varphi_k,\ \ k=1,2
+\;}
+\end{equation}
+after which $\,^\Iframe\boldsymbol{a}_{\text{d},xy}^{\star}=a_z\,P^{\!\top}\boldsymbol{y}^\star$ and the
+vertical command $\,^\Iframe a_{\text{d},z}$ is passed through unchanged. \eqref{eq:qp} is a convex
+quadratic program: the objective is strictly convex and each constraint
+$|\boldsymbol{c}_\text{next}|_k\le\varphi_k$ is a pair of half-planes affine in $\boldsymbol{y}$ (its
+gradient is the fixed row $L_{e,k}$), so the feasible set $\mathcal{Y}$ is a convex polyhedron.
+
+\paragraph{This is a discrete-time control barrier function.} The constraint of \eqref{eq:qp} is exactly
+$h_k(\boldsymbol{c}_\text{next}(\boldsymbol{y}))\ge0$ for both $k$: it requires the \emph{next-step}
+barrier value to be non-negative. This is the discrete-time CBF condition
+$h(\boldsymbol{x}_{k+1})\ge\gamma\,h(\boldsymbol{x}_k)$ at $\gamma=0$ (hard invariance), with a
+$\tau\boldsymbol{d}$ look-ahead so the invariance also anticipates exogenous target motion.
+
+\begin{prop}[Forward invariance]\label{prop:inv}
+Let $\hat{\boldsymbol{c}}_k=\boldsymbol{c}_\text{next}$ evaluated with the realized attitude and drift of
+step $k$, and suppose (i) \eqref{eq:qp} is feasible at every step, and (ii) the realized centre at step
+$k{+}1$ equals $\hat{\boldsymbol{c}}_k$ to within $b\,\mathcal{R}/(2f)$ (the model regime of
+\S\ref{sec:lin}). If $\tilde{\boldsymbol{r}}_0\in\mathcal{S}$ then $\tilde{\boldsymbol{r}}_k\in\mathcal{S}$
+for all $k$.
+\end{prop}
+\noindent\emph{Proof.} By induction. If $\tilde{\boldsymbol{r}}_k\in\mathcal{S}$, feasibility of
+\eqref{eq:qp} gives a $\boldsymbol{y}^\star$ with $|\hat{\boldsymbol{c}}_k|_k\le\varphi_k$, i.e.
+$\hat{\boldsymbol{c}}_k\in\mathcal{S}$. By (ii) the realized $\tilde{\boldsymbol{r}}_{k+1}$ differs from
+$\hat{\boldsymbol{c}}_k$ by at most the buffer margin, so
+$|\tilde r_{k+1,k}|\le\varphi_k+b\,\mathcal{R}/(2f)=\mathcal{R}/(2f)$: the centre is still on the sensor.
+$\square$
+The buffer thus converts the visual margin into a certified tolerance for the one-step linearization and
+attitude-tracking residual. Feasibility of \eqref{eq:qp} holds whenever $\varphi_k>0$ for both $k$ (the
+marker does not subtend the full buffered FoV); \S\ref{sec:deliver} discusses the interaction with the
+deliverability caps.
+
+\begin{prop}[Pointwise-optimal, minimal intervention]\label{prop:min}
+If $\boldsymbol{y}_\text{d}\in\mathcal{Y}$ then $\boldsymbol{y}^\star=\boldsymbol{y}_\text{d}$; otherwise
+$\boldsymbol{y}^\star$ is the Euclidean projection of $\boldsymbol{y}_\text{d}$ onto $\mathcal{Y}$, unique
+by strict convexity.
+\end{prop}
+\noindent The CBF is inert whenever the outer command is already visibility-safe, and otherwise perturbs
+it by the least $\|\boldsymbol{y}-\boldsymbol{y}_\text{d}\|$ that restores safety. In flight on a
+well-behaved approach the projection is a pass-through for essentially every frame.
+
+\begin{prop}[No strangling of recovery]\label{prop:strangle}
+Leaning toward the marker, or tangentially to it, does not increase $|\boldsymbol{c}_\text{next}|_k$ on
+the binding axis; such a command is left unchanged.
+\end{prop}
+\noindent\emph{Sketch.} A command that reduces $|\tilde r_k|$ makes constraint $k$ slack; the projection
+in \eqref{eq:qp} touches only rows that are active (violated), so a slack row's command component passes
+through. Concretely the alternating projection below adjusts $\boldsymbol{y}$ only along $L_{e,k}$ for a
+$k$ with $|\hat c_k|>\varphi_k$; a re-centring $\boldsymbol{y}_\text{d}$ has $|\hat c_k|\le\varphi_k$ and
+is not adjusted.
+
+\paragraph{Solver.} \eqref{eq:qp} is solved by a few sweeps of cyclic projection of
+$\boldsymbol{y}_\text{d}$ onto the (at most two) violated half-planes. Because the two constraint
+normals $L_{e,1},L_{e,2}$ are non-parallel for any $\tilde{\boldsymbol{r}}$, cyclic projection converges
+geometrically to a point of $\mathcal{Y}$; when at most one row is ever active --- the common case, since
+the marker rarely approaches two edges at once --- a single projection is the exact minimum-norm
+solution. Three to four sweeps suffice in practice.
+
+\section{Deliverability}\label{sec:deliver}
+Thrust deliverability is enforced \emph{after} \eqref{eq:qp}, not folded into it, which is what keeps
+$a_z$ an input and the CBF a plain feasibility projection. Two bounds are applied in order:
+\begin{enumerate}
+\item \textbf{Lean cap:} $\|\boldsymbol{y}^\star\|\le\arccos(a_z/A_\text{cap})$ --- the true deliverable
+tilt at the actual $a_z$ (which equals $\theta_\text{cap}$ only at hover, and correctly loosens below
+hover / tightens above it). If it binds, $\boldsymbol{y}^\star$ is scaled radially toward the origin and
+$\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star$ rescaled to match.
+\item \textbf{Thrust cap:} $\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$ on the full vector.
+\end{enumerate}
+Radial scaling of $\boldsymbol{y}^\star$ toward $\boldsymbol{0}$ moves $\boldsymbol{c}_\text{next}$ toward
+$\tilde{\boldsymbol{r}}+L_e(-\boldsymbol{y}_\text{curr})$; near level flight ($\boldsymbol{y}_\text{curr}$
+small) this is close to the measured $\tilde{\boldsymbol{r}}$, which is in $\mathcal{S}$ whenever the CBF
+is active at all. The caps therefore tighten toward the in-frame measured centre rather than away from
+it; they do not, in the operating regime, invalidate Proposition~\ref{prop:inv}.
+
+\section{Tier 2 --- the descent-rate governor}\label{sec:tier2}
+A change in $a_z$ does not move $\boldsymbol{c}_\text{next}$ this cycle, so it lies outside the CBF. It is
+handled as a soft governor. Let, per axis,
+\begin{equation}\label{eq:tedge}
+\text{rem}_k=\varphi_k-|\tilde r_k|,\qquad
+\text{close}_k=\max\!\big(\operatorname{sgn}(\tilde r_k)\,\dot{\tilde r}_k,\,0\big),\qquad
+t_\text{edge}=\min_k \frac{\text{rem}_k}{\text{close}_k},
+\end{equation}
+the earliest predicted time for the centre to reach the buffer at its measured outward image speed
+($t_\text{edge}=\infty$ if it is not moving outward). Then
+\begin{equation}\label{eq:gz}
+\boxed{\;
+g_z=g_\text{min}+(1-g_\text{min})\,\operatorname{clip}\!\Big(\tfrac{t_\text{edge}}{T_\text{react}},0,1\Big),
+\qquad
+\,^\Iframe a_{\text{d},z}^{\star\star}=(\,^\Iframe a_{\text{d},z}^\star+g)\,g_z-g,
+\;}
+\end{equation}
+applied only while a descent is commanded ($\,^\Iframe a_{\text{d},z}^\star+g>0$) and low-passed so $a_z$
+does not step. Only the \emph{downward} part of the vertical command is scaled; $g_\text{min}>0$ keeps a
+minimum descent and the map cannot command a climb.
+
+\paragraph{Self-releasing.} $g_z$ is monotone increasing in $t_\text{edge}$, and $t_\text{edge}$
+increases as $|\tilde{\boldsymbol{r}}|$ decreases (larger $\text{rem}$, smaller $\text{close}$). Slowing
+the descent gives the lateral loop more cycles at a given altitude to reduce $|\tilde{\boldsymbol{r}}|$;
+as it does, $t_\text{edge}\to\infty$ and $g_z\to1$. The trigger is an external \emph{measured} quantity
+($|\tilde{\boldsymbol{r}}|$ and its rate), so the governor cannot self-sustain on a quantity it
+generates, and it is applied after Tier~1 so it never enters the lean solve. It is not a barrier and
+makes no invariance claim; its role is to widen the time window in which Proposition~\ref{prop:inv}'s
+feasibility assumption holds near touchdown.
 
 \section{Assumptions}
-\begin{enumerate}
-\item The coupling $L_e=-(L_\omega M)$ and its sign are calibrated (validator check~1 vs an independent
-pinhole model).
-\item The conditioned command is realized: the inner attitude loop tracks the attitude built from
-$\boldsymbol{y}^\star$ on a timescale fast relative to the outer loop; residual lag is inside the buffer.
-\item $\boldsymbol{d}$ is the translation part of the observed centre velocity, gyro-stripped; $\tau=0$
-for a stationary target (moving-target wiring is a separate step).
-\item First-order $L_\omega$ over the cycle (envelope $\sim15^\circ$/cycle; \S\ref{sec:tier1}).
-\item $A_\text{cap},g$ are fixed vehicle/physical constants, used directly.
-\end{enumerate}
+\begin{assumption} The camera-mount rotation $P$ and the coupling $L_e=-(L_\omega M)$, with its sign, are
+calibrated (validated against an independent pinhole model). \end{assumption}
+\begin{assumption} The conditioned command is realized: the inner attitude loop tracks the attitude built
+from $\boldsymbol{y}^\star$ on a timescale fast relative to the outer loop, with residual lag inside the
+buffer $b$. \end{assumption}
+\begin{assumption} $\boldsymbol{d}$ is the translation part of the observed centre velocity, gyro-stripped;
+$\tau=0$ for a stationary target. \end{assumption}
+\begin{assumption} The per-cycle lean change stays within the first-order regime of \S\ref{sec:lin}
+($\lesssim15^\circ$), which the $50$\,Hz rate and a smooth outer loop provide. \end{assumption}
+\begin{assumption} $A_\text{cap}$ and $g$ are fixed vehicle/physical constants, used directly. \end{assumption}
 
 \section{Scale-freeness and depth-freeness}
-\eqref{eq:barrier}, \eqref{eq:N}, \eqref{eq:proj}, \eqref{eq:ease}--\eqref{eq:gz} contain only the
-measured image point, $\boldsymbol\varphi=\mathcal{R}/(2f)\,(1-b)$, the body rate, the commanded
-acceleration and its measured image-space rate, $A_\text{cap}$, $g$, and fixed time constants. $L_\omega$
-is depth-independent by construction; $t_\text{edge}=\text{(image distance)}/\text{(image speed)}$ is
-dimensionless in scale. The formulation is manifestly scale- and depth-free.
-
-\section{What this retired, and why}\label{sec:retired}
-The 31~Aug 2026 joint QP over $\,^\Iframe\boldsymbol{a}_\text{d}$ (visibility box + deliverability sphere,
-$a_z$ solved), its two-phase $\delta$ / decode-fail geometry QP, the descent-rate relief
-(\texttt{CBF\_AZ\_COST\_GAIN}), the frozen $\rho_\text{fov}$ / $d_\text{min,fov}$ tilt-cone and its
-overflow/drift-off classification, and the ArUco 4-corner copy were all removed
-(\texttt{cbf\_visibility.py}, \texttt{cbf\_visibility\_aruco.py} $\to$ \texttt{Obsolete/}).
-Grounds:
-\begin{itemize}
-\item The deliverability \textbf{sphere never bound} in flight (0.0\% of gate frames; 81--97\% of
-$A_\text{cap}$) --- the post-step $\arccos(a_z/A_\text{cap})$ lean cap already covers it.
-\item With the sphere idle and the relief off, the joint projection is \textbf{algebraically the plain
-tilt projection} ($N_i(a_z)\,^\Iframe\boldsymbol{a}_{\text{d},xy}\equiv L_\omega M\,\boldsymbol{y}$) ---
-the $a_z$-in-the-loop iteration bought nothing.
-\item The descent relief \textbf{failed every SITL gate} in three forms; a clean IC2--5 A/B put
-\texttt{CBF\_AZ\_COST\_GAIN}$=0$ ahead of $=5$ (tighter, softer, no regression).
-\item The $\rho_\text{fov}$ cone was \textbf{deliberately frozen} (\texttt{PLASMC\_LFOV}$=0$) and dormant.
-\item The two-phase $\delta$ apparatus fired \textbf{0.1\% of frames} on the live cross-marker pipeline.
-\end{itemize}
-The only retained consumer of the old classification, the drift-off pull-back, is re-expressed as a
-per-axis increase of $b$ on a persistent one-sided $\varphi$ breach.
-
-\paragraph{Validation of this design.} \texttt{tools/validate\_visibility\_projection.py} --- 10/10
-against an independent pinhole + attitude oracle (barrier holds, minimal intervention, outward-free,
-conventions round-trip, descent-ease one-way / triggered-by-closing / self-releasing). SITL: IC2--5 $n=5$
-cross-marker A/B vs the retired machinery --- both 20/20 land, 0 target-loss; this design pooled mean
-$xy$ $0.14$\,m vs $0.24$, precise $11/20$ vs $8/20$, max touchdown speed $1.47$ vs $1.95$\,m/s. The
-median is a wash (on a clean approach the projection is a pure pass-through); the gain is entirely in the
-tail, where the retired joint-solve / relief / pull-back / cone-floor stack was found to thrash
-(intervening against the outer loop's re-centring, chattering the tilt into a gain ratchet) on exactly
-the marginal off-centre approaches the gate stresses.
+Every quantity in \eqref{eq:barrier}, \eqref{eq:lin}, \eqref{eq:qp}, \eqref{eq:tedge}--\eqref{eq:gz} is
+one of: a fixed camera intrinsic ($\mathcal{R}/(2f)$, $b$), an attitude ($R$, $\psi_\text{b}$), an
+image-space measurement ($\tilde{\boldsymbol{r}}$, $\dot{\tilde{\boldsymbol{r}}}$, $\boldsymbol{d}$), a
+ratio or pass-through of the outer loop's own command ($\boldsymbol{y}$, $a_z$), a fixed physical
+constant ($A_\text{cap}$, $g$), or a fixed time constant ($\tau$, $T_\text{react}$). $L_\omega$ is
+depth-independent by construction. $t_\text{edge}$ is an image distance over an image speed --- seconds,
+dimensionless in scale. No target range, altitude, or metric velocity appears anywhere. The formulation
+is manifestly scale- and depth-free.
 
 \end{document}
