@@ -1198,8 +1198,21 @@ class CrossMarkerPerception:
         # the rate state is left to the main KF. scale_rate is on the CALIBRATED loom
         # scale (validated vs gt_optical_flow.loom) whereas _hw_kf_x is RAW, so it is
         # divided by the h_z cal gain _sensor_cal_hw[2,2] before fusing.
-        # CROSS_SCALE_RATE_FUSE=0 fully restores the prior (shadow-only) behaviour.
-        self._scale_fuse_on = os.environ.get("CROSS_SCALE_RATE_FUSE", "1") == "1"
+        # ⛔ DEFAULT FLIPPED BACK TO OFF (2026-09-09, `2a400929`+2 → this commit). Landed
+        # default-ON at user direction; the IC1-5 n=3 gate (`test_data/Multi_IC/
+        # 20260909-022319`, on `cd6dc57f`) REGRESSED HARD: 3 PRECISE-only / 1 SOFT+PRECISE
+        # / 8 FAIL / 1 NOT_LANDED (rel_vel to 1.44 m/s), vs a clean concurrent fuse-OFF
+        # gate on the SAME visibility_projection code minutes earlier (`test_data/
+        # ICValidation/20260909-021038`: IC2/3/4 all SOFT+PRECISE, xy ~0.017 m, rel_vel
+        # ~0.02). The V2 touchdown DETECTOR is untouched (it uses n_corners/extent/flow-
+        # freeze, never h_z — every gate rep latched via [overfill]/[flow-freeze]); the
+        # damage is to the DESCENT-RATE control that h_z regulates: scale_rate correlates
+        # 0.84-0.98 with GT loom but is not UNBIASED, and fusing it at r=0.05 (tight)
+        # biases the loom setpoint tracking → fast/erratic arrival. Machinery + shadow
+        # log + env flag all KEPT for future gated work; set CROSS_SCALE_RATE_FUSE=1 to
+        # re-enable, but it needs a real fix (unbias scale_rate, or a much looser r, or
+        # band-limit it away from the terminal) + a passing IC1-5 gate first.
+        self._scale_fuse_on = os.environ.get("CROSS_SCALE_RATE_FUSE", "0") == "1"
         self._scale_fuse_r = float(os.environ.get("CROSS_SCALE_FUSE_R", "0.05"))
         self._scale_fuse_clamp = float(os.environ.get("CROSS_SCALE_FUSE_CLAMP", "1.0"))
         # OVERFILL PROXIMITY GATE (2026-09-09, added after the first sanity A/B): the
