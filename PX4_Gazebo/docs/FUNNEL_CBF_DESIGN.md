@@ -1,5 +1,18 @@
 # Target-visibility CBF (cbf2)
 
+> ⛔⛔ **SUPERSEDED 2026-09-09 — the entire `cbf2` design below is retired.** The visibility
+> mechanism was rebuilt from clean requirements as **`src/visibility_projection.py`** (Tier-1
+> minimal outward-only lean projection on the measured cross-marker CENTRE in the real camera
+> plane + Tier-2 self-releasing descent ease). Spec: **`docs/CBF_visibility.pdf` / `.tex`**
+> (9 Sep 2026 rewrite). `cbf_visibility.py` / `cbf_visibility_aruco.py` / `validate_cbf.py`
+> and the joint-QP / deliverability-sphere / `CBF_AZ_COST_GAIN` relief / two-phase-δ /
+> `rho_fov`-cone machinery are in `Obsolete/`. Wired in at `82fa9c16`; IC2-5 n=5 SITL A/B vs
+> the old machinery PASSED (no regression, tighter+softer, ~half the code — see
+> `[[project_20260909_visibility_projection_wire_in]]`). One thing below still holds: the
+> `L_ω·M` coupling — the NEW module NEGATES it (`Le = -(Lw@M)`), the old sign was backwards
+> for a downward camera and the old `validate_cbf.py` oracle's own sign bug had masked it.
+> **§9 SEN_FUNNEL below is unaffected and still live.** Everything else in this file is history.
+
 **Status (2026-06-26):** **cbf2 is the finalized and ONLY visibility mechanism.** The legacy
 alternates — the magnitude **cone clamp**, the lean-magnitude `cone0`/`cbf1` forms, and the abandoned
 optic-flow HOCBF — were **removed from the code** (`FUNNEL_MODE` and its env retired). The §0 camera-plane

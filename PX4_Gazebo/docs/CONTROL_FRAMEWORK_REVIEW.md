@@ -124,9 +124,12 @@ unresolved, but descent's main coupling to TLs is *reaching* the perception-brea
 ### C. Backstops (bound the *symptom*, not the cause)
 - `KAPPA_MAX_Z=3.0` — bites at touchdown (z-runaway). **`κ_xy` is uncapped** (deliberate — exposes the lateral
   runaway rather than masking it).
-- **cbf2 FoV cone** (`THETA_FLOOR=THETA_CAP=60°`) — kept **relaxed** so `d_min` can't collapse and strangle
-  terminal correction. Methodology rule: *if the cone bites in normal ops, the control law is failing* — it's a
-  safety net, not a controller.
+- **Visibility projection** (`src/visibility_projection.py`, 2026-09-09 — replaced the cbf2 FoV cone /
+  joint QP / `THETA_FLOOR`/`RHOFOV*` machinery). Tier-1 minimal outward-only lean projection keeping the
+  measured marker centre inside `φ = R/(2f)·(1−CBF_BUFFER_FRAC)` on the real camera plane (`I_a[2]`
+  untouched); Tier-2 `CBF_DESCENT_EASE` scales only the downward part of `I_a[2]`, self-releasing. Same
+  methodology rule: *if `vis_active(t)` fires in normal ops the control law is failing* — safety net, not
+  a controller (pure pass-through on a clean approach). Spec `docs/CBF_visibility.pdf`.
 
 ### D. Proper anti-windup (replaced fixed band-aids)
 - Conditional integration in `_yawCtrl` (replaced `_ie_a_clamp`); the `izeta`/`iV_s_e_n` integral clamps.
@@ -149,7 +152,7 @@ unresolved, but descent's main coupling to TLs is *reaching* the perception-brea
 All three control components are **correctly implemented and well-tuned** — lateral converges tight when fed clean
 features, yaw is validated for the square-start, descent bootstraps reliably. **Every binding failure traces to the
 close-range perception front-end, not the control law.** The clamp set is healthy: the canonical and PX4-physics
-clamps are load-bearing and correctly placed; the only "masking" clamps (cbf2 cone, `κ_z` cap) are deliberately
+clamps are load-bearing and correctly placed; the only "masking" clamps (the visibility projection, `κ_z` cap) are deliberately
 relaxed/scoped so they don't hide the real signal — which is exactly why the diagnosis could reach the perception
 root (off-screen `s` via z_v→0 + spurious `h` via ill-conditioned lstsq + ArUco decode-fail). The three disabled
 clamps are correctly off (documented dead-ends).

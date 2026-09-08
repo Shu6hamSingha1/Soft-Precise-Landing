@@ -1,5 +1,14 @@
 # Porting brief — CBF (cbf2) + SEN_FUNNEL: PX4 Python → MATLAB
 
+> ⛔ **CBF HALF SUPERSEDED 2026-09-09.** The `cbf2` implementation this brief maps
+> (`cbf_visibility.py`, the camera-plane θ-QP / joint-QP, two-phase δ, deliverability cap)
+> is RETIRED — replaced by `src/visibility_projection.py` (Tier-1 lean projection + Tier-2
+> descent ease; spec `docs/CBF_visibility.pdf`, 9 Sep 2026). There is nothing here left to
+> port; if a MATLAB visibility CBF is still wanted, port the NEW module instead (note the
+> Jacobian sign is `Le = -(Lw@M)`, negated vs what §2 below describes — the old sign was
+> backwards for a downward camera). **The SEN_FUNNEL half of this brief is unaffected and
+> still valid.** See `[[project_20260909_visibility_projection_wire_in]]`.
+
 **For:** a Claude session on the Windows machine, tasked with porting the target-visibility
 **CBF** and the **SEN_FUNNEL** (position-error PPC funnel) from the PX4/Gazebo Python pipeline
 (`PX4_Gazebo/`) into the MATLAB Phase-1 controller (`MATLAB/`).

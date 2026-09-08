@@ -196,12 +196,13 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   docs/                        — design/analysis notes (check these before re-deriving; individual file currency varies, check each file's own dated header rather than trusting this list):
     PLASMC_TUNING_GUIDE.md     — ⭐ START HERE for any tuning/landing-diagnosis work: end-to-end guide (current state, data map, param inventory, dead-ends, methodology, gotchas; indexes the rest). Auto-injected each session by a SessionStart hook (.claude/settings.json, local).
     SH_REFERENCE.md            — canonical .sh patterns; read before authoring new .sh
-    FUNNEL_CBF_DESIGN.md       — target-visibility cbf2 design
+    FUNNEL_CBF_DESIGN.md       — SEN_FUNNEL (§9, live); the cbf2 CBF part is SUPERSEDED (2026-09-09) → docs/CBF_visibility.pdf
     CONTROLLER_PARITY.md       — MATLAB↔Python diff (parity math + intentional divergences)
     PARAMETER_ANALYSIS.md      — comprehensive honest-cal parameter analysis + failure diagnosis
     PERCEPTION_FLOW_FINDINGS.md  — perception-layer findings (flow honest at altitude, LK dynamic range is a binding limit)
     CONTROL_FRAMEWORK_REVIEW.md  — per-component (lateral/yaw/descent) implementation + performance review + clamp audit
-    CBF_SEN_MATLAB_PORT.md     — CBF cbf2 MATLAB↔Python port map
+    CBF_visibility.pdf/.tex    — ⭐ target-visibility mechanism spec (visibility_projection.py; 9-Sep-2026 two-tier rewrite)
+    CBF_SEN_MATLAB_PORT.md     — MATLAB↔Python port map: CBF half SUPERSEDED (mechanism retired), SEN_FUNNEL half live
     MOVING_TARGET_PREP.md      — moving-target (rover) phase handoff/prep notes
     TERMINAL_KICK_COMMIT_DESIGN.md — terminal-kick approach+commit design spec
     HANDOFF_combined_barrier.md / HANDOFF_velocity_damping.md — dated handoff notes for those specific threads
@@ -269,6 +270,7 @@ Calibration data goes to timestamped folders under `calibration_data/`; gitignor
 - **Outer loop (Python):** PID on raw normalized pixel error → desired feature-time-derivative `V_ds_d`
 - **Middle loop (Python):** adaptive SMC on optical-flow error with log-barrier envelope; κ-ODE leakage form via RK5
 - **Yaw (Python):** κ_a adaptive SMC → body yaw-rate setpoint
+- **Target-visibility (Python, `src/visibility_projection.py`, 2026-09-09):** conditions the SMC's `I_a` command — Tier-1 minimal outward-only lean projection keeping the measured cross-marker centre inside `φ = R/(2f)·(1−CBF_BUFFER_FRAC)` on the *real* camera plane (`I_a[2]` untouched); Tier-2 `descent_ease` scales only the downward part of `I_a[2]` on a measured time-to-edge. Replaced `cbf_visibility.py` + the joint-QP/deliverability-sphere/`CBF_AZ_COST_GAIN`-relief/two-phase-δ/`rho_fov`-cone machinery (→ `Obsolete/`). Spec: `docs/CBF_visibility.pdf`. Deliverability caps (`|I_a|≤A_CAP` + lean cap) stay in `controller.py` after the projection.
 - **Inner attitude/rate loop:** **PX4 handles it** (we ship body rates + thrust via MAVSDK; PX4's geometric controller does actuator allocation)
 
 ## Key Conventions

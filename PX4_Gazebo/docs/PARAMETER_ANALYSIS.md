@@ -67,7 +67,7 @@ Bounding rules that fell out of this (each verified in R3):
 - **`P` bounds κ cleanly** — `κ_eq ∝ 1/P`. `P=5/5/5` dropped a_u from 33 589 → 440. The clean κ knob.
 - **`E` also bounds κ but *softens tracking*** — wide `E` keeps `|σ|<E` so κ≈κ_0, but the same wideness detunes the lateral hold (→ drift) and descent (→ hover). **One knob, one job:** use `P` for κ, `E` for stiffness, per-axis.
 - **`N`, `Γ` cannot fix it** — `N` cancels in `κ_eq`; `Γ` only changes the *rate* of runaway. Mathematically excluded.
-- **cbf2 *masks* it** — the visibility CBF clamps the blown-up `a_xy`, so if it fires in normal ops the control law is failing, not the CBF. Keep it relaxed (`THETA_FLOOR=60`) and bound κ at the control level.
+- **the visibility projection *masks* it** — Tier-1 clips a blown-up `a_xy` outward-only, so if `vis_active(t)` fires in normal ops the control law is failing, not the projection. Bound κ at the control level.
 - **Funnel width = barrier gain** (`G⁻¹ ≈ p/2`). Never widen a funnel component to "make room" for a transient — it raises that axis's gain proportionally (learned twice: Ξ₂ and p_2inf_z).
 
 > **BUT the lateral κ-runaway at touchdown is a FUNNEL BREACH that NO gain bounds (2026-06-10).** "P bounds κ cleanly" holds for *moderate* growth — it **fails at the barrier singularity**. Decomposed (P_z=8 rep3, κ_xy=7.26): at alt<0.5 m the 1/Z geometry breaches the *lateral* funnel (`|h_e/p_2|→0.99`) → ζ→5.3 → σ→3.6, G→3.1 → growth `θ·N·G·|σ|`=16.1 overwhelms leakage `N·P·κ`=0.10 by **160×** (to balance it you'd need `P_xy≈800`). So **P can't bound a breach, θ-freeze can't** (θ moderate ~37–72), **and the Singhal freeze misses it** (fires at `|h_e/p|≥1.0`; growth is at 0.9–0.99). Worse, **κ_xy is UNCAPPED** (`KAPPA_MAX=[1e6,1e6,3.0]` — only z capped, which is why κ_x hit 7.26 vs κ_z's 3.0). The fix is **convergence-ordering** — gate the descent on `|s_e_n|` so lateral centers *before* the 1/Z zone — + a κ_xy-cap backstop, NOT a gain. **REFINED 2026-06-10 (GT-verified):** the breach is a **WRONG `h_d` from the off-screen VIRTUAL centroid** — `cross(w_i,s)` where `_getVirtualPts`'s unguarded z_v→0 divide reprojects an *in-FoV* feature off-screen under the touchdown tilt (NOT a flow spike: `ds_d`≈0, measured `h` is physical/matches GT v/Z). The controller uses the VIRTUAL centroid; the cbf2 uses the ACTUAL — so the CBF (guarding the in-FoV actual centroid) can't see it. **TRIGGERED by ArUco decode-loss** (loss precedes runaway): 9/12 TLs had the marker fully in-FoV (decode-fail, not geometric loss). Fix: clamp/guard the virtual `s` + KLT corner-track + use-genuine-data on marker-LOST. See `feedback_lateral_kappa_runaway`, `feedback_marker_detection_stale`.
@@ -109,9 +109,21 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 
 **The real yaw failure is not a gain.** `_ie_a_clamp` was replaced by **conditional integration** (freeze `ie_a` while heading-rate saturated; halved overshoot). The IC2-5 "yaw runaway" is **compass drift at landing start**: EKF yaw drifts ~77° during takeoff/IC so the drone *begins* the descent yawed → `psi_d`→180°. `alpha` is correct (tracks GT r=1.00). **Fix is the test rig** (servo true yaw), not the controller — three alpha redesigns all failed because the cause is the bad start. Yaw is image-`alpha` end-to-end (`BODY_YAW_SOURCE=alpha`, compass-free); compass enters only the rotation matrix.
 
-### 3.4 Visibility barrier — cbf2
+### 3.4 Visibility barrier — `visibility_projection.py` (was cbf2)
 
-The visibility barrier is **cbf2**, the only mode (the legacy cone/cone0/cbf1 forms were retired 2026-06-26). `THETA_FLOOR_DEG=60` (= θ_cap → the old d_min collapse is OFF). cbf2 is a camera-plane tilt-QP (`docs/FUNNEL_CBF_DESIGN.md`): theta_cap post-QP, two-phase δ. **It is a safety net, not a controller** — if it bites in normal ops, bound κ at the control level instead (it was *masking* the κ-runaway). `RHOFOV0=[290,210]`, `RHOFOVINF=[80,80]`, `LFOV=0` (rho_fov held constant). The old analysis's "RHOFOVINF is the strongest lever" is **false** — a cal artifact of the mapped precision-softness frontier (memory `feedback_precision_softness_frontier`).
+> ⛔ **REBUILT 2026-09-09.** `cbf2` / the joint QP / `RHOFOV*` / `THETA_FLOOR` d_min-cone / two-phase δ
+> are RETIRED. The visibility mechanism is now **`src/visibility_projection.py`** (spec
+> `docs/CBF_visibility.pdf`): Tier-1 minimal outward-only lean projection keeping the measured
+> cross-marker CENTRE inside `φ = R/(2f)·(1−`**`CBF_BUFFER_FRAC`**`=0.15)` on the real camera plane
+> (`I_a[2]` untouched); Tier-2 **`CBF_DESCENT_EASE`** (default 1) scales only the downward part of
+> `I_a[2]` on a measured time-to-edge, self-releasing. New knobs: `CBF_BUFFER_FRAC`,
+> `CBF_DESCENT_EASE`, `CBF_GMIN` (0.2), `CBF_TREACT` (1.5), `CBF_DRIFT_PULLBACK_FRAC` (per-axis buffer
+> bump on a persistent one-sided breach). IC2-5 n=5 SITL A/B vs the old machinery: PASS (mean xy 0.14
+> vs 0.24, no regression). → `[[project_20260909_visibility_projection_wire_in]]`.
+
+The line below stays true of the NEW mechanism too: **it is a safety net, not a controller** — if
+`vis_active(t)` fires in normal ops the control law is failing; bound κ at the control level. On a
+clean approach the projection is a pure pass-through (`vis_active` 0%).
 
 ### 3.5 Inner loop (SO(3)) & misc
 
@@ -149,7 +161,7 @@ The visibility barrier is **cbf2**, the only mode (the legacy cone/cone0/cbf1 fo
 
 ## 6. Current best config & open problems
 
-**Baked R3 defaults:** `K_rp=9, K_ri=1, K_rd=0, gamma_s=1.0, P=5/5/5, E=1.5/1.5/1.0, Γ=0.4375/1.0/0.75, Ω=0.05/0.05/0.025, N=0.02, KAPPA0=0.156/0.156/1.0, KAPPA_MAX=·/·/3.0, FLOOR=60, cbf2, SEN_FUNNEL=1, W_U_MAX=1.0, BODY_YAW_SOURCE=alpha, KR_YAW=2, YAW_PSID_RATE=1.0`.
+**Baked R3 defaults:** `K_rp=9, K_ri=1, K_rd=0, gamma_s=1.0, P=5/5/5, E=1.5/1.5/1.0, Γ=0.4375/1.0/0.75, Ω=0.05/0.05/0.025, N=0.02, KAPPA0=0.156/0.156/1.0, KAPPA_MAX=·/·/3.0, visibility_projection, SEN_FUNNEL=1, W_U_MAX=1.0, BODY_YAW_SOURCE=alpha, KR_YAW=2, YAW_PSID_RATE=1.0`.
 
 **Gain-side levers MOSTLY exhausted; `gamma_s>1.0` + `KP=12` now SWEPT (NC56-60, IC1 n=5):** gamma_s=1.2 → 0 TL (vs baseline's 2) but 1/5 hover (over-centers → weak descent); gamma_s≥1.4 degrades (descent-weakening, not a demand-breach). **`KP=12+E=1.5` → tightest landings of any cell (0.34 m, no t=0 LK collapse) but 1/5 the touchdown lateral breach fires harder (κ_xy=0.85) → next experiment = `KP=12 + κ_xy cap`.** Neither cleanly beats baseline at n=5. The binding limit underneath is still the LK dynamic range. Open problems, in priority:
 1. **Lateral convergence-ordering** — gate the descent on `\|s_e_n\|` (center before the 1/Z zone) + a κ_xy cap, to bound the **touchdown funnel breach (§2)** that no gain fixes. This is the principled fix for the lateral κ-runaway.
