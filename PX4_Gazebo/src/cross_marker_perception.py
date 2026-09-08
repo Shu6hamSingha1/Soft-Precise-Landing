@@ -422,10 +422,17 @@ def _kf_step(x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
     dt = max(min(t - prev_t, 0.1), 1e-3)
     dt_q = max(min(t - prev_t, dt_unc_max), 1e-3) if dt_unc_max is not None else dt
     F = np.array([[1.0, dt], [0.0, 1.0]])
-    Q = q * np.array([
+    # `q` is a scalar (all channels share it -- bit-identical to the original) OR a
+    # (C,) per-channel process-noise vector (2026-09-08: h and w channels differ in
+    # bandwidth/SNR, so w_z can be smoothed independently -- see _hw_kf_q_vec in
+    # CrossMarkerPerception.__init__, and the matching build in
+    # tools/aggregate_calibration_phased.py which MUST stay in lockstep).
+    _qbase = np.array([
         [dt_q**4 / 4.0, dt_q**3 / 2.0],
         [dt_q**3 / 2.0, dt_q**2],
     ])
+    _qa = np.asarray(q, dtype=float)
+    Q = _qbase * _qa if _qa.ndim == 0 else _qa[:, None, None] * _qbase
     x_pred = x @ F.T
     P_pred = F @ P @ F.T + Q
     if z is None:
@@ -1145,6 +1152,20 @@ class CrossMarkerPerception:
         # env-var names/defaults as img_data.py's corner-flow KF for parity.
         self._hw_kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))
         self._hw_kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))
+        # PER-CHANNEL process noise (2026-09-08). FLOW_KF_Q is the shared default;
+        # FLOW_KF_Q_WZ overrides channel 5 (w_z / yaw rate) ALONE. w_z's raw lstsq
+        # column is structurally under-observed (near-collinear with Ty; cond 9-103;
+        # R^2~=0.5 -- see io-calibration skill "Hz/Wz weakness"), so it is
+        # noise-limited, not lag-limited, and tolerates heavier smoothing than the
+        # h channels at no control-relevant lag cost (yaw-rate law consumes it as a
+        # rate-cancellation term -- project_yaw_rate_law_sign_bug_and_validation).
+        # w_x/w_y are zeroed post-cal so only channel 5 is exposed. Default equals
+        # FLOW_KF_Q -> the q vector is uniform -> bit-identical to the old scalar path.
+        # LOCKSTEP: tools/aggregate_calibration_phased.py builds the identical vector
+        # for the cal fit; changing one without the other breaks cal<->filter parity.
+        self._hw_kf_q_wz = float(os.environ.get("FLOW_KF_Q_WZ", str(self._hw_kf_q)))
+        self._hw_kf_q_vec = np.full(6, self._hw_kf_q)
+        self._hw_kf_q_vec[5] = self._hw_kf_q_wz
         self._hw_kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
         self._hw_kf_x = np.zeros((6, 2))        # [value, rate] per hw channel
         self._hw_kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
@@ -1365,7 +1386,7 @@ class CrossMarkerPerception:
             self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
                 self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, z, t,
-                self._hw_kf_q, r, dt_unc_max=self._hw_kf_dt_unc_max)
+                self._hw_kf_q_vec, r, dt_unc_max=self._hw_kf_dt_unc_max)
             if _frac >= self._htc_clamp_frac and self._hw_kf_initialized:
                 # backstop for the jumpy-centroid case (e.g. a divergent rep):
                 # clamp the h_x/h_y VALUE. Rate left to the hw-KF (fed a real
@@ -1384,7 +1405,7 @@ class CrossMarkerPerception:
             else:
                 self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
                     self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, None, t,
-                    self._hw_kf_q, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
+                    self._hw_kf_q_vec, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
         # Not-yet-initialized (no real measurement ever seen): fall back to
         # zeros, same as the pre-fix behavior -- there is nothing to coast
         # from before the first real observation, this is not a regression.

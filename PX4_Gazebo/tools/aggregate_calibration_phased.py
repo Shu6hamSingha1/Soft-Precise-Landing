@@ -48,6 +48,13 @@ FLOW_KF_Q = float(os.environ.get("FLOW_KF_Q", "5.0"))
 FLOW_KF_R = float(os.environ.get("FLOW_KF_R", "0.1"))
 FEAT_KF_Q = float(os.environ.get("IMG_FEAT_KF_Q", "5.0"))
 FEAT_KF_R = float(os.environ.get("IMG_FEAT_KF_R", "0.004"))
+# Per-channel hw process noise (2026-09-08). LOCKSTEP with
+# src/cross_marker_perception.py's _hw_kf_q_vec (and any future img_data.py
+# equivalent): FLOW_KF_Q is the shared default; FLOW_KF_Q_WZ overrides channel 5
+# (w_z) alone. Pass FLOW_KF_Q_VEC (not the scalar) into kf_filter_causal when
+# filtering the 6-channel hw signal so the derived cal matches the runtime filter.
+FLOW_KF_Q_WZ  = float(os.environ.get("FLOW_KF_Q_WZ", str(FLOW_KF_Q)))
+FLOW_KF_Q_VEC = np.full(6, FLOW_KF_Q); FLOW_KF_Q_VEC[5] = FLOW_KF_Q_WZ
 
 # TIME-SYNC (2026-07-17, user directive: "the correct way of time-sync rather than
 # index-sync"). The GT dict and the img node are TWO ASYNCHRONOUS STREAMS at DIFFERENT
@@ -88,8 +95,11 @@ LAG_ALIGN = os.environ.get("CAL_LAG_ALIGN", "1") == "1"
 def kf_filter_causal(raw, t, q, r):
     """Causal constant-velocity 2-state KF per channel, run over a full (N, C) raw
     array + matching timestamps t (N,). Same process/measurement model as
-    src/img_data.py::_kf_step (kept in lockstep with it — if that function changes,
-    mirror the change here). Returns the (N, C) filtered value trace."""
+    src/img_data.py::_kf_step / src/cross_marker_perception.py::_kf_step (kept in
+    lockstep with them — if that function changes, mirror the change here).
+    `q` may be a scalar (all channels) or a (C,) per-channel process-noise vector
+    (2026-09-08: pass FLOW_KF_Q_VEC for the 6-channel hw signal so w_z is filtered
+    to match the runtime _hw_kf_q_vec). Returns the (N, C) filtered value trace."""
     raw = np.asarray(raw, dtype=float)
     t = np.asarray(t, dtype=float)
     n, c = raw.shape
@@ -108,8 +118,10 @@ def kf_filter_causal(raw, t, q, r):
         dt = max(min(ti - prev_t, 0.1), 1e-3)
         prev_t = ti
         F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
+        _qbase = np.array([[dt**4 / 4.0, dt**3 / 2.0],
                            [dt**3 / 2.0, dt**2]])
+        _qa = np.asarray(q, dtype=float)
+        Q = _qbase * _qa if _qa.ndim == 0 else _qa[:, None, None] * _qbase
         x_pred = x @ F.T
         P_pred = F @ P @ F.T + Q
         y = z - x_pred[:, 0]

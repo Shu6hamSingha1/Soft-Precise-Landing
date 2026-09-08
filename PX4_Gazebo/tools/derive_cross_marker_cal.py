@@ -16,7 +16,7 @@ import numpy as np, os, glob, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from aggregate_calibration_phased import (compute_gt_signals, std_ratio,
                                            kf_filter_causal, FLOW_KF_Q, FLOW_KF_R,
-                                           FEAT_KF_Q, FEAT_KF_R)
+                                           FLOW_KF_Q_VEC, FEAT_KF_Q, FEAT_KF_R)
 
 CAL_DIR = os.environ.get(
     "CROSS_CAL_DIR",
@@ -181,7 +181,10 @@ def main():
         n_kf = min(len(raw), len(sync_t))
         raw = raw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]; sync_t = sync_t[:n_kf]
         if n_kf > 1:
-            raw = kf_filter_causal(raw, sync_t, FLOW_KF_Q, FLOW_KF_R)
+            # FLOW_KF_Q_VEC (not the scalar): per-channel process noise so the fitted
+            # cal matches the runtime _hw_kf_q_vec (w_z can be smoothed harder). Uniform
+            # -> bit-identical to the old scalar FLOW_KF_Q path.
+            raw = kf_filter_causal(raw, sync_t, FLOW_KF_Q_VEC, FLOW_KF_R)
             raw_s = kf_filter_causal(raw_s, sync_t, FEAT_KF_Q, FEAT_KF_R)
 
         # interpolate GT at each sample's TRUE (sync_t) timestamp, not by naive index
