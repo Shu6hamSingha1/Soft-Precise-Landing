@@ -549,10 +549,26 @@ def _fill_A(centered_pts):
 # came back strong, which is reassuring but not the same as an explicit
 # tilt-stratified check. Do not remove this comment until that check is done.
 _WLOOM_DS = 0.4          # bilinear scan step, px
-_WLOOM_MAX_STEPS = 60    # per-side step cap (~24px max half-thickness)
+# ⛔ BUG FOUND + FIXED (2026-09-09, chasing the width-RATE signal's negative validation
+# result): _WLOOM_MAX_STEPS=60 capped measurable half-thickness at 24px (~48.4px total,
+# 60*0.4*2+0.4). Confirmed directly on real data (OverfillCapture_IC1/rep1_data): from
+# roughly frame 311 onward -- well before touchdown -- BOTH arms' width PINNED EXACTLY
+# at 48.4 for the entire remaining terminal descent, i.e. zero real signal exactly where
+# accurate loom matters most. This alone plausibly explains most of the KF-derivative's
+# failure to correlate with GT loom (a flat/pinned input has no rate to extract). Raised
+# well above any width actually observed in real terminal-overfill data (frame is
+# 240x320, so a run bounded by the frame edge itself is the real ceiling now, not this
+# constant).
+_WLOOM_MAX_STEPS = 300   # per-side step cap (~120px max half-thickness, ~240px total)
 _WLOOM_THRESH = 127.0    # on-mask bilinear-sample threshold (mask is 0/255)
 _WLOOM_N_STATIONS = 5
 _WLOOM_MIN_QUORUM = 3    # of _WLOOM_N_STATIONS, must independently confirm on-mask
+_WLOOM_ARM_AGREE_RATIO = 2.0   # max(w_i,w_j)/min(w_i,w_j) before distrusting BOTH arms --
+                                # see width_loom_from_detection's comment: with only 2
+                                # values, np.median degenerates to a plain average, which
+                                # is NOT robust to one contaminated arm (confirmed: a
+                                # single-frame w_j=48.4 spike against a clean w_i dragged
+                                # the reported width up substantially on real data).
 
 
 def _wloom_bilinear(mask, x, y):
@@ -618,17 +634,33 @@ def _wloom_width_at_points(mask, pts_for_dir):
 def width_loom_from_detection(det):
     """Shadow-mode arm-width measurement for a single detection: median of both
     arms' mask-scan widths (raw camera-plane px), or None if det.ok is False, the
-    mask is unavailable, or too few stations confirm on-mask on either arm (hold
-    last-good is the caller's job, not this function's)."""
+    mask is unavailable, too few stations confirm on-mask on either arm, or the two
+    arms disagree too much to trust either (hold last-good is the caller's job, not
+    this function's).
+
+    ⛔ BUG FOUND + FIXED (2026-09-09): with only 2 candidate values (one per arm),
+    np.median degenerates to a plain AVERAGE -- not robust to a single contaminated
+    arm the way a real median is with >=3 samples. Confirmed on real data: an
+    isolated single-frame spike in one arm (e.g. from the now-fixed _WLOOM_MAX_STEPS
+    cap, or a transient contamination event) dragged the reported width up
+    substantially even with the OTHER arm reading cleanly. Fix: require the two
+    arms to agree within _WLOOM_ARM_AGREE_RATIO before trusting either -- when they
+    disagree, there is no principled way to tell which one (if either) is right
+    with only 2 samples, so return None (hold last-good) rather than average a
+    trustworthy value with a contaminated one."""
     if det is None or not det.ok or det.isolated_mask is None:
         return None
     widths = []
     for pts in (det.line_points_i, det.line_points_j):
         w = _wloom_width_at_points(det.isolated_mask, pts)
-        if w is not None:
+        if w is not None and w > 0:
             widths.append(w)
     if not widths:
         return None
+    if len(widths) == 2:
+        lo, hi = min(widths), max(widths)
+        if hi / lo > _WLOOM_ARM_AGREE_RATIO:
+            return None   # arms disagree too much -- can't tell which is trustworthy
     return float(np.median(widths))
 
 
@@ -1078,8 +1110,23 @@ class CrossMarkerPerception:
         # gt_optical_flow.py); width INCREASES during approach, so d(ln width)/dt is
         # POSITIVE then -- the reported Tz-like value is therefore the NEGATED rate,
         # matching every other Tz estimator's sign convention in this file.
-        self._wloom_kf_q = float(os.environ.get("CROSS_WLOOM_KF_Q", "5.0"))
-        self._wloom_kf_r = float(os.environ.get("CROSS_WLOOM_KF_R", "0.05"))
+        #
+        # 2026-09-09 UPDATE: the original q=5.0/r=0.05 defaults were swept against a
+        # width MEASUREMENT that had two real bugs (see width_loom_from_detection's and
+        # _WLOOM_MAX_STEPS's comments -- a scan-cap pinning the terminal descent flat,
+        # and a non-robust 2-value "median"/average letting one bad arm through). Fixing
+        # those and RE-sweeping q/r found the whole low-q/high-r region (originally
+        # explored, all negative) was chasing noise from the buggy input, not smoothing
+        # a clean one -- a much MORE responsive KF (high q, low r) now gives
+        # consistently POSITIVE correlation with GT loom across all 4 tested reps for
+        # the first time (0.15-0.70, mean 0.38, vs the old defaults' negative/near-zero
+        # result). Not yet as strong as the static width-vs-altitude correlation
+        # (0.89-1.00) -- still SHADOW-MODE, not control-ready -- but no longer a
+        # negative result. q=10/r=0.005 chosen as a representative point from a flat
+        # plateau (q=10-100 with r scaled to keep q/r roughly constant all gave
+        # similar results); re-sweep if more/different reps become available.
+        self._wloom_kf_q = float(os.environ.get("CROSS_WLOOM_KF_Q", "10.0"))
+        self._wloom_kf_r = float(os.environ.get("CROSS_WLOOM_KF_R", "0.005"))
         self._wloom_kf_dt_unc_max = float(os.environ.get("CROSS_WLOOM_KF_DT_UNC_MAX", "2.0"))
         self._wloom_kf_x = np.zeros((1, 2))
         self._wloom_kf_P = np.tile(np.eye(2) * 1.0, (1, 1, 1))

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T13:38:20.420Z
+  modified: 2026-09-08T14:03:44.359Z
 ---
 
 ## Context / goal
@@ -363,6 +363,48 @@ would corrupt a differently-shaped gate just as thoroughly). This is also the st
 argument yet for the width-loom direction: it measures a physical mask property at fresh
 detected locations, with no dependency on point identity persisting across frames at all --
 structurally immune to this exact failure mode.
+
+### ✅ Width-loom RATE signal: negative result REVERSED via 2 bug fixes (2026-09-09)
+User directed fixing the rate signal properly (not baking width into control until it's
+control-ready) after the 64-combo q/r sweep came back negative. Root-caused instead of
+re-sweeping blind, using OverfillCapture_IC1/rep1_data's raw frames:
+
+1. **`_WLOOM_MAX_STEPS=60` capped measurable half-thickness at 24px (~48.4px total).**
+   Confirmed directly: from frame ~311 onward in rep1 (well before touchdown), BOTH
+   arms' width PINNED EXACTLY at 48.4 for the whole remaining terminal descent -- zero
+   real signal exactly where accurate loom matters most. Raised to 300 (~120px half,
+   ~240px total -- frame-edge clipping is now the real ceiling, not this constant).
+2. **`width_loom_from_detection`'s "median of [w_i, w_j]" degenerates to a plain AVERAGE
+   for exactly 2 values** -- not robust to one contaminated arm. Confirmed: a single
+   bad-arm spike (itself partly a symptom of bug 1, but not exclusively) dragged the
+   reported width up even with the other arm clean. Fix: `_WLOOM_ARM_AGREE_RATIO=2.0`
+   -- if the two arms disagree by more than 2x, return None (hold last-good) rather
+   than average a good value with a bad one.
+
+**Result:** static width-vs-altitude correlation on rep1 improved further (0.89->0.976),
+cap-pinning eliminated (only 3% of frames near the old cap now, with real variation
+instead of a flat pin, max width 52 not a repeated 48.4). Re-swept q/r on the FIXED
+signal across the same 4 reps (rep1-3 + IC4) and found the entire previously-explored
+low-q/high-r region was chasing noise from the buggy input, not smoothing a clean one --
+a much MORE RESPONSIVE KF flips the result:
+
+| q | r | rep1 | rep2 | rep3 | IC4 | mean |
+|---|---|---|---|---|---|---|
+| (old default) 5.0 | 0.05 | -0.38 | -0.69 | -0.39 | 0.24 | -0.30 |
+| 10.0 | 0.005 | 0.15 | 0.18 | 0.49 | 0.69 | **0.38** |
+| 30.0 | 0.02 | 0.15 | 0.16 | 0.49 | 0.70 | 0.37 |
+
+**All 4 reps positive for the first time**, a flat plateau across q=10-100 (with r scaled
+to keep q/r roughly constant) giving similar results -- suggests the KF's steady-state
+gain (q/r ratio), not either absolute value, is what matters. Defaults updated:
+`CROSS_WLOOM_KF_Q` 5.0->10.0, `CROSS_WLOOM_KF_R` 0.05->0.005.
+
+**Honest status: real, qualitative progress (negative -> consistently positive), not yet
+control-ready.** 0.15-0.70 is far short of the static width's own 0.89-1.00, and this was
+only tested on 4 reps. Before considering this for control: (a) validate on more reps
+including off-center ICs (only IC4 tested off-center so far), (b) check whether the
+weaker reps (0.15-0.18) have their own specific, findable bug the way the strong ones did
+after the first two fixes, rather than assuming this is the signal's natural ceiling.
 
 ### Remaining genuinely open item (not started)
 Turning width into a CONTROL-READY RATE signal (`d(ln width)/dt`, Tz-like) -- decided to use a
