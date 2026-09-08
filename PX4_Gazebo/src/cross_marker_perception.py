@@ -1145,6 +1145,39 @@ class CrossMarkerPerception:
         self._wloom_kf_initialized = False
         self._width_loom_rate_log = []   # Tz-like d(ln width)/dt estimate, NaN before init
 
+        # SCALE-FUSED LOOM RATE (2026-09-09, SHADOW-MODE). Offline investigation
+        # (project_20260908_line_width_loom_investigation, round-4 follow-up) found the
+        # width-only rate KF above tops out ~0.38 mean corr with GT loom because the
+        # measured stroke width carries a slow (autocorr 0.5-0.9) state-dependent
+        # scale drift that is NOT mask-binarisation (grayscale half-max scan: a wash)
+        # and NOT regressable from logged state (tilt/extent/coff/ncorners) -- its
+        # derivative competes 1:1 with the true loom. MARKER_EXTENT_PX is a SECOND,
+        # smoother 1/z observable from the same detector; blending the two in log-space
+        # BEFORE a gentle CV-KF derivative recovers a usable loom estimate for the
+        # 7m->0.5m portion of the descent:
+        #   scale_z = a*ln(width) + (1-a)*ln(extent_px)     [both FRESH, both > 0]
+        #   rate    = -d/dt scale_z   via _kf_step, Q=1.5 R=0.03  (gentler than width KF)
+        # Any constant ratio matching width<->extent units drops out of the derivative,
+        # so no online median-matching is needed -- ln(extent_px) is used raw.
+        # Validated on the 7 OverfillCapture reps (real detector replay, FIXED
+        # gt_optical_flow.py): corr with GT loom  >2m band  mean 0.90 / worst-rep 0.77,
+        # 0.5-2m band  mean 0.80 / worst-rep 0.68.  <0.5m stays ~0 for EVERY method
+        # tried across 3 sessions (confirmed not lag via a GT-shift sweep) -- the frame
+        # saturates, both observables pin, the rate decays toward 0 (fails SAFE, unlike
+        # the pinv h_z which spikes). a=0.3 chosen over a=0 (extent-only) purely for
+        # worst-rep robustness (min >2m 0.77 vs 0.68, min <0.5m -0.17 vs -0.49).
+        # STILL SHADOW-MODE: logged as "Scale Loom Rate", consumed by NO control path.
+        # Wiring it into h_z (inverse-variance blend / spike-veto on pinv in the
+        # 0.5-2m band) is a SEPARATE, SITL-GATED step -- do not promote without a gate.
+        self._scale_rate_a = float(os.environ.get("CROSS_SCALE_RATE_A", "0.3"))
+        self._scale_rate_kf_q = float(os.environ.get("CROSS_SCALE_RATE_KF_Q", "1.5"))
+        self._scale_rate_kf_r = float(os.environ.get("CROSS_SCALE_RATE_KF_R", "0.03"))
+        self._scale_rate_kf_x = np.zeros((1, 2))
+        self._scale_rate_kf_P = np.tile(np.eye(2) * 1.0, (1, 1, 1))
+        self._scale_rate_kf_prev_t = None
+        self._scale_rate_kf_initialized = False
+        self._scale_loom_rate_log = []   # Tz-like -d(scale_z)/dt estimate, NaN before init
+
         # 2026-08-05: parity fields ported from img_data.py's IMG_PROCESSOR getLogData()
         # (see that class's own field list) -- everything here has a direct, generic
         # analog for a single-marker pipeline. Fields that are ArUco/ring-flow/
@@ -2747,6 +2780,34 @@ class CrossMarkerPerception:
             except Exception:
                 _rate = np.nan   # never let a diagnostic-only signal take down real logging
             self._width_loom_rate_log.append(_rate)
+            # SCALE-FUSED LOOM RATE KF (see __init__'s comment) -- blend the FRESH
+            # width reading (_w) with the FRESH extent px in log-space, feed as one
+            # measurement only when BOTH are valid & positive (else predict-only
+            # coast, same convention as the width KF just above: a repeated/partial
+            # value would bias the rate toward zero and a blend<->extent-only switch
+            # would inject a step). The constant width<->extent unit ratio drops out
+            # of the derivative, so ln(extent_px) is used raw with no median-match.
+            try:
+                _ext = self._marker_extent_log[-1]
+                _ext = float(_ext) if _ext is not None else np.nan
+                if (_w is not None and _w > 0 and np.isfinite(_ext) and _ext > 0
+                        and np.isfinite(_t)):
+                    _a = self._scale_rate_a
+                    _zs = np.array([_a * np.log(_w) + (1.0 - _a) * np.log(_ext)])
+                else:
+                    _zs = None
+                if _zs is not None or self._scale_rate_kf_initialized:
+                    (self._scale_rate_kf_x, self._scale_rate_kf_P,
+                     self._scale_rate_kf_prev_t, self._scale_rate_kf_initialized) = _kf_step(
+                        self._scale_rate_kf_x, self._scale_rate_kf_P,
+                        self._scale_rate_kf_prev_t, self._scale_rate_kf_initialized,
+                        _zs, _t, self._scale_rate_kf_q, self._scale_rate_kf_r,
+                        dt_unc_max=self._wloom_kf_dt_unc_max)
+                _srate = (float(-self._scale_rate_kf_x[0, 1])
+                          if self._scale_rate_kf_initialized else np.nan)
+            except Exception:
+                _srate = np.nan   # never let a diagnostic-only signal take down real logging
+            self._scale_loom_rate_log.append(_srate)
             # Center px as simple tuple
             if self._center_px is not None:
                 self._center_px_log.append(tuple(float(x) for x in self._center_px))
@@ -3219,6 +3280,12 @@ class CrossMarkerNode(Thread):
                                                                   # Tz-like d(ln width)/dt via a dedicated
                                                                   # KF -- see __init__'s _wloom_kf_* comment.
                                                                   # Not yet validated for control use.
+            "Scale Loom Rate": self._perception._scale_loom_rate_log,  # 2026-09-09: SHADOW-MODE
+                                                                  # Tz-like -d/dt [0.3*ln(width)+0.7*ln(extent_px)]
+                                                                  # via a gentler KF -- see __init__'s
+                                                                  # _scale_rate_* comment. corr w/ GT loom
+                                                                  # ~0.90 (>2m) / ~0.80 (0.5-2m), ~0 <0.5m.
+                                                                  # Not consumed by control (SITL-gated step).
             "Loom R Mult": self._perception._loomr_log,   # 2026-09-03: applied r[2] multiplier (1.0 = schedule off/inert)
             "Center Px": self._perception._center_px_log,
             # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired

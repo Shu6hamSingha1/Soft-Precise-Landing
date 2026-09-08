@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T16:43:44.004Z
+  modified: 2026-09-08T18:55:41.413Z
 ---
 
 ## Context / goal
@@ -497,3 +497,37 @@ as a new, separate KF channel -- same machinery `_hw_kf_x`/`_hw_kf_P` already us
 (or standalone) channel. Validate the resulting rate against GT loom the same way every other
 candidate was validated this session (corr with `gt_optical_flow.py`'s `loom` field) before
 considering it for anything beyond shadow-mode logging.
+
+### ✅ RATE signal made usable via EXTENT FUSION (2026-09-09, next session) — SHADOW-MODE landed
+Followed up the "needs a new idea" verdict. Re-diagnosed on the 7 OverfillCapture reps (real
+detector replay, FIXED `gt_optical_flow.py`), scripts in scratchpad `diag_wloom_{rate,drift,gray,v3,v4}.py`:
+- **Terminal loss is NOT lag** — GT-loom-shift sweep (τ=0..0.2s) shows corr *decreasing* with τ, flat.
+  The <0.5m signal is genuinely gone (frame saturates, both scale observables pin), not delayed.
+- **NOT mask binarisation** — a grayscale half-max sub-pixel scan vs the binary-mask walk was a
+  wash (static R² and residual autocorr unchanged).
+- **NOT regressable** — static `ln(width)` fit residual has autocorr 0.5-0.9 (slow drift) and is
+  NOT explained by tilt / MARKER_EXTENT_PX / centroid-offset / n-corners individually. It's
+  residual point-set-churn × perspective in the `line_points` scan (same no-fixed-point-identity
+  architecture fact as origin_ratio).
+- **Const-acceleration (3-state) KF: worse** (0.02-0.12) — 3rd state amplifies noise. Rejected.
+- **THE FIX: fuse `MARKER_EXTENT_PX` (a second, smoother 1/z observable from the same detector)
+  with width in log-space BEFORE a *gentle* CV-KF derivative.**
+  `scale_z = 0.3*ln(width) + 0.7*ln(extent_px)` (both FRESH & >0, else predict-only coast);
+  `rate = -d/dt scale_z` via `_kf_step`, **Q=1.5 R=0.03** (gentler than the width KF's Q=10/R=0.005
+  — extent is smoother, wants less aggressive filtering). The constant width↔extent unit ratio
+  drops out of the derivative, so NO online median-matching needed — `ln(extent_px)` used raw.
+  a=0.3 (not extent-only a=0) purely for worst-rep robustness (min >2m 0.77 vs 0.68).
+- **Validation (corr with GT loom, 7 reps, real-detector replay):**
+  **>2m band mean 0.90 / worst-rep 0.77 ; 0.5-2m band mean 0.80 / worst-rep 0.68 ; <0.5m ~0
+  (mean -0.01), fails SAFE toward 0** (unlike the pinv h_z which spikes to +5.6 / logged h_V[:,2]
+  to 25 in exactly this window). Per-rep >2m all ≥0.77, 0.5-2m all ≥0.68. This is a usable loom
+  estimate for the 7m→0.5m portion of the descent — the majority of it.
+- **LANDED shadow-mode** in `cross_marker_perception.py` (backup:
+  `Obsolete/src/cross_marker_perception_pre_scalerate_20260909.py`): new `_scale_rate_*` KF in
+  `__init__` (env `CROSS_SCALE_RATE_A` / `_KF_Q` / `_KF_R`), stepped in `process_frame` right after
+  the width-loom-rate block, exposed via `getLogData()` as **`"Scale Loom Rate"`**. +67 lines,
+  purely additive, consumed by NO control path. SITL not running when edited (checked).
+- **STILL SHADOW-MODE.** Wiring into `h_z` (inverse-variance blend with pinv, or spike-veto on
+  pinv in the 0.5-2m band) is a SEPARATE, SITL-GATED step — not done. Off-center validation so
+  far only IC2-5 *static-start* OverfillCapture reps; a fresh real off-center flight capture with
+  `IMG_RECORD=1` is still owed before promotion.
