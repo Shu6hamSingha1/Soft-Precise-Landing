@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T08:56:14.349Z
+  modified: 2026-09-08T12:55:49.931Z
 ---
 
 ## Context / goal
@@ -213,6 +213,45 @@ Unlike `alpha`'s genuine bug, width does not need `_getVirtualPts` leveling base
 tested this session. The endpoint-leveling code from this check was NOT ported into
 `width_loom_from_detection` (no evidence it's needed); flag as revisit-if-a-future-check-on-a-
 higher-tilt-mid-descent-window (not just terminal-touchdown-contact) finds something real.
+
+### ⛔ REGRESSION found + mitigated same day (2026-09-08, reported by 2 independent sessions)
+The `origin_ratio` double-gate fix above CRASHED every off-center IC (IC2/IC3/IC5). Root
+cause: `origin_ratio = M0/||c0||^2` where `c0` = tracked points' mean normalized position =
+the marker's real angular offset from the image principal point. Off-center approaches have
+large `c0` FROM T=0 by construction (nothing to do with point-spread health), so
+`origin_ratio` reads persistently low the ENTIRE descent, not just during a real collapse.
+The restructuring above turned this into a hard veto (r[2] *= 1e6, KF predict-only) --
+correct for the brief centered-IC1 terminal transient it was tuned on, but catastrophic
+when the SAME low-but-STABLE value persists for a whole off-center approach: h_z froze at
+init value the whole descent (measured: IC5 h_z std 0.034 vs 0.13 pre-fix over a 3.0->0.14m
+descent) -> unbraked open-loop descent -> crash (0.65-19m miss, up to 7.2 m/s impact, 3/3
+off-center ICs, 12/12 correlation across both reporting sessions).
+
+**Attempted fix (relative-drop + streak gating):** veto only on a RELATIVE fall from a slow
+EMA baseline (matching the actual failure SHAPE, not the raw absolute value) + require the
+drop to persist N consecutive frames (noise-debounce). Implemented
+(`_origin_ratio_ema`/`CROSS_ORIGIN_RATIO_DROP_THRESH`/`_EMA_TAU`/`_DROP_STREAK`). Directly
+verified via synthetic test: off-center-stable(0.3) -> 0 vetoes; reference-collapse-shape
+(healthy plateau -> 1.8->0.15 over 15 frames -> sustained) -> 0/100 healthy, 15/15 collapse,
+50/50 sustained-after. BUT on REAL centered-IC1 data, a plain 3-frame streak still
+over-fired (78-160 vetoes vs the original fix's 14-100, `origin_ratio` is genuinely noisy
+frame-to-frame even when healthy -- observed 0.86/1.47/4.17/1.08 swings on a real successful
+landing earlier this session) and raising the streak to 8 to quiet that noise let a real,
+SHORTER-than-8-frame collapse on rep3 through UNVETOED (h_z reached 9.32, worse than any
+prior state). **This is a genuine, unresolved noise-vs-sensitivity tension that centered-
+only data cannot resolve** -- needs real off-center flight data (which this session doesn't
+have locally) to tune properly, not more blind iteration against centered reps.
+
+**Decision taken under time pressure (another session blocked):** `CROSS_TZ_VETO_R_MULT`
+DEFAULT CHANGED 1e6 -> **1.0 (no-op)**. This makes the veto mechanism inert by default --
+restores the exact pre-c3a46d1a data flow for Tz (pinv value passes through the KF
+unmodified when origin_ratio fails, same as before this whole fix existed). The improved
+relative-drop/streak DETECTION logic is kept in the code (computed, logged via the
+`_tz_unreliable_this_solve` flag path) but doesn't DO anything by default until
+`CROSS_TZ_VETO_R_MULT` is explicitly raised again. ⚠ **DO NOT re-enable
+(`CROSS_TZ_VETO_R_MULT>1`) without a fresh SITL gate covering BOTH a real off-center IC
+(IC2/IC3/IC5) AND a rep that reproduces something like the original centered collapse** --
+neither alone is sufficient, per the tension found above.
 
 ### Remaining genuinely open item (not started)
 Turning width into a CONTROL-READY RATE signal (`d(ln width)/dt`, Tz-like) -- decided to use a

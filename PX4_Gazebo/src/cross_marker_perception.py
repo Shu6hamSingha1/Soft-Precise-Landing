@@ -1191,7 +1191,46 @@ class CrossMarkerPerception:
         # KF predict-only on the Tz channel specifically), not just switch which
         # one gets consumed.
         self._tz_unreliable_this_solve = False
-        self.CROSS_TZ_VETO_R_MULT = float(os.environ.get("CROSS_TZ_VETO_R_MULT", "1e6"))
+        # ⛔ DEFAULT-OFF (1.0 = no-op) as of the SAME-DAY regression fix below -- this
+        # was 1e6 for a few hours and caused a confirmed off-center crash regression
+        # (see the next comment block). The relative-drop/streak gating added since
+        # reduces but has NOT been proven to eliminate the risk (re-testing on
+        # CENTERED-only data after the streak fix still shows a real, sub-streak-length
+        # collapse getting MISSED on one rep -- h_z reached 9.3 -- when the streak bar
+        # is raised enough to quiet noise-driven false triggers on stable geometry;
+        # this trade-off needs real off-center flight data to resolve properly, not
+        # more blind tuning against centered-only reps). Set to 1e6 (or higher) only
+        # after validating on both a real off-center IC and the reference collapse.
+        self.CROSS_TZ_VETO_R_MULT = float(os.environ.get("CROSS_TZ_VETO_R_MULT", "1.0"))
+        # ⛔ REGRESSION FOUND + FIXED SAME DAY (2026-09-08, two independent SITL sessions,
+        # 12/12 correlation): the ABSOLUTE threshold above (`origin_ratio < 1.0`) was
+        # tuned ONLY on the centered-IC1 terminal transient (1.8->0.15 over ~0.3s). It
+        # was never checked off-center. `c0` (the tracked points' mean normalized
+        # position) is the marker's angular offset from the image principal point --
+        # for an OFF-CENTER approach (IC2/IC3/IC5, start (+-2,2)) `c0` is large FROM
+        # T=0 by construction, regardless of point-spread health, so origin_ratio
+        # reads persistently low the ENTIRE descent, not just during a real collapse.
+        # Turning that into a hard veto (this file's r[2] *= CROSS_TZ_VETO_R_MULT)
+        # froze h_z for the whole off-center approach (measured: IC5 h_z std 0.034 vs
+        # 0.13 pre-fix) -> unbraked open-loop descent -> crash (0.65-19m, up to
+        # 7.2 m/s impact, 3/3 off-center ICs). Fix: veto on a RELATIVE DROP from a
+        # slow EMA baseline (matching the actual validated failure SHAPE -- a fast
+        # decay, not a persistently-low value), not the raw absolute ratio -- see
+        # _origin_ratio_ema below and its use in _solve_jacobian.
+        self._origin_ratio_ema = None
+        self._origin_ratio_drop_streak = 0
+        self.CROSS_ORIGIN_RATIO_DROP_THRESH = float(os.environ.get("CROSS_ORIGIN_RATIO_DROP_THRESH", "0.3"))
+        self.CROSS_ORIGIN_RATIO_EMA_TAU = float(os.environ.get("CROSS_ORIGIN_RATIO_EMA_TAU", "1.0"))
+        # PERSISTENCE REQUIREMENT (2026-09-08, same-day follow-up): a raw single-frame
+        # relative-drop check alone was found to OVER-fire on real centered-IC1 data --
+        # origin_ratio is itself noisy frame-to-frame even under healthy tracking
+        # (observed swinging e.g. 0.86/1.47/4.17/1.08 between consecutive frames in a
+        # successful landing), so a lone dip below threshold*EMA can be pure noise
+        # against a recently-high EMA, not a real collapse. Require the drop to PERSIST
+        # for CROSS_ORIGIN_RATIO_DROP_STREAK consecutive frames before vetoing -- the
+        # reference failure's actual collapse (1.8->0.15 over ~0.3s = ~15 frames @50Hz)
+        # comfortably clears a small streak requirement; single-frame noise doesn't.
+        self.CROSS_ORIGIN_RATIO_DROP_STREAK = int(os.environ.get("CROSS_ORIGIN_RATIO_DROP_STREAK", "8"))
         # TERMINAL h_x/h_y via CENTROID-RATE (2026-08-28, DEFAULT ON -- perception
         # change: changes how h is COMPUTED, not the control law). Root-cause
         # (project_20260827 memory 2026-08-28 h-correlation dig): near touchdown
@@ -1903,21 +1942,42 @@ class CrossMarkerPerception:
                     # MIN_FLOW_POINTS_SOLVE, or the MAD-valid subset didn't clear it, or
                     # M0/M1 degenerate) -- hold the pinv-solved Tz unmodified, same as
                     # the pre-existing behavior below the old moment_min_pts floor.
-        elif origin_ratio < min_origin_ratio:
-            # FIX (2026-09-08, see __init__'s _tz_unreliable_this_solve comment): this
-            # used to silently fall through to the pinv-solved sol[2] below, which is
-            # corrupted by the SAME degenerate point geometry this check just detected
-            # (both are position-weighted-column estimators). Flag it instead of
-            # trusting either -- _kf_update_hw inflates r[2] this frame (predict-only
-            # on Tz specifically) rather than correcting against a value we've just
-            # proven has no real signal.
-            self._tz_unreliable_this_solve = True
-        elif len(prev_n) >= moment_min_pts:
-            # Geometry is adequate (origin_ratio passed) AND there are enough points
-            # for the mean-based moment estimate to have its intended averaging
-            # benefit (moment_min_pts's own, separate concern -- see its comment
-            # above) -- trust the moment-loom Tz over the joint pinv value.
-            sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
+        else:
+            # RELATIVE-DROP VETO (2026-09-08, same-day fix -- see __init__'s
+            # _origin_ratio_ema comment for the regression this replaces). The veto
+            # fires on a fast RELATIVE fall from a slow EMA baseline (matching the
+            # validated failure SHAPE, 1.8->0.15 in ~0.3s), not on the raw absolute
+            # value -- an off-center approach has a persistently low but STABLE
+            # origin_ratio (c0 is the marker's real angular offset, large by
+            # construction, regardless of point-spread health) and must NOT trip
+            # this; only an actual collapse relative to recent history should.
+            _prev_ema = self._origin_ratio_ema
+            if _prev_ema is None:
+                self._origin_ratio_ema = origin_ratio
+                _below = False   # no baseline yet -- don't count the bootstrap frame
+            else:
+                _below = origin_ratio < self.CROSS_ORIGIN_RATIO_DROP_THRESH * _prev_ema
+                _alpha = 1.0 - np.exp(-max(dt, 1e-3) / max(self.CROSS_ORIGIN_RATIO_EMA_TAU, 1e-3))
+                self._origin_ratio_ema = (1.0 - _alpha) * _prev_ema + _alpha * origin_ratio
+            self._origin_ratio_drop_streak = (self._origin_ratio_drop_streak + 1) if _below else 0
+            _dropped = self._origin_ratio_drop_streak >= self.CROSS_ORIGIN_RATIO_DROP_STREAK
+            if _dropped:
+                # FIX (2026-09-08, see __init__'s _tz_unreliable_this_solve comment): this
+                # used to silently fall through to the pinv-solved sol[2] below, which is
+                # corrupted by the SAME degenerate point geometry this check just detected
+                # (both are position-weighted-column estimators). Flag it instead of
+                # trusting either -- _kf_update_hw inflates r[2] this frame (predict-only
+                # on Tz specifically) rather than correcting against a value we've just
+                # proven has no real signal.
+                self._tz_unreliable_this_solve = True
+            elif origin_ratio >= min_origin_ratio and len(prev_n) >= moment_min_pts:
+                # ABSOLUTE threshold, UNCHANGED from the original 2026-08-13 tuning --
+                # this one only decides whether the MOMENT ESTIMATE specifically gets
+                # trusted (its own math needs real spread-relative-to-origin signal,
+                # not just "no recent collapse"), not whether to veto. An off-center
+                # approach that never clears this simply keeps using pinv, exactly the
+                # pre-c3a46d1a/pre-restructuring behavior for that case.
+                sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
         # else: origin_ratio passed but point count is below moment_min_pts -- hold
         # the pinv-solved Tz (origin_ratio only vetoes BAD geometry; it doesn't by
         # itself certify pinv as trustworthy, but there's no better alternative
