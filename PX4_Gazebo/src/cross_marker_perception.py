@@ -1166,9 +1166,8 @@ class CrossMarkerPerception:
         # saturates, both observables pin, the rate decays toward 0 (fails SAFE, unlike
         # the pinv h_z which spikes). a=0.3 chosen over a=0 (extent-only) purely for
         # worst-rep robustness (min >2m 0.77 vs 0.68, min <0.5m -0.17 vs -0.49).
-        # STILL SHADOW-MODE: logged as "Scale Loom Rate", consumed by NO control path.
-        # Wiring it into h_z (inverse-variance blend / spike-veto on pinv in the
-        # 0.5-2m band) is a SEPARATE, SITL-GATED step -- do not promote without a gate.
+        # Logged as "Scale Loom Rate". CONSUMED as a second measurement of h_z since
+        # 2026-09-09 -- see the _scale_fuse_* block just below.
         self._scale_rate_a = float(os.environ.get("CROSS_SCALE_RATE_A", "0.3"))
         self._scale_rate_kf_q = float(os.environ.get("CROSS_SCALE_RATE_KF_Q", "1.5"))
         self._scale_rate_kf_r = float(os.environ.get("CROSS_SCALE_RATE_KF_R", "0.03"))
@@ -1176,7 +1175,36 @@ class CrossMarkerPerception:
         self._scale_rate_kf_P = np.tile(np.eye(2) * 1.0, (1, 1, 1))
         self._scale_rate_kf_prev_t = None
         self._scale_rate_kf_initialized = False
+        self._scale_rate_measured_this_frame = False   # set in _log_frame_data: True iff
+                                                        # BOTH width+extent were fresh -> the
+                                                        # scale KF took a real correction, not a coast
         self._scale_loom_rate_log = []   # Tz-like -d(scale_z)/dt estimate, NaN before init
+
+        # SCALE-RATE -> h_z FUSION (2026-09-09, DEFAULT-ON). Promotes the shadow signal
+        # above into the perception's actual loom estimate: a SECOND sequential KF
+        # correction on the hw-KF's loom channel (_hw_kf_x[2]) in _kf_update_hw, using
+        # the extent-fused scale-rate as an independent measurement of h_z. It is a
+        # perception-ESTIMATOR change (controller.py untouched -- it still just reads
+        # getOptFlowAngVel()[2]). Rationale: the pinv/moment Tz that primarily feeds
+        # this channel goes ill-conditioned and SPIKES (+5.6 while GT was +0.6) as the
+        # marker overfills the frame and tracked points lose spread; the scale-rate is
+        # structurally immune (measures a physical size, no point-identity dependence)
+        # and validated 0.84-0.98 corr with GT loom in the mid-descent band, live AND
+        # offline across IC1-4. Guards (in _kf_update_hw): scale KF initialised AND it
+        # took a real measurement this frame (skip when it's coasting at deep overfill /
+        # detect-miss -- a collapsing terminal estimate must never drag h_z); the hw-KF
+        # not frozen; |scale_rate| <= clamp (rejects IC5-style excursions -- IC5 breaks
+        # the signal, a separate unsolved blocker). Corrects the VALUE only (H=[1,0]);
+        # the rate state is left to the main KF. scale_rate is on the CALIBRATED loom
+        # scale (validated vs gt_optical_flow.loom) whereas _hw_kf_x is RAW, so it is
+        # divided by the h_z cal gain _sensor_cal_hw[2,2] before fusing.
+        # CROSS_SCALE_RATE_FUSE=0 fully restores the prior (shadow-only) behaviour.
+        self._scale_fuse_on = os.environ.get("CROSS_SCALE_RATE_FUSE", "1") == "1"
+        self._scale_fuse_r = float(os.environ.get("CROSS_SCALE_FUSE_R", "0.05"))
+        self._scale_fuse_clamp = float(os.environ.get("CROSS_SCALE_FUSE_CLAMP", "1.0"))
+        self._scale_fuse_log = []   # per-frame: applied scale-rate pseudo-measurement
+                                     # on the RAW loom scale, or NaN when the fusion
+                                     # didn't fire (guard failed / disabled).
 
         # 2026-08-05: parity fields ported from img_data.py's IMG_PROCESSOR getLogData()
         # (see that class's own field list) -- everything here has a direct, generic
@@ -1536,6 +1564,25 @@ class CrossMarkerPerception:
                 self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
                     self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, None, t,
                     self._hw_kf_q_vec, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
+        # SCALE-RATE -> h_z FUSION (see __init__'s _scale_fuse_* comment). A second
+        # sequential scalar KF correction on the loom channel only, applied to BOTH the
+        # measurement and coast branches above (helps even when the flow solve failed
+        # but the marker size is still tracking). Skipped when the hw-KF is frozen
+        # (deliberate marker-loss hold -- do NOT mutate the shared frozen array), when
+        # the scale KF is coasting, or on an out-of-clamp excursion.
+        _sfz = np.nan
+        if (self._scale_fuse_on and self._hw_kf_initialized and self._hw_kf_frozen is None
+                and self._scale_rate_kf_initialized and self._scale_rate_measured_this_frame):
+            sr = float(-self._scale_rate_kf_x[0, 1])
+            if np.isfinite(sr) and abs(sr) <= self._scale_fuse_clamp:
+                c2 = self._sensor_cal_hw[2, 2] or 1.0
+                z_sr = sr / c2                                  # calibrated -> raw loom scale
+                S = self._hw_kf_P[2, 0, 0] + self._scale_fuse_r
+                K = self._hw_kf_P[2, :, 0] / S
+                self._hw_kf_x[2] = self._hw_kf_x[2] + K * (z_sr - self._hw_kf_x[2, 0])
+                self._hw_kf_P[2] = self._hw_kf_P[2] - np.outer(K, self._hw_kf_P[2, 0, :])
+                _sfz = z_sr
+        self._scale_fuse_log.append(_sfz)
         # Not-yet-initialized (no real measurement ever seen): fall back to
         # zeros, same as the pre-fix behavior -- there is nothing to coast
         # from before the first real observation, this is not a regression.
@@ -2805,8 +2852,15 @@ class CrossMarkerPerception:
                         dt_unc_max=self._wloom_kf_dt_unc_max)
                 _srate = (float(-self._scale_rate_kf_x[0, 1])
                           if self._scale_rate_kf_initialized else np.nan)
+                # Gate for the h_z fusion in _kf_update_hw (see __init__'s _scale_fuse_*
+                # comment): True only when the scale KF took a REAL correction this
+                # frame (both observables fresh), not a predict-only coast. Read on the
+                # NEXT frame's _kf_update_hw (which runs before this log call) -- a
+                # deliberate 1-frame lag (~26 ms @ 38 Hz).
+                self._scale_rate_measured_this_frame = (_zs is not None)
             except Exception:
                 _srate = np.nan   # never let a diagnostic-only signal take down real logging
+                self._scale_rate_measured_this_frame = False
             self._scale_loom_rate_log.append(_srate)
             # Center px as simple tuple
             if self._center_px is not None:
@@ -3280,12 +3334,16 @@ class CrossMarkerNode(Thread):
                                                                   # Tz-like d(ln width)/dt via a dedicated
                                                                   # KF -- see __init__'s _wloom_kf_* comment.
                                                                   # Not yet validated for control use.
-            "Scale Loom Rate": self._perception._scale_loom_rate_log,  # 2026-09-09: SHADOW-MODE
+            "Scale Loom Rate": self._perception._scale_loom_rate_log,  # 2026-09-09:
                                                                   # Tz-like -d/dt [0.3*ln(width)+0.7*ln(extent_px)]
                                                                   # via a gentler KF -- see __init__'s
                                                                   # _scale_rate_* comment. corr w/ GT loom
                                                                   # ~0.90 (>2m) / ~0.80 (0.5-2m), ~0 <0.5m.
-                                                                  # Not consumed by control (SITL-gated step).
+                                                                  # FUSED into h_z since 2026-09-09 (default-on,
+                                                                  # CROSS_SCALE_RATE_FUSE=0 to disable).
+            "Scale Fuse Z": self._perception._scale_fuse_log,      # 2026-09-09: scale-rate pseudo-measurement
+                                                                  # actually applied to the RAW loom channel
+                                                                  # that frame (NaN when the fusion didn't fire).
             "Loom R Mult": self._perception._loomr_log,   # 2026-09-03: applied r[2] multiplier (1.0 = schedule off/inert)
             "Center Px": self._perception._center_px_log,
             # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
