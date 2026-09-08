@@ -581,7 +581,18 @@ class Controller(Thread):
         # Computed UNCONDITIONALLY (cheap; lets the ASMC path run alongside for offline
         # comparison even when this law isn't driving the output) -- gate only the
         # APPLICATION in _attCtrl.
-        self._yaw_rate_law = os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
+        # Gated to MARKER_TYPE=cross: validated only there (BODY_YAW_ALPHA_K=-1.0,
+        # CROSS_ALPHA_0, the cross-marker w_iz calibration). The ArUco alpha
+        # convention (-0.949) and its stale w_z cal are UNtested with this law.
+        self._yaw_rate_law = (os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
+                              and MARKER_TYPE == "cross")
+        if os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1" and MARKER_TYPE != "cross":
+            print("[Controller] ⚠ PLASMC_YAW_RATE_LAW ignored — validated for MARKER_TYPE=cross only")
+        # ⚠ COMPANION CONFIG (the validated bundle): PLASMC_YAW_RATE_LAW=1 was
+        # gated stationary IC1-5 n=5 (24/25) ONLY with FLOW_KF_Q_WZ=1.0 +
+        # PLASMC_YAW_RL_WZ_SCALE=2.5. Those are NOT baked (FLOW_KF_Q_WZ default
+        # would change the shared w_z KF for the ASMC lateral path too; WZ_SCALE
+        # compensates a cal deficit pending a recal). Run this law WITH that bundle.
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
         # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-09: unified on manuscript) ──
@@ -629,16 +640,22 @@ class Controller(Thread):
         # project_yaw_rate_law_sign_bug_and_validation.md ("Real perception: NOT
         # yet safe"). GT-feedback w_z is exact and never triggers this. When w_z
         # is judged untrustworthy the law FREEZES its own integrator (holds the
-        # last good yaw-rate command + freezes ie_a); the overfill window is the
-        # final <1 s and, if the law tracked during the approach, e_a is already
-        # small so a frozen near-zero rate is the correct terminal behaviour.
-        # (A blend toward the ASMC path is the alternative the memory notes;
-        # freeze is the lower-risk first cut.) Two independent triggers, OR'd:
-        #   (a) rate guard   -- |w_z| exceeds a plausible physical yaw rate
-        #   (b) overfill     -- MARKER_EXTENT_PX is BOTH near its running max AND
-        #                       large in absolute px (the "stable near-full-size"
-        #                       proximity signature already used in this file).
+        # last good yaw-rate command + freezes ie_a).
+        #   (a) rate guard  (always on) -- |w_z| exceeds a plausible physical yaw
+        #       rate. This is the LOAD-BEARING trigger: overfill corruption drives
+        #       w_z LARGE (it tracks MARKER_EXTENT_PX past ~1 rad/s on a
+        #       non-rotating target), so the rate guard catches it at the moment
+        #       it actually manifests.
+        #   (b) overfill proximity (2026-09-09: DEFAULT OFF, PLASMC_YAW_RL_GATE_EXTENT).
+        #       MARKER_EXTENT_PX near its running max AND large in absolute px.
+        #       This fired ~1-2 s before touchdown (alt ~0.8 m), i.e. BEFORE w_z
+        #       was actually corrupted, freezing a legitimate non-zero command ->
+        #       the drone kept yawing uncorrected -> terminal e_a drifted to
+        #       +-15-30 deg (a gate-freeze artifact, not a gain deficit). And a
+        #       frozen non-zero command is wrong for a turning target (must keep
+        #       yawing at ~omega_t to touchdown). Kept as an opt-in lever.
         self._yaw_rl_gate = os.environ.get("PLASMC_YAW_RL_GATE", "1") == "1"
+        self._yaw_rl_gate_extent = os.environ.get("PLASMC_YAW_RL_GATE_EXTENT", "0") == "1"
         self._yaw_rl_wz_max = float(os.environ.get("PLASMC_YAW_RL_WZ_MAX", "0.9"))
         self._yaw_rl_ext_frac = float(os.environ.get("PLASMC_YAW_RL_EXT_FRAC", "0.9"))
         self._yaw_rl_ext_abs = float(os.environ.get("PLASMC_YAW_RL_EXT_ABS", "280.0"))
@@ -3281,7 +3298,8 @@ class Controller(Thread):
             self._yaw_rl_ext_max = _ext_now
         _wz_untrusted = self._yaw_rl_gate and (
             abs(_wz) > self._yaw_rl_wz_max
-            or (self._yaw_rl_ext_max > 0.0
+            or (self._yaw_rl_gate_extent
+                and self._yaw_rl_ext_max > 0.0
                 and _ext_now >= self._yaw_rl_ext_frac * self._yaw_rl_ext_max
                 and _ext_now >= self._yaw_rl_ext_abs))
         self._yaw_rl_gated.append(1.0 if _wz_untrusted else 0.0)
@@ -4091,6 +4109,7 @@ class Controller(Thread):
             "YAW_RL_WZ_SIGN": float(self._yaw_rl_wz_sign),
             "YAW_RL_WZ_SCALE": float(self._yaw_rl_wz_scale),
             "YAW_RL_GATE": bool(self._yaw_rl_gate),
+            "YAW_RL_GATE_EXTENT": bool(self._yaw_rl_gate_extent),
             "YAW_RL_WZ_MAX": float(self._yaw_rl_wz_max),
             "YAW_RL_EXT_FRAC": float(self._yaw_rl_ext_frac),
             "YAW_RL_EXT_ABS": float(self._yaw_rl_ext_abs),

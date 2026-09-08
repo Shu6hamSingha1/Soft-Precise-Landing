@@ -1,16 +1,81 @@
 ---
 name: project-yaw-rate-law-sign-bug-and-validation
-description: "PLASMC_YAW_RATE_LAW (new yaw control, direct integrator on w_z bypassing psi_d/e_R) — a real actuation-chain sign bug was found+fixed via measurement; GT-feedback validation is a clean win INCLUDING beyond the old sin(dpsi) ceiling; real-perception is NOT yet safe (w_z inherits terminal-overfill corruption) — needs a confidence gate next."
+description: "PLASMC_YAW_RATE_LAW (direct body-yaw-rate integrator d(w_u2)/dt = k_p*e_a + w_z, bypasses psi_d/e_R). FINAL STATE 2026-09-09: mechanism finalized+validated, stays DEFAULT OFF. Beats the ASMC on turning targets (ASMC e_R[2]=sin(dpsi) caps |w_u2| at 0.5 rad/s -> runaway; new law commands the rate directly). Two sign bugs fixed frame-derived (actuation-chain inversion; w_z convention unified on manuscript, WZ_SIGN retired). Best config FLOW_KF_Q_WZ=1.0 + WZ_SCALE=2.5: stationary IC1-5 n=5 = 24/25 land. Gate = |w_z|>0.9 only. Open: WZ_SCALE recal, turning-target lateral limit cycle, alpha terminal-overfill, ASMC removal. Read the FINAL STATE block first."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T18:42:18.698Z
+  modified: 2026-09-08T21:19:52.505Z
 ---
 
-**STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
-VALIDATED (clean win, including beyond the old ceiling), REAL-PERCEPTION NOT YET SAFE (known,
-diagnosed cause). This is the natural pick-up point for a new session.**
+## ═══ FINAL STATE (2026-09-09) — READ THIS FIRST ═══
+
+**`PLASMC_YAW_RATE_LAW` — mechanism finalized & validated; stays DEFAULT OFF (opt-in).**
+Dated sections below = detailed log; this is the authoritative summary.
+
+### Controller (when `PLASMC_YAW_RATE_LAW=1`)
+- Direct body-yaw-rate integrator: `d(w_u[2])/dt = k_p·e_a + w_z_eff − k_i·ie_a`
+  (`k_p=0.3`, `k_i=0`, `w_z_eff = WZ_SIGN·WZ_SCALE·w_iz`).
+- Bypasses `psi_d`/`e_R[2]`/`−K_R·sin(Δψ)` for yaw. `_attCtrl` sets `psi_d := yaw_c` (measured
+  yaw, alpha-derived by default) so `e_R[2] ≈ 0` and `R_d`'s heading basis stays valid for the
+  roll/pitch IK; then `w_u[2] = _yaw_rl_cmd[-1]` overrides. Roll/pitch = unchanged geometric SO(3).
+- `w_iz = self._w_i[-1][2]` (calibrated cross-marker flow-lstsq col-5; also feeds the lateral
+  `cross(w_i,s)`/c-term unconditionally). `w_x,w_y` zeroed; `w_iz` always kept.
+- `+w_z` = a free implicit target-rate feedforward (`w_z = ω_t,z − ψ̇_b`; cancels `ω_t,z` inside
+  `w_u[2]` without estimating it).
+
+### Why it beats the ASMC (the deliverable) — [[feedback_yaw_rate_law_vs_asmc_mechanism]]
+ASMC routes its rate cmd through `e_R[2] = sin(Δψ)` — bounded AND non-monotonic → hard-caps
+`|w_u[2]| ≤ K_R_yaw = 0.5 rad/s`, collapses past Δψ=90° → runaway. Can't lift by raising `K_R_yaw`
+(slow 287 ms yaw loop). New law commands the rate directly (clamp ±2.0). GT-FB turning gate
+(27°/s spin): new law holds `e_a` 1–4°; ASMC → −200°. STATIONARY: both work (ceiling never binds)
+— new law is NOT a clear stationary win.
+
+### Sign correctness (both bugs frame-derived, not tuned)
+1. Actuation chain inverted — `w_u[2]=+2` achieves −2.03 rad/s. Baked into the `+w_z` form. Found
+   by MEASURING GT yaw rate.
+2. `w_z` convention unified on manuscript (2026-09-09). `α̇ = −ψ̇_b,NED = w_z,manuscript` (Jabbari
+   Asl eq 22) → `e_a_dot = +w_z`. `gt_feedback.py:246` now `+_slope` (`= +w_z,manuscript`, matches
+   perception `w_iz`, `s_wz=+0.587`); empirical `WZ_SIGN` split RETIRED (default +1, env override
+   kept). `− w_z_gtfb_old ≡ + w_z_manuscript` → yaw-path bit-identical (pure relabel). Validated
+   n=1 GT-FB. `feedback_gtfb_wz_sign_bug.md` stamped partially-superseded.
+
+### Config (best known)
+- `FLOW_KF_Q_WZ=1.0` (per-channel process noise, `5796816d`) — `w_z` is NOISE-limited not
+  lag-limited (`Q_wz=10` WORST); 5× harder smoothing makes `WZ_SCALE=2.5` viable on IC5.
+- `WZ_SCALE=2.5` — compensates the ~3× lstsq-yaw-column attenuation. `WZ_SCALE` alone = REJECTED
+  (IC5 0/5).
+- `k_i` = DEAD END (monotonically worse 12.7°→29.4°; gate freezes `_yaw_rl_ie`).
+- Confidence gate = `|w_z| > 0.9` rate-guard ONLY (`bcee431c`). `MARKER_EXTENT_PX` overfill
+  trigger DROPPED (`PLASMC_YAW_RL_GATE_EXTENT`, default OFF) — fired ~1–2 s early → froze a
+  legit cmd → terminal drift. Rate-guard catches genuine overfill anyway. Validated: no spurious
+  freeze, no spin-up.
+
+### Results
+- Stationary IC1-5 n=5 (`FLOW_KF_Q_WZ=1.0 + WZ_SCALE=2.5`, `20260908-222553`): **24/25 land, 0 TL**,
+  tightest off-center (IC2 mean 0.069 m). IC5 4/5 (1 crash = terminal-1/Z, separate).
+- Turning-target yaw validated (above).
+- Terminal `e_a` residual: IC1 6.7° (after `bcee431c`); IC2-4 ~20° = **`alpha` FEATURE CORRUPTION
+  from terminal overfill** (`e_a` converges at 1.8 m then `alpha` drifts −16°→−35° as extent
+  saturates; ~10°/s, under `YAW_ALPHA_MAX_RATE`). Same class as the #1 `h_y`/`w_z` blocker, on
+  `alpha`. A PERCEPTION job, not a yaw fix.
+
+### Open / other threads
+- `WZ_SCALE` recal → fold gain into `s_wz` (re-derive cross-marker cal with `FLOW_KF_Q_WZ=1.0`,
+  then `WZ_SCALE→1.0`). Deferred: user-run phased cal flights + the recorder-double-filter Q.
+- Turning-target LATERAL limit cycle ([[project_rover_turning_open]], `PLASMC_AU_LEAD`) — gates
+  the law's real value (perfect yaw alone still lands turning off-center ~6 m off — rotating
+  `cross(w_i,s)`).
+- Real rover turning gate (all turning validation is GT-FB synthetic spin).
+- `alpha` terminal-overfill protection (the off-center residual).
+- ASMC/`psi_d`/CV-KF removal — `psi_d` degenerates to `:= yaw_c` (frame reference, not a setpoint);
+  keep ASMC as fallback until turning-target deployment proven.
+- Default-flip: no case yet.
+
+---
+
+**STATE 2026-09-05 (superseded — see FINAL STATE above): `PLASMC_YAW_RATE_LAW` exists, default OFF,
+GT-feedback VALIDATED, real-perception not yet safe.**
 
 ## The design (context: [[project_q8_omega_d_ff_fixes_ceiling]], [[project_q8_yaw_ff_harmful_with_headroom]])
 
@@ -531,3 +596,35 @@ frame-derived; `w_z` confidence gate built; stationary IC1-5 n=5 = 24/25 (best c
 k_i dead end; terminal residual = gate-freeze (fix = ramp-cmd→0, stationary-only). Remaining:
 WZ_SCALE recal (deferred); turning-target LATERAL limit cycle ([[project_rover_turning_open]]);
 ASMC/psi_d removal (keep as fallback). `PLASMC_YAW_RATE_LAW` stays default OFF.
+
+### 2026-09-09 — terminal-yaw fix: drop the overfill trigger from the w_z gate
+
+`PLASMC_YAW_RL_GATE_EXTENT` (default **OFF**). The `_wz_untrusted` gate's MARKER_EXTENT_PX
+overfill trigger is now opt-in; only the `|w_z| > WZ_MAX(0.9)` rate-guard fires by default.
+Rationale: overfill corruption drives `w_z` LARGE (tracks extent past ~1 rad/s), so the
+rate-guard catches it at the moment it manifests; the extent trigger fired ~1-2 s early
+(alt ~0.8 m) freezing a legitimate non-zero command → the drone kept yawing uncorrected →
+terminal `e_a` drifted to ±15-30° (gate-freeze artifact). A frozen non-zero command is also
+wrong for a turning target. One-line change (extent clause behind the flag); `_ext_max`
+tracking + frac/abs knobs kept for the opt-in path; recorded in `_resolvedConfig` as
+`YAW_RL_GATE_EXTENT`. Only affects `PLASMC_YAW_RATE_LAW=1` (default OFF). NEEDS a validation
+n=1 (residual shrinks + no terminal spin-up past the rate guard).
+
+### 2026-09-09 — terminal-yaw fix VALIDATED (n=1 IC1+IC2) — works; off-center residual is alpha overfill
+
+`bcee431c` (drop extent-overfill trigger). `test_data/ICValidation/20260909-024247`, best config,
+collision-clean:
+- **gated_frac = 0.00 both reps** (|w_z|max 0.17 ≪ 0.9) — extent trigger cleanly removed, gate
+  never fires spuriously; **no terminal spin-up** (cmd bounded ±0.23) — the |w_z| rate-guard alone
+  is sufficient.
+- **IC1 residual 13° → 6.7°** (removing the freeze lets the law correct to touchdown). Land 0.061 m.
+- **IC2 residual ~22° PERSISTS** — but the trace shows it's NOT gate/yaw-law: `e_a` is CONVERGED
+  (−0.9°) at alt 1.8 m, then jumps as `alpha` itself drifts −16° → −35° while MARKER_EXTENT_PX
+  saturates 276 → 318. = `alpha` feature corruption from TERMINAL OVERFILL (~10°/s smooth drift,
+  under the 17°/s YAW_ALPHA_MAX_RATE cap so `_yaw_hold` doesn't catch it). Same class as the #1
+  blocker (`h_y`/`w_z` overfill), now on `alpha`; asymmetric for off-center ICs. Land 0.026 m.
+
+**Verdict: KEEP `bcee431c`** (default: extent trigger OFF). Correct, improves IC1, no regression.
+The off-center terminal residual needs the `alpha` channel protected from overfill (a perception
+job, same as `h_y`/`w_z`), NOT a yaw-controller fix. `PLASMC_YAW_RL_GATE_EXTENT=1` restores the old
+trigger if ever wanted.

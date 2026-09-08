@@ -1180,6 +1180,22 @@ class CrossMarkerPerception:
                                                         # scale KF took a real correction, not a coast
         self._scale_loom_rate_log = []   # Tz-like -d(scale_z)/dt estimate, NaN before init
 
+        # ⛔⛔ SCALE-RATE -> h_z FUSION: CONFIRMED DEAD-END (2026-09-09). Tried THREE forms,
+        # all IC-gated in SITL, all regressed landings vs the clean pinv-only path
+        # (fuse-OFF baseline: xy ~0.017 m, rel_vel ~0.02):
+        #   (1) naive (r=0.05)                  -> 8 FAIL / 1 NOT_LANDED /13, rel_vel to 1.44
+        #   (2) + overfill gate (ext<=310)      -> same
+        #   (3) + affine de-bias (0.41*sr-0.22) + band-limit (150<=ext<=310) + r=0.3
+        #        -> rel_vel recovered (~0.24-0.38) but xy BLEW OUT on centered IC1
+        #           (0.146, 0.329 -- 2/2 FAIL, gate killed on the reject rule).
+        # The signal is genuinely well-correlated with GT loom in-band (0.84-0.98) but
+        # ANY perturbation of the live h_z estimate hurts -- h_z couples into the
+        # middle-loop SMC c-term -(h.e3)h and the sliding surface, and the pinv h_z is
+        # already good enough that there is nothing to gain. The shadow signal
+        # ("Scale Loom Rate") stays as a diagnostic; do NOT re-attempt feeding it into
+        # h_z without a fundamentally different consumer (not a KF measurement). The
+        # _scale_fuse_* machinery below is retained, flag default-OFF, for the record.
+        #
         # SCALE-RATE -> h_z FUSION (2026-09-09, DEFAULT-ON). Promotes the shadow signal
         # above into the perception's actual loom estimate: a SECOND sequential KF
         # correction on the hw-KF's loom channel (_hw_kf_x[2]) in _kf_update_hw, using
@@ -1198,10 +1214,44 @@ class CrossMarkerPerception:
         # the rate state is left to the main KF. scale_rate is on the CALIBRATED loom
         # scale (validated vs gt_optical_flow.loom) whereas _hw_kf_x is RAW, so it is
         # divided by the h_z cal gain _sensor_cal_hw[2,2] before fusing.
-        # CROSS_SCALE_RATE_FUSE=0 fully restores the prior (shadow-only) behaviour.
-        self._scale_fuse_on = os.environ.get("CROSS_SCALE_RATE_FUSE", "1") == "1"
-        self._scale_fuse_r = float(os.environ.get("CROSS_SCALE_FUSE_R", "0.05"))
+        # ⛔ DEFAULT FLIPPED BACK TO OFF (2026-09-09, `2a400929`+2 → this commit). Landed
+        # default-ON at user direction; the IC1-5 n=3 gate (`test_data/Multi_IC/
+        # 20260909-022319`, on `cd6dc57f`) REGRESSED HARD: 3 PRECISE-only / 1 SOFT+PRECISE
+        # / 8 FAIL / 1 NOT_LANDED (rel_vel to 1.44 m/s), vs a clean concurrent fuse-OFF
+        # gate on the SAME visibility_projection code minutes earlier (`test_data/
+        # ICValidation/20260909-021038`: IC2/3/4 all SOFT+PRECISE, xy ~0.017 m, rel_vel
+        # ~0.02). The V2 touchdown DETECTOR is untouched (it uses n_corners/extent/flow-
+        # freeze, never h_z — every gate rep latched via [overfill]/[flow-freeze]); the
+        # damage is to the DESCENT-RATE control that h_z regulates: scale_rate correlates
+        # 0.84-0.98 with GT loom but is not UNBIASED, and fusing it at r=0.05 (tight)
+        # biases the loom setpoint tracking → fast/erratic arrival. Machinery + shadow
+        # log + env flag all KEPT for future gated work; set CROSS_SCALE_RATE_FUSE=1 to
+        # re-enable, but it needs a real fix (unbias scale_rate, or a much looser r, or
+        # band-limit it away from the terminal) + a passing IC1-5 gate first.
+        #
+        # RETRY DESIGN (2026-09-09, `debias.py` on the 13 gate reps + 2 clean live reps).
+        # Regressing `GT_loom = a*scale_rate + b` per altitude band exposed WHY the naive
+        # fusion hard-landed: the bias is NOT a constant gain -- scale_rate over-reads the
+        # loom slope by ~2.4x in the .5-2m band (a~0.41) and by ~10x above 2m (a~0.10,
+        # engage-transient / KF-warmup: scale_rate large & noisy while true loom is ~0),
+        # plus a consistent -0.22 offset in the .5-2m band. Fused continuously at r=0.05
+        # that dragged h_z far too negative -> way-too-fast commanded descent from
+        # altitude. Three fixes, all behind the still-OFF flag:
+        #   1. BAND-LIMIT to the only regime with real signal: fuse only when
+        #      _scale_fuse_min_ext <= MARKER_EXTENT_PX <= _scale_fuse_max_ext (the .5-2m
+        #      band maps to ext ~150-290; above 2m ext<~150 and scale_rate is 10x hot).
+        #   2. AFFINE DE-BIAS with the pooled .5-2m fit: sr_deb = gain*sr + off
+        #      (0.41, -0.22) -> zero-mean residual, unit slope vs GT loom in that band.
+        #   3. MUCH LOOSER r: 0.05 -> 0.3 (>= the primary loom FLOW_KF_R=0.1) so it's a
+        #      gentle sanity nudge, not a co-equal sensor. Even a still-imperfect sr_deb
+        #      (band corr only ~0.74) then can't yank h_z.
+        # The IC5 |raw sr| <= _scale_fuse_clamp reject stays (checked on RAW sr, pre-debias).
+        self._scale_fuse_on = os.environ.get("CROSS_SCALE_RATE_FUSE", "0") == "1"
+        self._scale_fuse_r = float(os.environ.get("CROSS_SCALE_FUSE_R", "0.3"))
         self._scale_fuse_clamp = float(os.environ.get("CROSS_SCALE_FUSE_CLAMP", "1.0"))
+        self._scale_fuse_min_ext = float(os.environ.get("CROSS_SCALE_FUSE_MIN_EXT", "150.0"))
+        self._scale_fuse_gain = float(os.environ.get("CROSS_SCALE_FUSE_GAIN", "0.41"))
+        self._scale_fuse_off = float(os.environ.get("CROSS_SCALE_FUSE_OFF", "-0.22"))
         # OVERFILL PROXIMITY GATE (2026-09-09, added after the first sanity A/B): the
         # coast-skip guard alone doesn't stop the fusion firing in the deep-overfill
         # terminal window -- width_loom_from_detection keeps returning a value there, so
@@ -1584,14 +1634,19 @@ class CrossMarkerPerception:
         # the scale KF is coasting, or on an out-of-clamp excursion.
         _sfz = np.nan
         _ext_now = self._marker_extent_log[-1] if self._marker_extent_log else None
-        _overfilled = _ext_now is not None and np.isfinite(_ext_now) and _ext_now > self._scale_fuse_max_ext
+        # BAND-LIMIT to the ext window where scale_rate has real signal (see __init__'s
+        # RETRY DESIGN comment): below _min_ext the marker is far and scale_rate reads
+        # ~10x hot; above _max_ext it is overfilling and scale_rate has collapsed to ~0.
+        _in_band = (_ext_now is not None and np.isfinite(_ext_now)
+                    and self._scale_fuse_min_ext <= _ext_now <= self._scale_fuse_max_ext)
         if (self._scale_fuse_on and self._hw_kf_initialized and self._hw_kf_frozen is None
                 and self._scale_rate_kf_initialized and self._scale_rate_measured_this_frame
-                and not _overfilled):
+                and _in_band):
             sr = float(-self._scale_rate_kf_x[0, 1])
-            if np.isfinite(sr) and abs(sr) <= self._scale_fuse_clamp:
+            if np.isfinite(sr) and abs(sr) <= self._scale_fuse_clamp:   # IC5 reject on RAW sr
+                sr_deb = self._scale_fuse_gain * sr + self._scale_fuse_off   # affine de-bias
                 c2 = self._sensor_cal_hw[2, 2] or 1.0
-                z_sr = sr / c2                                  # calibrated -> raw loom scale
+                z_sr = sr_deb / c2                              # calibrated -> raw loom scale
                 S = self._hw_kf_P[2, 0, 0] + self._scale_fuse_r
                 K = self._hw_kf_P[2, :, 0] / S
                 self._hw_kf_x[2] = self._hw_kf_x[2] + K * (z_sr - self._hw_kf_x[2, 0])
