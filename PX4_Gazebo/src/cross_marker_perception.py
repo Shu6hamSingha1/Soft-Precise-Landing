@@ -1501,6 +1501,42 @@ class CrossMarkerPerception:
         # reference failure's actual collapse (1.8->0.15 over ~0.3s = ~15 frames @50Hz)
         # comfortably clears a small streak requirement; single-frame noise doesn't.
         self.CROSS_ORIGIN_RATIO_DROP_STREAK = int(os.environ.get("CROSS_ORIGIN_RATIO_DROP_STREAK", "8"))
+
+        # LOOM-CHANNEL INNOVATION GATE, plausibility-bounded (2026-09-09). The hw-KF
+        # has no innovation test (unlike the yaw-KF PLASMC_YAW_KF_GATE and the VDS
+        # lateral-rate KF PLASMC_VDS_KF_GATE) -- a sustained multi-frame pinv-Tz spike
+        # from degenerate point geometry near overfill (the +1.1->+5.6 reference case,
+        # ICValidation/20260831-144626/IC1_rep1) walks the loom state up. This gates a
+        # loom measurement ONLY when it is BOTH:
+        #   (a) statistically surprising -- NIS = y^2 / S  >  CROSS_LOOM_NIS_GATE
+        #       (y = z - (x[2,0] + x[2,1]*dt), i.e. residual BEYOND the KF's own
+        #        predicted loom-acceleration trend), AND
+        #   (b) physically implausible -- |y| / dt  >  CROSS_LOOM_SLEW_MAX  (/s).
+        #       Measured: clean-flight dt-normalised |Δh_z| tops out ~5-8 /s, GT
+        #       |dloom/dt| p95 ~0.2 ; the reference spike ran 20-260 /s.
+        # Requiring BOTH means a genuine large-but-SMOOTH terminal loom acceleration
+        # (KF rate state tracks it -> small NIS) still passes. On trip: r[2] *=
+        # CROSS_LOOM_GATE_R_MULT (predict-mostly, same lever as loom-R schedule /
+        # origin-ratio veto). DEBOUNCED: after CROSS_LOOM_GATE_MAX_STREAK consecutive
+        # trips the measurement is accepted (a real sustained large loom IS possible
+        # near touchdown -- do not freeze the channel forever, the failure mode of the
+        # abandoned origin-ratio veto). DEFAULT OFF pending an offline + SITL gate.
+        self._loom_gate_on = os.environ.get("CROSS_LOOM_INNOV_GATE", "0") == "1"
+        self._loom_nis_gate = float(os.environ.get("CROSS_LOOM_NIS_GATE", "25.0"))     # ~5 sigma
+        self._loom_slew_max = float(os.environ.get("CROSS_LOOM_SLEW_MAX", "12.0"))     # /s, dt-normalised;
+                                                                                       # clean flight tops ~5-8, spike 20-260
+        self._loom_gate_r_mult = float(os.environ.get("CROSS_LOOM_GATE_R_MULT", "1000.0"))
+        self._loom_gate_max_streak = int(os.environ.get("CROSS_LOOM_GATE_MAX_STREAK", "6"))
+        # Hard backstop, INDEPENDENT of the gate (also active when CROSS_LOOM_INNOV_GATE=1):
+        # the post-update loom VALUE is clamped to +-CROSS_LOOM_ABS_MAX. The regularised
+        # GT loom itself tops out near -15 at the touchdown instant and the sign-flip
+        # peak is a few units positive, so 20 (same as the moment-loom sol[2] clip) admits every real value while killing a
+        # NaN/grazing-ray perspective-divide blowup (seen: pinv Tz -> +1600 on one rep).
+        # 0 disables the clamp.
+        self._loom_abs_max = float(os.environ.get("CROSS_LOOM_ABS_MAX", "20.0"))  # matches moment-loom sol[2] clip
+        self._loom_gate_streak = 0
+        self._loom_gate_hits = 0            # DIAG: total frames the gate down-weighted
+        self._loom_gate_log = []            # per-frame 0/1 (gate acted this frame)
         # TERMINAL h_x/h_y via CENTROID-RATE (2026-08-28, DEFAULT ON -- perception
         # change: changes how h is COMPUTED, not the control law). Root-cause
         # (project_20260827 memory 2026-08-28 h-correlation dig): near touchdown
@@ -1691,6 +1727,30 @@ class CrossMarkerPerception:
                     r = np.full(6, float(r))
                 r[2] *= self.CROSS_TZ_VETO_R_MULT
             self._tz_unreliable_this_solve = False
+            # LOOM-CHANNEL INNOVATION GATE (see __init__'s _loom_gate_* comment).
+            _lg_act = 0
+            if (self._loom_gate_on and self._hw_kf_initialized
+                    and self._hw_kf_prev_t is not None and self._hw_kf_frozen is None):
+                _dt_g = max(min(float(t) - self._hw_kf_prev_t, 0.1), 1e-3)
+                _pred2 = self._hw_kf_x[2, 0] + self._hw_kf_x[2, 1] * _dt_g
+                _y2 = float(z[2]) - float(_pred2)
+                _r2 = float(r[2]) if np.ndim(r) else float(r)
+                _S2 = float(self._hw_kf_P[2, 0, 0]) + _r2
+                _nis = _y2 * _y2 / max(_S2, 1e-9)
+                _slew = abs(_y2) / _dt_g
+                _trip = _nis > self._loom_nis_gate and _slew > self._loom_slew_max
+                if _trip and self._loom_gate_streak < self._loom_gate_max_streak:
+                    if np.ndim(r) == 0:
+                        r = np.full(6, float(r))
+                    r[2] *= self._loom_gate_r_mult
+                    self._loom_gate_streak += 1
+                    self._loom_gate_hits += 1
+                    _lg_act = 1
+                elif not _trip:
+                    self._loom_gate_streak = 0
+                # (_trip AND streak exhausted) -> accept this frame, streak held high
+                # so the next frames also accept until the excursion clears.
+            self._loom_gate_log.append(_lg_act)
             self._hxy_derate_log.append(float(_frac))
             self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
@@ -1705,6 +1765,7 @@ class CrossMarkerPerception:
         else:
             self._hxy_derate_log.append(0.0)
             self._loomr_log.append(1.0)        # no measurement this frame -> R unused; keep the log frame-aligned
+            self._loom_gate_log.append(0)      # frame-aligned; no measurement to gate
             self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_coast_streak += 1
             if self._hw_kf_coast_streak >= self._hw_kf_coast_freeze_streak:
@@ -1742,6 +1803,15 @@ class CrossMarkerPerception:
                 self._hw_kf_P[2] = self._hw_kf_P[2] - np.outer(K, self._hw_kf_P[2, 0, :])
                 _sfz = z_sr
         self._scale_fuse_log.append(_sfz)
+        # HARD LOOM BACKSTOP (see __init__'s _loom_abs_max comment) -- clamp the loom
+        # VALUE and drain a runaway rate. Independent of the innovation gate; catches
+        # a NaN / grazing-ray perspective-divide blowup the gate's NIS test can miss
+        # (huge r inflation -> huge S -> tiny NIS). Loom-channel only.
+        if self._loom_abs_max > 0 and self._hw_kf_initialized:
+            _v = self._hw_kf_x[2, 0]
+            if not np.isfinite(_v) or abs(_v) > self._loom_abs_max:
+                self._hw_kf_x[2, 0] = float(np.clip(np.nan_to_num(_v), -self._loom_abs_max, self._loom_abs_max))
+                self._hw_kf_x[2, 1] = 0.0   # kill the rate that produced/accompanied it
         # Not-yet-initialized (no real measurement ever seen): fall back to
         # zeros, same as the pre-fix behavior -- there is nothing to coast
         # from before the first real observation, this is not a regression.
@@ -3504,6 +3574,8 @@ class CrossMarkerNode(Thread):
                                                                   # actually applied to the RAW loom channel
                                                                   # that frame (NaN when the fusion didn't fire).
             "Loom R Mult": self._perception._loomr_log,   # 2026-09-03: applied r[2] multiplier (1.0 = schedule off/inert)
+            "Loom Gate": self._perception._loom_gate_log,  # 2026-09-09: 1 = loom innovation gate down-weighted
+                                                            # the measurement this frame (CROSS_LOOM_INNOV_GATE)
             "Center Px": self._perception._center_px_log,
             # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
             # (same _pending_angvel sampled synchronously with quat in
