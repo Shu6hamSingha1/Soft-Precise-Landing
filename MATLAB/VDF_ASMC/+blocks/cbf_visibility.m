@@ -60,13 +60,30 @@ function [I_a_cd_filt, th_safe, theta_cone, cbf_ok, R33, cs] = cbf_visibility(I_
     y_d    = P_map * (cs.I_a_cd_filt(1:2) / a_z);            % commanded lean, image axes
     y_curr = P_map * (-I_R_C(1:2,3) / R33);                  % realized lean, image axes
 
-    % ---- moving-target lead  tau*d  (default inert: tau=0) --------------------
-    tau = getfielddef(P,'cbf_drift_tau', 0);
-    d   = zeros(2,1);
-    if tau > 0 && isfield(cs,'cbf_drift') && numel(cs.cbf_drift) == 2
-        d = cs.cbf_drift(:);                                 % caller supplies conditioned h_xy
+    % ---- moving-target lead  tau*d  (condition_drift port; PX4 b71a950) ------
+    % d = the front-end de-rotated optic flow V_h(1:2) (caller sets cs.cbf_Vhxy),
+    % conditioned: median-of-3 -> 1-pole LPF -> radial clamp to cbf_drift_max,
+    % then the lead is clamped so the linear extrapolation never predicts the
+    % centre crossing an axis origin. tau default 0.15; tau=0 -> reactive only.
+    tau  = getfielddef(P,'cbf_drift_tau', 0.15);
+    lead = zeros(2,1);
+    if tau > 0 && isfield(cs,'cbf_Vhxy') && numel(cs.cbf_Vhxy) == 2
+        hxy = cs.cbf_Vhxy(:);  if ~all(isfinite(hxy)), hxy = zeros(2,1); end
+        if ~isfield(cs,'cbf_dmed') || isempty(cs.cbf_dmed), cs.cbf_dmed = zeros(2,3); cs.cbf_dn = 0; end
+        cs.cbf_dn   = min(cs.cbf_dn + 1, 3);
+        cs.cbf_dmed = [cs.cbf_dmed(:,2:3), hxy];
+        m = median(cs.cbf_dmed(:, end-cs.cbf_dn+1:end), 2);
+        a_d = getfielddef(P,'cbf_drift_lpf_alpha', 0.12);
+        if ~isfield(cs,'cbf_dfilt') || isempty(cs.cbf_dfilt), cs.cbf_dfilt = zeros(2,1); end
+        cs.cbf_dfilt = cs.cbf_dfilt + a_d*(m - cs.cbf_dfilt);
+        d    = cs.cbf_dfilt;
+        dmax = getfielddef(P,'cbf_drift_max', 0.5);
+        nd   = norm(d);  if nd > dmax && dmax > 0, d = d*(dmax/nd); end
+        lead = tau * d;
+        for k = 1:2
+            if r_t(k)*(r_t(k)+lead(k)) < 0, lead(k) = -0.9*r_t(k); end
+        end
     end
-    lead = tau * d;
 
     % ---- Tier 1 QP:  min 1/2||y-y_d||^2 + rho/2||s||^2 ------------------------
     %   s.t. |c_next(y)|_k <= phi_k + s_k,  s>=0,  ||y|| <= y_max

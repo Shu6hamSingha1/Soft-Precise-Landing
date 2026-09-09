@@ -81,6 +81,7 @@ function R = simulate_landing(x0, trajType, opts)
         [I_a_cd, cs] = blocks.asmc(o, I_R_V, P, cs);
 
         % --- visibility CBF + inner loop ---
+        cs.cbf_Vhxy = V_h(1:2);   % de-rotated optic flow -> Tier-1 moving-target lead
         [I_a_filt, th_safe, ~, ~, R33, cs] = blocks.cbf_visibility(I_a_cd, I_R_C, yaw, C_nP, B_w_c, P, cs);
         [psi_d, ~, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), V_w(3), P, cs);
         [B_tau, T_cd, cs] = blocks.so3_tracker(I_a_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);

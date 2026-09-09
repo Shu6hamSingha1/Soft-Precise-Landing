@@ -230,7 +230,10 @@ P.cbf_vis_rho      = 2000;   % rho: per-axis visibility-slack penalty       (CBF
 P.cbf_gmin         = 0.2;    % g_min: Tier-2 descent-governor floor         (CBF_GMIN)
 P.cbf_treact       = 1.5;    % T_react: Tier-2 reaction horizon [s]         (CBF_TREACT)
 P.cbf_gz_lpf       = 0.7;    % one-pole LPF on g_z so a_z does not step
-P.cbf_drift_tau    = 0.0;    % tau: moving-target lead horizon [s]; 0 -> term inert (stationary)
+P.cbf_drift_tau    = 0.15;   % tau: moving-target lead horizon [s] (PX4 b71a950, flipped 0->0.15);
+                             %   0 -> reactive only. d = V_h(1:2), condition_drift'd (below).
+P.cbf_drift_max    = 0.5;    % radial clamp on the conditioned drift |d| (CBF_DRIFT_MAX)
+P.cbf_drift_lpf_alpha = 0.12;% one-pole LPF coeff in condition_drift (CBF_DRIFT_LPF_ALPHA)
 % Frame knobs -- VERIFY against MATLAB's I_R_C convention before a gate:
 P.cbf_mount_deg    = 90;     % camera-mount yaw offset in P_map = Rz(mount)*Rz(-yaw)
 P.cbf_Le_sign      = -1;     % L_e = cbf_Le_sign*(L_omega*M); spec sign is -1

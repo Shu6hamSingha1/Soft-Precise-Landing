@@ -463,6 +463,7 @@ for idx = 1:N_steps
         [zeta_r, dzeta_r, ~, s_dot_presc] = blocks.position_funnel(s_e_xy, s_dot_meas, tt, P);
         [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_presc, tt, P, cs);
         [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
+        cs.cbf_Vhxy = V_h(1:2);   % de-rotated optic flow -> Tier-1 moving-target lead
         [I_a_cd_filt, th_safe, theta_cone, ~, R33, cs] = ...
             blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
         if any(isnan(Iacd))
