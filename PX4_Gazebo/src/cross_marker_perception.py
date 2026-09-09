@@ -1520,8 +1520,17 @@ class CrossMarkerPerception:
         # origin-ratio veto). DEBOUNCED: after CROSS_LOOM_GATE_MAX_STREAK consecutive
         # trips the measurement is accepted (a real sustained large loom IS possible
         # near touchdown -- do not freeze the channel forever, the failure mode of the
-        # abandoned origin-ratio veto). DEFAULT OFF pending an offline + SITL gate.
-        self._loom_gate_on = os.environ.get("CROSS_LOOM_INNOV_GATE", "0") == "1"
+        # abandoned origin-ratio veto).
+        # BAKED DEFAULT-ON 2026-09-09 (user): SITL gate `CROSS_LOOM_INNOV_GATE=1` n=3
+        # IC2-5 (test_data/ICValidation/20260909-162140) was a CLEAN WASH vs the
+        # baseline -- 12/12 land, 0 TL, 0 fly-away, xy ~0.06 mean; the one bad rep
+        # (IC4_rep2) had only 2 gate trips and clean GT-tracking h_z, a flaky-IC4-slot
+        # premature termination unrelated to the gate. Where the gate DID act (IC4
+        # rep1: 13 trips) h_z tracked GT loom at .5-2m corr 0.88-0.95, bounded. It's a
+        # no-op in the common case and a backstop for the intermittent pinv-Tz spike +
+        # NaN/grazing blowups (offline: rep1 corr -0.07->+0.83, +1601 caught).
+        # CROSS_LOOM_INNOV_GATE=0 restores the pre-bake (no innovation gate) behaviour.
+        self._loom_gate_on = os.environ.get("CROSS_LOOM_INNOV_GATE", "1") == "1"
         self._loom_nis_gate = float(os.environ.get("CROSS_LOOM_NIS_GATE", "25.0"))     # ~5 sigma
         self._loom_slew_max = float(os.environ.get("CROSS_LOOM_SLEW_MAX", "12.0"))     # /s, dt-normalised;
                                                                                        # clean flight tops ~5-8, spike 20-260
