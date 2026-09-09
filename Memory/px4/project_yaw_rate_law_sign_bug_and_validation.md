@@ -692,3 +692,30 @@ applied filter-then-scale. Retune it in place. A1 "WZ_SCALE recal" is closed as
 not-actionable via phased excitation; only a bigger marker plate or a pure in-place
 yaw-spin-at-altitude maneuver could observe s_wz, neither pursued. Code edits committed
 (derive tool diagnostics + warnings, controller comment). No behaviour change.
+
+### 2026-09-09 — BAKED DEFAULT ON
+
+Flipped after verifying (from `Control_Params.npy['Config']['overrides']`) that the
+`20260909-030532` "new-law" IC1-5 n=5 gate ran the full bundle
+(`PLASMC_YAW_RATE_LAW=1` + `FLOW_KF_Q_WZ=1.0` + `WZ_SCALE=2.5`), and that the only
+default-flip risk was `FLOW_KF_Q_WZ` perturbing the shared w_z KF that the ASMC lateral
+path also reads (`_w_i` → h_d transport L2708, c-term L2975, dw L2928).
+
+**Changes:**
+- `controller.py`: `PLASMC_YAW_RATE_LAW` default `"0"→"1"`; `PLASMC_YAW_RL_WZ_SCALE`
+  default `"1.0"→"2.5"` (only the yaw law consumes it → harmless when off). Non-cross
+  warning now fires only on an EXPLICIT `=1` (not the baked default).
+- `cross_marker_perception.py`: `FLOW_KF_Q_WZ` default is `1.0` **iff**
+  `PLASMC_YAW_RATE_LAW=1`, else it reverts to the uniform `FLOW_KF_Q` (5.0) → channel-5
+  q vector bit-identical to pre-bake whenever the law is off. This is what lets the
+  single existing gate cover the flip without a lateral re-gate.
+- Backups `Obsolete/PX4_src/controller_v5.py`, `cross_marker_perception_v2.py`.
+
+**Gate of record:** `test_data/ICValidation/20260909-030532` — 25/25 land, 0 TL,
+18/25 precise, IC1 improved vs ASMC (0.040 vs 0.134). Matched ASMC arm `20260909-033319`
+= 25/25 land, 16/25 precise. Even trade on stationary; new wins IC1-3, ASMC wins IC4-5.
+
+**NOT closed by this bake:** turning-target value (B4 lateral limit cycle,
+[[project_rover_turning_open]]) — separate session. ASMC/psi_d/CV-KF stay as the
+`PLASMC_YAW_RATE_LAW=0` fallback (no deletion). Manuscript port NOT done — the
+`d_α`-cancellation claim needs the turning-target end-to-end result first.

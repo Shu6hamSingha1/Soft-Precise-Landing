@@ -550,7 +550,7 @@ class Controller(Thread):
         self._yaw_kf_x = None          # [yaw, yaw_rate] state (yaw unwrapped)
         self._yaw_kf_P = None          # 2×2 covariance
 
-        # ── NEW YAW-RATE LAW (2026-09-04, PLASMC_YAW_RATE_LAW, default 0 = OFF) ──
+        # ── NEW YAW-RATE LAW (2026-09-04; BAKED default 1 = ON, 2026-09-09) ──
         # Direct integrator on the MEASURED w_z = omega_t,z - psi_dot_b (self._w_i[-1][2],
         # the calibrated flow-lstsq rotation component -- validated relation, real in both
         # GT-feedback and perception-ON, NOT GT-only: gt_feedback.py, "-0.91 correlation
@@ -583,25 +583,22 @@ class Controller(Thread):
         # APPLICATION in _attCtrl.
         # Gated to MARKER_TYPE=cross: validated only there (BODY_YAW_ALPHA_K=-1.0,
         # CROSS_ALPHA_0, the cross-marker w_iz calibration). The ArUco alpha
-        # convention (-0.949) and its stale w_z cal are UNtested with this law.
-        self._yaw_rate_law = (os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
+        # convention (-0.949) and its stale w_z cal are UNtested with this law -- on
+        # a non-cross run the baked default silently falls back to the ASMC yaw path.
+        # BAKED DEFAULT ON 2026-09-09 (was "0"). Gate: stationary IC1-5 n=5
+        # test_data/ICValidation/20260909-030532 -- 25/25 land, 0 TL, 18/25 precise,
+        # IC1 improved vs ASMC (0.040 vs 0.134). The FLOW_KF_Q_WZ half of the bundle
+        # is scoped to this flag in cross_marker_perception.py, so the shared w_z KF
+        # / ASMC lateral path is bit-identical whenever the law is off -> the gate
+        # above covers the default-flip without a separate lateral re-gate.
+        # Turning-target value still gated on the B4 lateral limit cycle
+        # ([[project_rover_turning_open]]); this bake is the stationary-neutral
+        # opt-out-able default, not the end of that thread. PLASMC_YAW_RATE_LAW=0
+        # restores the ASMC+psi_d+e_R[2] path.
+        self._yaw_rate_law = (os.environ.get("PLASMC_YAW_RATE_LAW", "1") == "1"
                               and MARKER_TYPE == "cross")
-        if os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1" and MARKER_TYPE != "cross":
-            print("[Controller] ⚠ PLASMC_YAW_RATE_LAW ignored — validated for MARKER_TYPE=cross only")
-        # ⚠ COMPANION CONFIG (the validated bundle): PLASMC_YAW_RATE_LAW=1 was
-        # gated stationary IC1-5 n=5 (24/25) ONLY with FLOW_KF_Q_WZ=1.0 +
-        # PLASMC_YAW_RL_WZ_SCALE=2.5. Those are NOT baked (FLOW_KF_Q_WZ default
-        # would change the shared w_z KF for the ASMC lateral path too). Run this
-        # law WITH that bundle.
-        # WZ_SCALE=2.5 IS the w_z output calibration for this consumer, applied
-        # filter-then-scale (perception KF runs first, this gain last). It is NOT a
-        # "temporary deficit pending a phased recal": 2026-09-09 analysis showed the
-        # phased output_cross recordings carry NO usable w_z scale information --
-        # `_fill_A` col-5 `[-y;x]` is rank-degenerate with Tx/Ty at the cross
-        # plate's radial spread, so the fitted s_wz has R^2~0.03 and a sign that
-        # flips with FLOW_KF_Q_WZ. See feedback_cross_marker_radial_spread_ceiling
-        # + project_yaw_rate_law_sign_bug_and_validation. Retune WZ_SCALE here;
-        # don't expect derive_cross_marker_cal.py's Wz row to replace it.
+        if os.environ.get("PLASMC_YAW_RATE_LAW") == "1" and MARKER_TYPE != "cross":
+            print("[Controller] ⚠ PLASMC_YAW_RATE_LAW=1 ignored — validated for MARKER_TYPE=cross only")
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
         # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-09: unified on manuscript) ──
@@ -630,17 +627,21 @@ class Controller(Thread):
         #   2026-06-25 IC4 altitude-flyout was n=2/flaky). Yaw GT-FB gate
         #   (ceiling048/beyond060) should be a no-op regression check.
         #
-        # WZ_SCALE (default 1.0): SEPARATE issue — the ~3x magnitude deficit in the
-        # lstsq yaw column (col-5 ~= Ty aliasing, cross_marker_perception.py ~L715-731).
-        # s_wz=0.587 bakes the attenuation in; WZ_SCALE restores the end-to-end gain.
-        # Proper fix = re-derive s_wz (deferred recal), then WZ_SCALE -> 1.0.
+        # WZ_SCALE (BAKED 2.5 on 2026-09-09, was 1.0): the ~3x magnitude deficit in
+        # the lstsq yaw column (col-5 [-y;x] rank-degenerate with Tx/Ty at this
+        # marker's radial spread -- feedback_cross_marker_radial_spread_ceiling).
+        # This is NOT a temporary knob pending a recal: the 2026-09-09 analysis
+        # showed the phased output_cross data carries NO usable w_z scale (fitted
+        # s_wz R^2~0.03, sign flips with FLOW_KF_Q_WZ). WZ_SCALE is the w_z output
+        # calibration for this consumer, applied filter-then-scale. Only consumed by
+        # the yaw-rate law -> harmless when the law is off. Retune here if needed.
         # WZ_SIGN default +1 for BOTH paths (2026-09-09): gt_feedback.py:234 now feeds
         # +w_z,manuscript (unified with perception's w_iz), and the law increment is
         # `k_p*e_a + w_z_eff` (was `- w_z_eff`; the flip is the identity
         # -w_z_gtfb_old == +w_z_manuscript, so yaw behaviour is unchanged). The env
         # override stays for debugging / rolling back mid-transition.
         self._yaw_rl_wz_sign = float(os.environ.get("PLASMC_YAW_RL_WZ_SIGN", "1.0"))
-        self._yaw_rl_wz_scale = float(os.environ.get("PLASMC_YAW_RL_WZ_SCALE", "1.0"))
+        self._yaw_rl_wz_scale = float(os.environ.get("PLASMC_YAW_RL_WZ_SCALE", "2.5"))
         # ── w_z CONFIDENCE GATE (2026-09-07, PLASMC_YAW_RL_GATE, default ON) ──
         # Real perception-ON w_z inherits the terminal-overfill corruption: it
         # tracks MARKER_EXTENT_PX almost exactly and grows monotonically past

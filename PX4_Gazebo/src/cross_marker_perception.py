@@ -1416,11 +1416,24 @@ class CrossMarkerPerception:
         # noise-limited, not lag-limited, and tolerates heavier smoothing than the
         # h channels at no control-relevant lag cost (yaw-rate law consumes it as a
         # rate-cancellation term -- project_yaw_rate_law_sign_bug_and_validation).
-        # w_x/w_y are zeroed post-cal so only channel 5 is exposed. Default equals
-        # FLOW_KF_Q -> the q vector is uniform -> bit-identical to the old scalar path.
-        # LOCKSTEP: tools/aggregate_calibration_phased.py builds the identical vector
-        # for the cal fit; changing one without the other breaks cal<->filter parity.
-        self._hw_kf_q_wz = float(os.environ.get("FLOW_KF_Q_WZ", str(self._hw_kf_q)))
+        # w_x/w_y are zeroed post-cal so only channel 5 is exposed.
+        # LOCKSTEP (channels 0-4 only): tools/aggregate_calibration_phased.py builds
+        # the identical vector for the h-block cal fit. Channel 5 (w_z) is EXEMPT --
+        # the live w_z scale comes from the landing cal, not the phased derive tool
+        # (which cannot observe it, feedback_cross_marker_radial_spread_ceiling), so
+        # this KF's q_wz has no phased-cal counterpart to stay in lockstep with.
+        #
+        # ⚠ SCOPED TO THE YAW-RATE LAW (baked 2026-09-09). Channel 5 of this KF is
+        # the SHARED w_z the ASMC lateral path also reads (_w_i -> h_d transport,
+        # c-term, dw). The heavier w_z smoothing (q=1.0) is validated ONLY as the
+        # yaw-rate law's companion; it must NOT perturb the lateral path when that
+        # law is off. So the baked default 1.0 applies iff PLASMC_YAW_RATE_LAW=1
+        # (its own baked default) -- otherwise channel 5 reverts to the uniform
+        # FLOW_KF_Q and the q vector is bit-identical to the pre-bake scalar path.
+        # An explicit FLOW_KF_Q_WZ= override still wins in either case.
+        _yaw_rl_on = os.environ.get("PLASMC_YAW_RATE_LAW", "1") == "1"
+        _q_wz_default = "1.0" if _yaw_rl_on else str(self._hw_kf_q)
+        self._hw_kf_q_wz = float(os.environ.get("FLOW_KF_Q_WZ", _q_wz_default))
         self._hw_kf_q_vec = np.full(6, self._hw_kf_q)
         self._hw_kf_q_vec[5] = self._hw_kf_q_wz
         self._hw_kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
