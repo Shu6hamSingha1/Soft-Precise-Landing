@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T11:04:09.905Z
+  modified: 2026-09-09T11:15:59.583Z
 ---
 
 ## ⛔⛔ THREAD CLOSED — 2026-09-09 (read this, skip the 700-line chronology below unless digging)
@@ -845,4 +845,29 @@ evidence (rep1 corr −0.07→+0.83, IC4 <0.5m −0.30→+0.75, +1601 blowup cau
 reasonable default-ON candidate as an always-on backstop (+ the abs clamp already default-on);
 equally fine to leave default-OFF and enable situationally. n=5 wouldn't change this — the call
 is "do you want an always-on safety net that is a no-op in the common case", not empirical.
-Left DEFAULT-OFF pending a user decision.
+
+**BAKED DEFAULT-ON 2026-09-09 (`7e9843ae`, user).** `CROSS_LOOM_INNOV_GATE` default `"0"`→`"1"`;
+`CROSS_LOOM_INNOV_GATE=0` restores the pre-gate behaviour. Abs clamp `CROSS_LOOM_ABS_MAX=20`
+was already default-on. Full session bake audit (all in `cross_marker_perception.py`):
+- **ON:** geometry width (`CROSS_WIDTH_GEOM=1`), loom abs clamp (`=20`), loom innovation gate
+  (`CROSS_LOOM_INNOV_GATE=1`).
+- **OFF by verdict:** scale-rate→h_z fusion (`CROSS_SCALE_RATE_FUSE=0`, confirmed dead-end).
+- **Shadow logs only:** `"Scale Loom Rate"`, `"Width Loom Rate"`, `"Scale Fuse Z"`, `"Loom Gate"`.
+
+### Loom gate on MOVING ROVER — offline check (2026-09-09, unvalidated closed-loop)
+The rover pipeline shares `CrossMarkerPerception` / `_kf_update_hw` (no rover conditionals), so
+the baked gate is LIVE in rover runs. Checked offline:
+- **Static-rover reps** (peer's `RoverCBFSweep/20260909-163929`, current HEAD): `"Loom Gate"` key
+  present, 8-9 trips/descent, `h_z` bounded [−0.7,+2.8], `|dh_z/dt|` p95 ~1.2 << `SLEW_MAX=12`. Fine
+  (static rover ≈ stationary marker for loom).
+- **Old moving-rover cross_marker rep** (`Cross_Marker_Montage_Rover/Aug 24`, PRE the 08-27 camera
+  change): the loom channel is **~15× noisier** than stationary — `|dh_z/dt|` p90=10, p95=21,
+  max=135 — while GT `|dloom/dt|` never exceeds 0.8 /s. So on moving rover the gate would fire
+  ~9% of descent frames, but every trip is suppressing genuine noise, not real signal;
+  `SLEW_MAX=12` sits well above all legitimate loom change. Debounce (6 frames) caps any coast at
+  ~0.16 s.
+- **Verdict: no evidence of harm on rover; the gate is arguably MORE useful there.** NOT tested on
+  the current camera/cal for moving rover, and NOT tested closed-loop (rover landing is
+  perception-blocked upstream — `project_20260901_rover_cross_perception_diagnosis` — so the gate
+  can't be evaluated in a rover landing regardless). Peer flagged; will analyze the `"Loom Gate"`
+  logs across their Linear/Circular/etc. profiles when that sweep finishes.
