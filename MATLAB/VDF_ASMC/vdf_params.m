@@ -220,6 +220,21 @@ P.k_az   = 5.0;                         % descent-rate relief gain (PX4 CBF_AZ_C
                                         % its tuning regime no longer exists. Re-sweep. Set 0 to
                                         % disable the relief while keeping the joint solve.
 
+% ---- Two-tier visibility conditioning (port of visibility_projection.py) ------
+% docs/CBF_visibility spec (9-Sep-2026). DEFAULT: the two-tier projection below
+% REPLACES the joint-QP above (cbf_two_tier=false restores cbf2_filter exactly).
+% UNVALIDATED in MATLAB -- run the IC / 50-cell gate before trusting it.
+P.cbf_two_tier     = true;
+P.cbf_buffer_frac  = 0.15;   % b: FoV-edge buffer, phi = (res/2/f)*(1-b)  (CBF_BUFFER_FRAC)
+P.cbf_vis_rho      = 2000;   % rho: per-axis visibility-slack penalty       (CBF_VIS_RHO)
+P.cbf_gmin         = 0.2;    % g_min: Tier-2 descent-governor floor         (CBF_GMIN)
+P.cbf_treact       = 1.5;    % T_react: Tier-2 reaction horizon [s]         (CBF_TREACT)
+P.cbf_gz_lpf       = 0.7;    % one-pole LPF on g_z so a_z does not step
+P.cbf_drift_tau    = 0.0;    % tau: moving-target lead horizon [s]; 0 -> term inert (stationary)
+% Frame knobs -- VERIFY against MATLAB's I_R_C convention before a gate:
+P.cbf_mount_deg    = 90;     % camera-mount yaw offset in P_map = Rz(mount)*Rz(-yaw)
+P.cbf_Le_sign      = -1;     % L_e = cbf_Le_sign*(L_omega*M); spec sign is -1
+
 % ---- Geometric SO(3) tracker  (tex eq. so3 torque) ----------------------------
 P.kR     = diag([2.5, 2.5, 0.5]);  % PORTED FROM PX4 2026-09-03: PITCH 1.5->2.5 (PLASMC_KR_PITCH=2.5);
                                    % roll 2.5 and yaw 0.5 already matched. PX4 baked roll AND pitch to
