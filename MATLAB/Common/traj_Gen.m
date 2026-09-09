@@ -97,13 +97,17 @@ function [X] = traj_Gen(t, type, speed_mult)
             w_p       = 0.6;
             phase_p   = pi/3;
 
+            dpsi_t = wz;   % default: platform yaw follows the tangent heading
+            global TARGET_YAW_RATE %#ok<GVMIS>  % test hook: decouple yaw rate from the translation rate
+            if ~isempty(TARGET_YAW_RATE), dpsi_t = TARGET_YAW_RATE; end
+
             phi   = phi_max   * sin(w_r * t);
             theta = theta_max * sin(w_p * t + phase_p);
-            psi   = wz * t;
+            psi   = dpsi_t * t;
 
             dphi   = phi_max   * w_r * cos(w_r * t);
             dtheta = theta_max * w_p * cos(w_p * t + phase_p);
-            dpsi   = wz;
+            dpsi   = dpsi_t;
 
             q = euler321_to_quat(phi, theta, psi);
             w = euler_rates_to_bodyrates(phi, theta, dphi, dtheta, dpsi);
