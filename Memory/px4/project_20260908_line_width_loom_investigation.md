@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T11:15:59.583Z
+  modified: 2026-09-09T11:48:27.156Z
 ---
 
 ## ⛔⛔ THREAD CLOSED — 2026-09-09 (read this, skip the 700-line chronology below unless digging)
@@ -869,5 +869,20 @@ the baked gate is LIVE in rover runs. Checked offline:
 - **Verdict: no evidence of harm on rover; the gate is arguably MORE useful there.** NOT tested on
   the current camera/cal for moving rover, and NOT tested closed-loop (rover landing is
   perception-blocked upstream — `project_20260901_rover_cross_perception_diagnosis` — so the gate
-  can't be evaluated in a rover landing regardless). Peer flagged; will analyze the `"Loom Gate"`
-  logs across their Linear/Circular/etc. profiles when that sweep finishes.
+  can't be evaluated in a rover landing regardless).
+- **✅ 7-PROFILE MOVING-ROVER ANALYSIS (2026-09-09, `RoverCBFSweep/20260909-163929`, 27/28 reps,
+  current HEAD, gate live):** the gate behaves sanely on Static / Linear / Circular / EightShape
+  / Sinusoidal / Lissajous / CircularYaw.
+  - **Trip rate 0.7-1.8%** of descent frames (worst single rep 2.5%, Lissajous/lead) — NOT
+    over-firing; far below the ~9% estimated from old-camera data (current cam/cal has a cleaner
+    loom channel). Post-gate `|dh_z/dt|` p95 = 1.3-2.7 /s, well under `SLEW_MAX=12` — no
+    false-tripping on normal loom variation.
+  - **Abs clamp (±20) NEVER fired** on any of the 27 reps; `h_z` stayed in [−2.4, +3.4] on 6 of 7
+    trajectories.
+  - **6-frame debounce ceiling IS reached on most rover trajectories** (unlike stationary) →
+    ~0.16 s coast then re-accept. Expected given the noisier moving-target loom channel; benign.
+  - **One soft spot: Lissajous** — a +9.34 (raw) `h_z` excursion partially slipped through against
+    a 445 /s measured jump (streak only 4, KF prediction chasing it). Still 2× under the abs
+    clamp, terminal-overfill class. Would want a tighter gate / lower abs clamp only if
+    moving-rover loom accuracy ever matters — it doesn't (perception-blocked).
+  - **Verdict: no evidence the gate harms rover; consistent with keeping it default-ON.**
