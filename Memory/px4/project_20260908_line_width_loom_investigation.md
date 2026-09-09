@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T05:01:56.453Z
+  modified: 2026-09-09T05:15:05.001Z
 ---
 
 ## Context / goal
@@ -729,3 +729,37 @@ centreline so a bigger blob / internal holes don't move them. 5-rep replay: **ma
 removes the wrong-signed terminal spikes, does NOT rescue the rate, and the fusion stays a
 dead-end.** `CROSS_WIDTH_GEOM=0` restores the mask-scan (kept; used by the overlay tool). Backup
 `Obsolete/src/cross_marker_perception_pre_geomwidth_20260909.py`.
+
+### ⛔ TERMINAL WINDOW (<0.5m) IS UNRECOVERABLE — chased it to ground (2026-09-09)
+User: "we need this approach near the landing surface, remove the noise using the video". Did a
+full pass (`window_fit.py`, `level_test.py`, terminal mask dumps). The `<0.5m` "noise" is NOT
+filterable — it decomposes as:
+1. **~70-80% of the band is POST-TOUCHDOWN.** GT altitude flattens at ~0.15m and stays there for
+   3-4 s (drone parked on the deck) while the clip keeps recording. GT loom ≈ 0, width bounces
+   ±3px = pure measurement noise. Scoring `<0.5m` was mostly scoring parked frames. Not a
+   loom-estimation problem — the touchdown detector owns that regime and doesn't use loom.
+2. **The genuine last ~0.3m of descent has a real, consistent SIGN INVERSION** — `corr(-d/dt
+   ln(geomW), GT loom)` = **−0.17 to −0.80** across reps (descent-only, post-TD clipped), getting
+   MORE negative with a longer window. i.e. the measured width SHRINKS during the fastest part of
+   the terminal drop. Mechanism (terminal mask dumps, IC5 f315): the marker fills the frame then
+   **FRAGMENTS / EXITS the FOV** — for off-center approaches (IC5) the camera is mostly looking at
+   the GROUND next to the marker, and `line_points_j_raw` latches onto background texture; the
+   mask breaks into disconnected blobs; `corr(geomW, inlier_count)` = **+0.65** terminally (width
+   tracks detector health, not depth). Motion blur from the fast drop + attitude transient
+   compound it.
+3. **V-FRAME LEVELING TESTED, no effect** (`level_test.py`: raw term −0.77 → leveled −0.80;
+   −0.56 → −0.56; −0.60 → −0.62). The `corr(geomW, tilt)` seen earlier is tilt/altitude
+   collinearity in the terminal transient, not causal foreshortening. Closes the "just level it
+   like alpha" idea for the terminal window.
+4. **Windowed LSQ line-fit of ln(w) or 1/w tested** (`window_fit.py`): `.5-2m` improves to
+   **~0.31-0.34** (vs KF ~0.25) at a 0.8s window — a real, small gain for the WORKING band — but
+   terminal only gets WORSE with any window (sees more of the inverted trend).
+
+**CONCLUSION: the line-width loom's useful range is ~2m down to ~0.35m. There is no reliable
+stroke geometry to measure below that** — the inputs (clean stroke edges) aren't extractable
+when the marker is a frame-filling / fragmenting / partly-out-of-FOV blob under motion blur.
+The geometry-width change already makes it fail BOUNDED + REFUSING there, which is the correct
+behavior for a signal with no information left. Do not re-attempt terminal-window loom from
+apparent size — extent, moment-loom, and now geometry-width all die in the same last 0.3m for
+the same reason. If a better `.5-2m` shadow rate is ever wanted: geom width + 0.8s trailing
+LSQ line-fit of ln(w) (~0.31), not the current KF.
