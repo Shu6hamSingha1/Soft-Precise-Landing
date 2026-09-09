@@ -51,7 +51,7 @@ $P=R_z(90^\circ)R_z(-\psi_\text{b})$ & inertial $x$-$y$ $\to$ image axes ($\psi_
 $\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust} (thrust/mass), NED. Hover $=-g\boldsymbol{e}_3$, so $\|\,^\Iframe\boldsymbol{a}_\text{d}\|$ \emph{is} the thrust magnitude per unit mass \\
 $a_z=|\,^\Iframe a_{\text{d},z}|$ & vertical component magnitude --- an \textbf{input}, never a decision variable \\
 $\boldsymbol{y}=P\,(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$ & commanded lean, image axes; $\boldsymbol{y}_\text{d}$ from the unconstrained $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$; $\boldsymbol{y}_\text{curr}=P(-R_{[{:}2,3]}/R_{33})$ from the realized attitude $R$ \\
-$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $\tau=$ \texttt{CBF\_DRIFT\_TAU}, \textbf{default $0$} (reactive-only; a flip to $0.15$ was tried and reverted, \S\ref{sec:tier1}). Set $\tau>0$ per-run for a moving target. Source: the front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$ (identity map to the $\tilde{\boldsymbol r}$ frame), conditioned by \texttt{condition\_drift} --- residual gate / median-3 / low-pass / radial clamp \\
+$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $\tau=$ \texttt{CBF\_DRIFT\_TAU}, \textbf{default $0.15$\,s} ($\tau=0$ $\Rightarrow$ reactive-only, \S\ref{sec:tier1}). Source: the front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$ (identity map to the $\tilde{\boldsymbol r}$ frame), conditioned by \texttt{condition\_drift} --- residual gate / median-3 / low-pass / radial clamp \\
 $A_\text{cap},\ g$ & vehicle maximum thrust-to-mass ratio; gravitational acceleration \\
 $y_\text{max},\ \boldsymbol{s},\ \rho$ & deliverability radius $\sqrt{A_\text{cap}^2/a_z^2-1}$; per-axis visibility slack $\boldsymbol{s}\ge\boldsymbol{0}$ and its penalty weight $\rho=$ \texttt{CBF\_VIS\_RHO} $=2000$ \\
 $g_z\in[g_\text{min},1]$ & descent-governor scale (\S\ref{sec:tier2}); $g_\text{min}=$ \texttt{CBF\_GMIN} $=0.2$, $T_\text{react}=$ \texttt{CBF\_TREACT} $=1.5$\,s \\
@@ -93,15 +93,18 @@ The exact map of $\tilde{\boldsymbol{r}}$ under a finite lean change is the rota
 ray; \eqref{eq:lin} is its first-order term about the current lean, and the sign of $L_e$ is verified
 against an independent pinhole-plus-attitude camera model (\texttt{tools/validate\_visibility\_projection.py}
 check~1). $\boldsymbol{y}_\text{curr}$ is read from the realized attitude, so it needs no rotation from
-acceleration units. The $\tau\boldsymbol{d}$ term extrapolates measured \emph{target} motion over the
-horizon $\tau$ (\texttt{CBF\_DRIFT\_TAU}). At the default $\tau=0$ the term is absent and the QP is
-purely reactive --- sufficient for a stationary marker (whose centre does not drift on its own),
-incomplete for a moving one, so $\tau>0$ is set per-run for a moving target. A flip of the default to
-$0.15$ was attempted (2026-09-09): benign on seven rover motion profiles but the IC2--5 stationary
-confirm gate regressed the touchdown tail ($3\times$ the $>\!1$\,m/s impacts, IC4 $4\!\to\!1$ precise)
---- on a stationary target $\boldsymbol{d}$ is self-motion flow, and even the conditioned
-$\tau|\boldsymbol{d}|\!\sim\!0.02$ tangent is enough to perturb the terminal command --- so the default
-was reverted to $0$.
+acceleration units. The $\tau\boldsymbol{d}$ term extrapolates measured centre motion over the
+horizon $\tau$ (\texttt{CBF\_DRIFT\_TAU}, default $0.15$\,s). Setting $\tau=0$ makes the QP purely
+reactive --- it responds to where $\tilde{\boldsymbol r}$ \emph{is}, not where it is going, so it is
+one control step behind continuous target motion and corrects the centre back \emph{after} it has left
+the FoV rather than keeping it in (a rover CBF-behaviour A/B measured $278$ frames over $24$ reps with
+the centre past the physical FoV edge at $\tau=0$, versus $0$ on a stationary target). The default
+$\tau=0.15$ closes that gap. It was baked on this CBF-behaviour evidence, not landing outcome: on the
+IC2--5 stationary confirm gate $\tau=0$ and $\tau=0.15$ \emph{both} held the safe set for every frame
+($0$ centre-off-sensor frames, peak $|\tilde r|/\varphi$ within $0.01$); the landing-outcome spread
+there was simulator noise. One residual hardening (\S\ref{sec:deliver}): in the terminal-overfill
+regime $\boldsymbol{h}_{xy}$ can corrupt coherently past what \texttt{condition\_drift} rejects, so a
+frame gate on $\boldsymbol{d}$ (zero it when the marker fills the frame) is the planned follow-up.
 
 \paragraph{The drift source $\boldsymbol{d}$.} $\boldsymbol{d}$ is taken from the perception front-end's
 translational optic flow $\boldsymbol{h}_{xy}$ --- the de-rotated ($L_\omega\boldsymbol\omega$ already
@@ -268,10 +271,10 @@ buffer $b$. \end{assumption}
 \begin{assumption} $\boldsymbol{d}$ is the translation part of the observed centre velocity (from the
 front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$, identity-mapped), \emph{after}
 \texttt{condition\_drift}: residual-gated to $\boldsymbol{0}$ on a low-confidence solve, median- and
-low-pass-filtered, and radially clamped. The default is $\tau=0$ (the lead off): a flip to $0.15$ failed
-the IC2--5 stationary confirm gate (touchdown-tail regression) and was reverted; $\tau>0$ is set per-run
-for a moving target. Whether the lead \emph{improves} moving-target visibility is not yet established ---
-it needs a rover approach dynamically stable enough to observe. \end{assumption}
+low-pass-filtered, and radially clamped. The default $\tau=0.15$\,s keeps the lead on for both
+stationary and moving targets (one law, no branching); $\tau=0$ makes it reactive-only. A full
+moving-target verdict --- does the lead measurably reduce the centre-off-sensor frames in closed loop
+--- still needs a rover approach dynamically stable enough to observe. \end{assumption}
 \begin{assumption} The per-cycle lean change stays within the first-order regime of \S\ref{sec:lin}
 ($\lesssim15^\circ$), which the $50$\,Hz rate and a smooth outer loop provide. \end{assumption}
 \begin{assumption} $A_\text{cap}$ and $g$ are fixed vehicle/physical constants, used directly. \end{assumption}

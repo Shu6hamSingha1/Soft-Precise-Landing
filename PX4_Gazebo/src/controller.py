@@ -3822,16 +3822,21 @@ class Controller(Thread):
         # condition_drift() then gates on the flow solve's rel_resid (untrusted h
         # -> 0), median-of-3 (kills the 4-16 tangent/s single-frame spikes the
         # 7-profile rover sweep found), 1-pole LPF, and a radial clamp to
-        # CBF_DRIFT_MAX. CBF_DRIFT_TAU DEFAULT 0 -- a flip to 0.15 was tried on
-        # 2026-09-09 (rover re-sweep RoverCBFSweep/20260909-182607 was
-        # regression-free) and REVERTED: the IC2-5 stationary confirm gate
-        # (test_data/DriftTauConfirm/20260909-200537) failed -- tau=0.15 gave 3x
-        # the hard touchdowns (max rel_vel 2.80 vs 1.55, incl. a 0.53 m / 2.80
-        # m/s IC4 impact), P+S 11/20 vs 14/20, IC4 4P->1P -- a terminal-noise tail
-        # regression from d being self-motion h_xy on a stationary target, with no
-        # measurable moving-target benefit to offset it. Set CBF_DRIFT_TAU>0
-        # per-run for rover work only.
-        _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.0"))
+        # CBF_DRIFT_MAX. CBF_DRIFT_TAU DEFAULT 0.15 (BAKED 2026-09-09). Judged on
+        # CBF BEHAVIOUR, not SP: on the IC2-5 stationary confirm gate
+        # (test_data/DriftTauConfirm/20260909-200537) tau=0 and tau=0.15 BOTH held
+        # the safe set 100% (0 frames with the marker centre past the physical FoV
+        # edge; maxC/phi 1.02 vs 1.03); the SP delta there was SITL noise (most of
+        # the non-precise reps had vis_active=0, CBF inert). On a MOVING target
+        # tau=0 is reactive-only and structurally one step behind continuous
+        # target motion -> 278 frames / 24 rover reps where the centre left the
+        # sensor (vs 0 stationary) -- it corrects the marker back AFTER it has
+        # left, not keeps it in. tau*d is the anticipation that closes that gap.
+        # Known follow-up hardening (NOT a blocker): terminal-overfill h_xy
+        # corruption (coherent, rel_resid-gate-blind) becomes a phantom lead at
+        # tau>0 -- an overfill gate on d (zero d when MARKER_EXTENT_PX shows the
+        # marker fills the frame) is the fix. CBF_DRIFT_TAU=0 restores reactive-only.
+        _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.15"))
         _drift = None
         if _tau > 0.0 and len(self._h) > 0 and marker_center_px is not None:
             _flow_ok = (bool(getattr(self._img_node, "_observer_valid", True))
@@ -4190,7 +4195,7 @@ class Controller(Thread):
             # visibility_projection knobs (mirrored with their live defaults)
             "CBF_BUFFER_FRAC": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
             "CBF_VIS_RHO": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
-            "CBF_DRIFT_TAU": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
+            "CBF_DRIFT_TAU": float(os.environ.get("CBF_DRIFT_TAU", "0.15")),
             "CBF_DRIFT_LOOM_STRIP": os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1",
             "CBF_DRIFT_MAX": float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
             "CBF_DRIFT_RESID_GATE": float(os.environ.get("CBF_DRIFT_RESID_GATE", "0.45")),
@@ -4236,7 +4241,7 @@ class Controller(Thread):
             "theta_floor_deg": np.rad2deg(self._theta_floor),
             "cbf_buffer_frac": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
             "cbf_vis_rho": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
-            "cbf_drift_tau": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
+            "cbf_drift_tau": float(os.environ.get("CBF_DRIFT_TAU", "0.15")),
             "cbf_drift_max": float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
             "cbf_g_min": float(os.environ.get("CBF_GMIN", "0.2")),
             "cbf_t_react": float(os.environ.get("CBF_TREACT", "1.5")),
