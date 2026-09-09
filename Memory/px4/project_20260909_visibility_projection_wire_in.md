@@ -368,6 +368,11 @@ not stable (perception-blocked upstream). Flight durations are bimodal SITL nois
   (b) light LPF / median filter on `d`, (c) tighter flow-validity gate (the spikes
   slip through `_observer_valid`), and/or (d) much smaller `τ` (0.1–0.2). Then
   re-sweep. **`CBF_DRIFT_TAU=0` stays the default.**
+  - **Ready-made gate input (peer, 2026-09-09):** `_solve_jacobian` already logs
+    `rel_resid = ||A@sol−b||/||b||` + `cond(A)` per flow solve — a scenario-agnostic
+    "trust this whole h vector this frame" measure, in the flow diag log. Gate `d`
+    (and possibly Tier-2's `c_rate`) on `rel_resid` high / `cond` bad. Same signal
+    could become a 3rd condition on the loom gate. See `project_20260908_line_width_loom_investigation`.
 - A clean "does the lead help" A/B is not possible until the rover approach itself
   survives past ~10 s consistently — that's the perception thread
   ([[project_20260901_moving_rover_landing]]).
