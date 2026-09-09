@@ -169,7 +169,9 @@ function [X] = traj_Gen(t, type, speed_mult)
 
             r  = 1.0;
             w_tr = 0.2;   % translation angular rate
-            w_yaw = 0.4;  % independent yaw rate
+            w_yaw = 0.4;  % independent target yaw rate [rad/s]
+            global TARGET_YAW_RATE %#ok<GVMIS>  % test hook: override w_yaw for yaw-ceiling sweeps
+            if ~isempty(TARGET_YAW_RATE), w_yaw = TARGET_YAW_RATE; end
 
             p = [r*(cos(w_tr*t)-1);
                  r*sin(w_tr*t);
