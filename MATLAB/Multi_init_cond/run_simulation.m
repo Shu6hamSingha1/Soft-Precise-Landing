@@ -47,6 +47,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         if isfield(K_override, 'yaw_rate_law'),  P.yaw_rate_law = K_override.yaw_rate_law; end
         if isfield(K_override, 'yrl_kp'),        P.yrl_kp    = K_override.yrl_kp;        end
         if isfield(K_override, 'yrl_ki'),        P.yrl_ki    = K_override.yrl_ki;        end
+        if isfield(K_override, 'yrl_wz_sign'),   P.yrl_wz_sign = K_override.yrl_wz_sign; end
+        if isfield(K_override, 'cbf_two_tier'),  P.cbf_two_tier = K_override.cbf_two_tier; end
+        if isfield(K_override, 'cbf_drift_tau'), P.cbf_drift_tau = K_override.cbf_drift_tau; end
     end
 
     % --- state init ---
