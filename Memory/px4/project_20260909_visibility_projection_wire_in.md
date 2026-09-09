@@ -377,3 +377,18 @@ not stable (perception-blocked upstream). Flight durations are bimodal SITL nois
   survives past ~10 s consistently — that's the perception thread
   ([[project_20260901_moving_rover_landing]]).
 - Harness: `scripts/run_rover_cbf_sweep.sh` + `tools/analyze_rover_cbf_sweep.py`.
+
+### `condition_drift()` — BUILT (commit `e1b094e8`)
+Caller-side conditioning of `h_xy` before it is passed as the Tier-1 lead `d`:
+`rel_resid` gate (`self._img_node._bgflow_health[0]` > `CBF_DRIFT_RESID_GATE`=0.45,
+the perception layer's own threshold → feed 0) → median-of-3 (kills isolated
+single-frame spikes) → 1-pole LPF (`CBF_DRIFT_LPF_ALPHA`=0.12 ≈ τ 0.15 s @ 50 Hz)
+→ radial clamp (`CBF_DRIFT_MAX`=0.5 tangent/s, direction preserved).
+Replayed the sweep's 14 lead-arm `h(t)` traces through it: `|d|max` 16.4 / 9.9 /
+4.3 → capped at 0.5 on every rep, `|d|p50` unchanged (real slow drift passes), only
+0–5 frames/rep hit the clamp. Validator +check 14 (gate / clamp / spike-reject /
+tracks a slow drift); **15/15**.
+**Still `CBF_DRIFT_TAU=0` default.** Next SITL step: re-sweep with the conditioning
++ a smaller `τ` (~0.15) so Static-rover residual noise (`|d|p50`~0.05) →
+`τ·|d|`~0.007 tangent (inert). Gated on the rover approach being stable enough to
+judge (perception thread).
