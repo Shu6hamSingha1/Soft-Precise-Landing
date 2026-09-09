@@ -516,8 +516,20 @@ def _fill_A(centered_pts):
 
 # ─── LINE-WIDTH LOOM (shadow, 2026-09-08) ──────────────────────────────────────
 # SHADOW-MODE ONLY: logged as a diagnostic (Width Loom Log below), NOT consumed by
-# any control path yet. See project_20260908_line_width_loom_investigation memory
-# for the full derivation. Replaces an earlier, worse-performing design (measuring
+# any control path. The scale-rate->h_z fusion built on this is a CONFIRMED
+# DEAD-END (see the _scale_fuse_* block + memory). See
+# project_20260908_line_width_loom_investigation for the full derivation.
+#
+# ⚠ 2026-09-09: width_loom_from_detection now DEFAULTS to a GEOMETRY method
+# (_wgeom_arm: stroke width = 2*sqrt(3)*std of the arm inliers' transverse
+# residual, gated on arm-perpendicularity + junction-in-frame). The mask-scan
+# functions below (_wloom_bilinear / _wloom_scan_thickness / _wloom_width_at_
+# points) are now the CROSS_WIDTH_GEOM=0 FALLBACK -- kept because the mask-scan
+# overruns a solid blob at terminal overfill (14-201 px vs a true ~24 px), which
+# the geometry method does not. Rationale + numbers in width_loom_from_detection.
+#
+# Original mask-scan design notes (still apply to the fallback path): replaces an
+# earlier, worse-performing design (measuring
 # width from _robust_fit_line's own pruned inlier set, or from a fixed-fraction-of-
 # bbox coarse band) with a direct mask-thickness scan -- both prior approaches were
 # found to be structurally wrong: the pruned set self-referentially suppresses the
@@ -563,6 +575,10 @@ _WLOOM_MAX_STEPS = 300   # per-side step cap (~120px max half-thickness, ~240px 
 _WLOOM_THRESH = 127.0    # on-mask bilinear-sample threshold (mask is 0/255)
 _WLOOM_N_STATIONS = 5
 _WLOOM_MIN_QUORUM = 3    # of _WLOOM_N_STATIONS, must independently confirm on-mask
+_WGEOM_ON = os.environ.get("CROSS_WIDTH_GEOM", "1") == "1"   # geometry width is the DEFAULT
+_WGEOM_PERP_TOL_DEG = float(os.environ.get("CROSS_WGEOM_PERP_TOL", "22.0"))  # |angI-angJ| must be 90+-this
+_WGEOM_JUNC_MARGIN = float(os.environ.get("CROSS_WGEOM_JUNC_MARGIN", "12.0"))  # junction this far inside every edge
+_WGEOM_MIN_PTS = int(os.environ.get("CROSS_WGEOM_MIN_PTS", "8"))
 _WLOOM_ARM_AGREE_RATIO = 2.0   # max(w_i,w_j)/min(w_i,w_j) before distrusting BOTH arms --
                                 # see width_loom_from_detection's comment: with only 2
                                 # values, np.median degenerates to a plain average, which
@@ -642,24 +658,84 @@ def _wloom_width_at_points(mask, pts_for_dir):
     return float(np.median(thicknesses))
 
 
-def width_loom_from_detection(det):
-    """Shadow-mode arm-width measurement for a single detection: median of both
-    arms' mask-scan widths (raw camera-plane px), or None if det.ok is False, the
-    mask is unavailable, too few stations confirm on-mask on either arm, or the two
-    arms disagree too much to trust either (hold last-good is the caller's job, not
-    this function's).
+def _wgeom_arm(pts):
+    """One arm's stroke width from the GEOMETRY of its inlier point cloud, not a
+    mask traversal. The inliers lie along the stroke's centreline, so the std of
+    their TRANSVERSE (perpendicular-to-fit) residual is a half-width proxy; for a
+    stroke modelled as uniform across its section, full width = 2*sqrt(3)*std.
+    Returns (fit_angle_deg, width_px) or None.
 
-    ⛔ BUG FOUND + FIXED (2026-09-09): with only 2 candidate values (one per arm),
-    np.median degenerates to a plain AVERAGE -- not robust to a single contaminated
-    arm the way a real median is with >=3 samples. Confirmed on real data: an
-    isolated single-frame spike in one arm (e.g. from the now-fixed _WLOOM_MAX_STEPS
-    cap, or a transient contamination event) dragged the reported width up
-    substantially even with the OTHER arm reading cleanly. Fix: require the two
-    arms to agree within _WLOOM_ARM_AGREE_RATIO before trusting either -- when they
-    disagree, there is no principled way to tell which one (if either) is right
-    with only 2 samples, so return None (hold last-good) rather than average a
-    trustworthy value with a contaminated one."""
-    if det is None or not det.ok or det.isolated_mask is None:
+    Why this over the mask-scan (_wloom_width_at_points): at terminal overfill the
+    isolated_mask is a SOLID amorphous blob (marker + junction + landing-gear
+    intrusions merged, hole_frac ~ 0), so the perpendicular "continuous on-mask
+    run" is the blob's cross-section, not the stroke -- it overruns to 60-240 px
+    (frame-size) against a true ~24 px stroke. The inlier cloud's transverse
+    spread does NOT overrun: a bigger blob doesn't move the centreline inliers.
+    Measured (5 OverfillCapture reps): mask-scan width <0.5m ranged 14-201 px;
+    this ranges 6-35 px -- bounded, fails safe. (It does NOT rescue the RATE --
+    d(ln width)/dt corr with GT loom is still ~0.2 mid-band -- but it removes the
+    wrong-signed terminal spikes the mask-scan fed the KF. Full analysis:
+    project_20260908_line_width_loom_investigation memory.)"""
+    pts = np.asarray(pts, dtype=np.float64)
+    if len(pts) < _WGEOM_MIN_PTS:
+        return None
+    c = pts - pts.mean(axis=0)
+    _, _, VT = np.linalg.svd(c, full_matrices=False)
+    v = VT[0]
+    nrm = np.array([-v[1], v[0]])
+    r = c @ nrm
+    width = 2.0 * np.sqrt(3.0) * float(np.std(r))
+    ang = float(np.degrees(np.arctan2(v[1], v[0])))
+    return ang, width
+
+
+def width_loom_from_detection(det):
+    """Shadow-mode cross-arm stroke-width measurement for a single detection, in
+    raw camera-plane px, or None (caller holds last-good) when it can't be trusted.
+
+    DEFAULT (CROSS_WIDTH_GEOM=1): the GEOMETRY method -- mean of the two arms'
+    inlier-transverse-spread widths (_wgeom_arm), gated on simple cross geometry:
+      * both arms have >= _WGEOM_MIN_PTS inliers,
+      * the two fitted arm directions are ~perpendicular
+        (|angI - angJ| folded to [0,90] within _WGEOM_PERP_TOL_DEG of 90) --
+        rejects a frame where one "arm" fit has latched onto background texture
+        or a stub (seen at overfill: angles 45-52 deg apart, not 90),
+      * det.center (the junction) sits inside the frame by _WGEOM_JUNC_MARGIN --
+        rejects frames where the junction has been pushed off-frame and only arm
+        fragments remain.
+    Returns None (not a number) whenever a gate fails -- honest refusal instead of
+    the mask-scan's plausible-looking blob-traversal length.
+
+    CROSS_WIDTH_GEOM=0 restores the legacy mask-scan (_wloom_width_at_points +
+    _WLOOM_ARM_AGREE_RATIO); kept for A/B and still used by
+    tools/overlay_width_loom_rate.py."""
+    if det is None or not det.ok:
+        return None
+
+    if _WGEOM_ON:
+        pi = det.line_points_i_raw if getattr(det, "line_points_i_raw", None) is not None else det.line_points_i
+        pj = det.line_points_j_raw if getattr(det, "line_points_j_raw", None) is not None else det.line_points_j
+        if pi is None or pj is None:
+            return None
+        ai = _wgeom_arm(pi)
+        aj = _wgeom_arm(pj)
+        if ai is None or aj is None:
+            return None
+        d_ang = abs(((ai[0] - aj[0]) + 90.0) % 180.0 - 90.0)   # angle between arms, folded to [0,90]
+        if abs(d_ang - 90.0) > _WGEOM_PERP_TOL_DEG:
+            return None   # not a genuine perpendicular arm pair
+        j = getattr(det, "center", None)
+        m = det.isolated_mask
+        if j is not None and m is not None:
+            h, w = m.shape[:2]
+            if not (_WGEOM_JUNC_MARGIN < j[0] < w - _WGEOM_JUNC_MARGIN
+                    and _WGEOM_JUNC_MARGIN < j[1] < h - _WGEOM_JUNC_MARGIN):
+                return None   # junction off-frame -> only arm fragments, width unreliable
+        wv = 0.5 * (ai[1] + aj[1])
+        return float(wv) if wv > 0 else None
+
+    # legacy mask-scan path (CROSS_WIDTH_GEOM=0)
+    if det.isolated_mask is None:
         return None
     widths = []
     for pts in (det.line_points_i, det.line_points_j):
