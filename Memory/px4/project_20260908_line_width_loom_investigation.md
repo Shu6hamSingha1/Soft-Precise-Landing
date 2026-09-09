@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T21:34:03.262Z
+  modified: 2026-09-09T05:01:56.453Z
 ---
 
 ## Context / goal
@@ -704,3 +704,28 @@ Three forms tried (naive / +overfill-gate / +de-bias+band+loose-r), all regress.
 its 0.84–0.98 in-band correlation with GT loom is real. If it's ever revisited it needs a
 *fundamentally different consumer* — not a continuous correction of the live loom estimate.
 `CROSS_SCALE_RATE_FUSE` default-OFF is now PERMANENT, not a holding pattern.
+
+### Overlay tool + geometry-width replacement (2026-09-09)
+`tools/overlay_width_loom_rate.py` — visualises the width/extent/scale loom-RATE pipeline on the
+raw IMG_RECORD frames (arm PCA lines, the 5 scan stations, per-station perpendicular mask-scan
+segments, per-arm widths + agreement ratio) with a bottom panel of W/E/S rates vs GT loom.
+Companion to `overlay_image_features.py`. Analysing its output on IC1 rep1 + IC4 gave 3 stacked
+failure regimes: (1) alt>3m — width is 1-2 px, `d/dt ln(width)` is a *staircase* from sub-pixel
+quantisation; (2) alt .5-2m — works, but width still 7 px ≈ quantises to ~7% so E/S (extent) is
+the smooth signal; (3) alt<0.5m — **the isolated_mask is a SOLID amorphous blob** (`hole_frac
+0.00`, not "holes" — marker + junction + landing-gear intrusions merged), so the mask-scan's
+perpendicular "on-mask run" is the *blob cross-section*: overruns to 60-240 px (frame-size) vs a
+true ~24 px stroke, arms disagree ~2x, KF rate spikes WRONG-SIGNED. Extent also dead here
+(saturates at 318 = frame diagonal).
+
+**GEOMETRY WIDTH landed as the default (`bf812f1f`, `CROSS_WIDTH_GEOM=1`):** stroke width =
+`2*sqrt(3)*std(transverse residual of the arm INLIER cloud)`, mean of both arms, gated on
+`>=8 pts/arm` + `|angI-angJ|≈90°±22°` (rejects a background/stub "arm") + `junction inside frame
+±12px`. Gate fail → `None` (hold-last-good) = honest refusal. The inliers sit on the stroke
+centreline so a bigger blob / internal holes don't move them. 5-rep replay: **mask-scan width
+<0.5m ranged 14-201 px → geometry 12-35 px, BOUNDED**; valid% 48-73% (rest hold-last-good).
+`.5-2m` rate corr with GT loom actually slightly better (~0.25 vs ~0.09) but still not usable;
+`<0.5m` still noise, just bounded. **This is a ROBUSTNESS fix to the shadow signal only — it
+removes the wrong-signed terminal spikes, does NOT rescue the rate, and the fusion stays a
+dead-end.** `CROSS_WIDTH_GEOM=0` restores the mask-scan (kept; used by the overlay tool). Backup
+`Obsolete/src/cross_marker_perception_pre_geomwidth_20260909.py`.
