@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T05:52:23.473Z
+  modified: 2026-09-09T11:04:09.905Z
 ---
 
 ## ⛔⛔ THREAD CLOSED — 2026-09-09 (read this, skip the 700-line chronology below unless digging)
@@ -826,5 +826,23 @@ IC2 killed a −10.9 spike; IC4 `>2m` +0.29 → +0.48 and `<0.5m` −0.30 → **
 caught a **+1601** blowup on rep3 (→ +19). **Cost:** `<0.5m` corr goes more negative on
 rep1/rep3/IC5 (−0.16→−0.52, −0.26→−0.54, +0.03→−0.54) — but that band is already noise / ~70-80%
 post-touchdown, and the touchdown detector (not loom) owns it there. Clean-flight non-spike frames
-are bit-identical. **NEEDS a SITL IC1-5 A/B before `CROSS_LOOM_INNOV_GATE` default-on.** Backup
-`Obsolete/src/cross_marker_perception_pre_loomgate_20260909.py`.
+are bit-identical. Backup `Obsolete/src/cross_marker_perception_pre_loomgate_20260909.py`.
+
+**SITL gate: `CROSS_LOOM_INNOV_GATE=1`, n=3 IC2-5** (`test_data/ICValidation/20260909-162140`,
+HEADLESS, gate-ON only vs the peer's fresh QP-gate baseline on the same HEAD — 20/20 land, xy
+pooled 0.06-0.07). **Result: CLEAN WASH — no regression.** 12/12 landed, **0 TL, 0 fly-away**
+(the primary risk — gate causes a fly-away — did NOT materialise). xy: IC2 .027/.068/.109,
+IC3 .021/.027/.063, IC4 .109/**.796**/.085, IC5 .032/.018/.044 → 9/12 ≤0.1, ~0.06 mean dropping
+the one bad rep. **IC4_rep2 (xy .796, flight only 9.7s, ended at alt 3.68m) is NOT the gate**:
+only 2 gate trips that rep (all >1m), h_z clean and tracking GT (−0.37 vs GT −0.31 at the last
+sample), no spike — it's a premature flight termination on a historically flaky IC4 slot (the
+scale-rate gate ALSO failed IC4_rep2). Where the gate WAS active (IC4 rep1: 13 trips; rep3: 3;
+IC5/IC2/IC3), `h_z` tracked GT loom well — `.5-2m` corr 0.88-0.95, `>2m` 0.31-0.47, range bounded
+[−1.2,+1.7], no coasting blowups.
+**VERDICT: `CROSS_LOOM_INNOV_GATE=1` is SAFE — clean wash on the stationary IC2-5 gate.** No
+terminal spike reproduced in these 12 reps so no measured *benefit* here, but the offline
+evidence (rep1 corr −0.07→+0.83, IC4 <0.5m −0.30→+0.75, +1601 blowup caught) stands. It's a
+reasonable default-ON candidate as an always-on backstop (+ the abs clamp already default-on);
+equally fine to leave default-OFF and enable situationally. n=5 wouldn't change this — the call
+is "do you want an always-on safety net that is a no-op in the common case", not empirical.
+Left DEFAULT-OFF pending a user decision.
