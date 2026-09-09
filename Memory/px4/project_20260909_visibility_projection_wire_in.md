@@ -503,15 +503,26 @@ Moving-target machinery: built, conditioned, offline-validated, frame-verified,
 regression-free in SITL. One implementation serves both.
 
 ### What's OPEN (not CBF-blocking)
-1. **`CBF_DRIFT_TAU` — flip to 0.15 tried 2026-09-09, REVERTED. Default stays 0.**
-   The IC2-5 stationary confirm gate (`DriftTauConfirm/20260909-200537`) failed
-   (3× hard touchdowns / IC4 4P→1P / P+S 11 vs 14 — tail regression from `d` being
-   self-motion `h_xy` on a stationary target). Rover re-sweep at 0.15 was
-   regression-free but that's not enough. To use the lead: `CBF_DRIFT_TAU>0`
-   per-run, rover only. Whether the lead *improves* moving-target visibility is
-   still unmeasured — needs the rover approach survivable → **perception thread**
-   ([[project_20260901_moving_rover_landing]]): oblique-view detector collapse
-   (~5 m) + terminal-overfill loom collapse (~1.1 m).
+1. **`CBF_DRIFT_TAU` — SHOULD bake at 0.15; blocked by ONE fixable mechanism.
+   Default is 0 for now.** (See the "CBF-BEHAVIOUR A/B" UPDATE section below for
+   the full analysis.)
+   - **The case FOR τ=0.15:** on a MOVING target, reactive-only τ=0 cannot keep
+     the marker in frame — it chases excursions after the centre has already left
+     the FoV/sensor (278 sensor-exit frames / 24 rover reps vs 0 on stationary;
+     Linear reaction lag never resolves). `τ·d` is exactly the anticipation that
+     closes this gap. This is the main reason to bake it.
+   - **The blocker:** `h_xy` corruption in the terminal-overfill zone (coherent
+     ramp to ~1.5 tangent/s; `rel_resid` gate can't see it) → with `τ>0` becomes a
+     phantom lead → the IC2-5 confirm gate's IC4r2 (2.80 m/s TD, 22% terminal
+     frames intervened). Same #1 perception blocker, second exposure path.
+   - **The fix:** add an **overfill gate** to `d` (zero `d` when
+     `MARKER_EXTENT_PX` says the marker fills the frame, ~`ext>270`). Not scenario
+     branching — a perception-health gate. Then re-run `run_drifttau_confirm_gate.sh`
+     (stationary, must not regress) + a rover CBF-behaviour check (sensor-exits
+     must drop). If both hold → bake single `τ=0.15`.
+   - Perception-thread dependency for a full moving-target verdict still stands
+     ([[project_20260901_moving_rover_landing]]): oblique-view detector collapse
+     (~5 m) + terminal-overfill loom collapse (~1.1 m).
 2. Idea-4 descent-ease knob sweep (`t_react`/`buffer_frac`) — designed
    (`docs/DESCENT_EASE_KNOB_SWEEP.md`), not run. Low priority (governor is
    frequent but gentle, outcomes clean).
@@ -566,3 +577,76 @@ any future re-test (e.g. a smaller `τ` like 0.05, or after the rover approach i
 fixed). **Lesson: "regression-free on the rover re-sweep" ≠ safe to default — the
 rover reps die in 2-20 s and can't show a terminal-tail regression; the stationary
 IC2-5 gate can and did.**
+
+---
+
+## UPDATE 2026-09-09 (cont.): CBF-BEHAVIOUR A/B (τ=0 vs τ=0.15) — moving target is why τ=0.15 SHOULD bake
+
+User: don't judge τ by SP (wrong lens here); judge by CBF trigger correctness +
+whether the safe control input is better. Analysed `DriftTauConfirm/20260909-200537`
+(stationary) and the two rover sweeps (`RoverCBFSweep/20260909-163929` +
+`.../182607`, `off` arm = τ=0) on CBF-internal metrics.
+
+### Stationary (DriftTauConfirm, 20 reps/arm) — τ=0 is better HERE
+| metric | τ=0 | τ=0.15 |
+|---|---|---|
+| false-positive fires (Tier 1 fired while `|c|/φ`<0.4) | **0 / 20 reps** | 32 frames / 3 reps (21 = IC4r2) |
+| TPR (fired on near-edge & rising) | 0.47 | 0.45 |
+| **sensor-exit frames** (`|c|` > physical FoV edge) | **0** | **0** |
+| mean / max `maxC/φ` | 0.70 / 1.02 | 0.71 / 1.03 |
+| intervention → `|c|/φ` drops next 3 fr | 42% | 35% |
+On a STATIONARY target `d` = self-motion `h_xy` + noise (not target drift), so
+`τ·d` fabricates breaches → 32 spurious interventions on a centred healthy command.
+Real safety metric (sensor exits) identical = 0 both. τ=0 = exact minimal
+intervention. **Stationary verdict: τ=0.**
+
+### Moving target (rover sweeps, `off`=τ=0, 6 motion profiles, 24 reps) — τ=0 FAILS its core job
+| profile | `vis_active`% | t₁ₛₜ fire (flight%) | maxC/φ | **sensor-exit frames** | reaction lag (fr) |
+|---|---|---|---|---|---|
+| Linear | 4.7 | 79 | 0.54 | **71** | **40 = never caught** |
+| Circular | 6.4 | 60 | 1.06 | 15 | 4.5 |
+| EightShape | 3.5 | 62 | 0.57 | 9 | 1.5 |
+| Sinusoidal | 8.1 | 84 | 1.24 | **71** | 11 |
+| Lissajous | 10.2 | 85 | 1.08 | 3 | 0.9 |
+| CircularYaw | 9.6 | 63 | 1.17 | **109** | 3.1 |
+| **TOTAL** | — | — | — | **278 / 24 reps** | — |
+
+τ=0 on a moving target: **triggers correctly** (`vis_active` 3.5–10% > stationary's
+2.5%; fires within 1–5 fr of `|c|/φ` crossing 0.7 on ~every excursion — 100%
+fired-within-5) **but reactive-only is structurally one control step behind
+continuous target motion.** It projects the lean for where `c` IS, not where it's
+GOING, so the centre crosses φ and keeps going out before the pull-back catches it
+— **278 frames where the marker centre left the physical sensor across 24 reps, vs
+0 on stationary.** Linear is the sharpest: steady drift → reaction lag never
+resolves (40 = window end) → 71 post-edge frames. It corrects the marker back in
+AFTER it has left the FoV, rather than keeping it in.
+
+### THE CASE FOR BAKING τ=0.15 (recorded per user direction)
+**The moving-target gap above is the main reason to bake τ=0.15.** Reactive-only
+τ=0 cannot keep a moving marker in frame — it chases excursions after the fact.
+`τ·d` is exactly the anticipation that closes that gap; the lead concept is right
+for the moving case. On a stationary target the lead is near-neutral (self-motion
+flow) — the only reason τ=0 "wins" stationary is the spurious fires, which are a
+symptom of the *source*, not the *concept*.
+
+### THE BLOCKER (single τ, one value for both)
+τ=0.15 cannot bake as-is because of ONE mechanism, not a moving/stationary split:
+**`h_xy` corruption in the terminal-overfill zone** (marker fills frame, LK flow
+ramps coherently to ~1.5 tangent/s, `rel_resid` stays low so `condition_drift`'s
+gate passes it; `vis_c` also jumps ±0.9φ). With `τ>0` that garbage becomes a
+phantom lead → IC4r2: 22% of terminal frames intervened, 2.80 m/s touchdown. This
+is the #1 open perception blocker ([[project_20260901_rover_cross_perception_diagnosis]]),
+now with a second exposure path via the lead. `condition_drift` `rel_resid` +
+median-3 + clamp do NOT catch coherent overfill corruption.
+
+### PATH TO BAKING ONE τ=0.15
+1. Add an **overfill gate** to `d` (zero `d` when `MARKER_EXTENT_PX` says the
+   marker fills the frame, ~`ext > 270` on the 240×320 frame). NOT scenario
+   branching — a perception-health gate, same category as the `rel_resid` gate,
+   just one that detects coherent overfill. Rationale independent of target type:
+   below ~0.5 m you are <1 s from touchdown, `0.15 s` of lead is pointless there.
+2. Re-run BOTH: `run_drifttau_confirm_gate.sh` (stationary, must not regress) AND a
+   rover CBF-behaviour check (sensor-exit frames should drop vs τ=0).
+3. If stationary holds and moving improves → bake single `τ=0.15`.
+Until then the single default is `τ=0` (safe stationary; known moving-target gap
+documented above).
