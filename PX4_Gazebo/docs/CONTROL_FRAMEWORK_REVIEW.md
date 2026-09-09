@@ -130,6 +130,14 @@ unresolved, but descent's main coupling to TLs is *reaching* the perception-brea
   untouched); Tier-2 `CBF_DESCENT_EASE` scales only the downward part of `I_a[2]`, self-releasing. Same
   methodology rule: *if `vis_active(t)` fires in normal ops the control law is failing* — safety net, not
   a controller (pure pass-through on a clean approach). Spec `docs/CBF_visibility.pdf`.
+  - **`e63751e2` (2026-09-09):** Tier 1 is now a small convex QP — deliverability ball
+    `‖y‖ ≤ √(A_cap²/a_z² − 1)` (= the `arccos(a_z/A_CAP)` lean cap) folded in, so `I_a` is
+    actuator-feasible by construction; penalised visibility slack `CBF_VIS_RHO=2000` for graceful
+    degradation instead of infeasibility when the FoV box and the thrust ball are disjoint. Post-hoc
+    lean/thrust caps kept as redundant guards. Moving-target lead (`τ·d`, `d` sourced from the pipeline's
+    de-rotated optic flow `h_xy`) wired but inert at `CBF_DRIFT_TAU=0` default (rover-phase knob). New
+    logs `vis_slack(t)` / `vis_drift(t)`. Offline: `validate_visibility_projection.py` 14/14 across 5
+    seeds. IC2–5 stationary A/B gate: `test_data/VisProjQPGate/`.
 
 ### D. Proper anti-windup (replaced fixed band-aids)
 - Conditional integration in `_yawCtrl` (replaced `_ie_a_clamp`); the `izeta`/`iV_s_e_n` integral clamps.

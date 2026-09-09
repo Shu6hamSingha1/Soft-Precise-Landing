@@ -51,8 +51,9 @@ $P=R_z(90^\circ)R_z(-\psi_\text{b})$ & inertial $x$-$y$ $\to$ image axes ($\psi_
 $\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust} (thrust/mass), NED. Hover $=-g\boldsymbol{e}_3$, so $\|\,^\Iframe\boldsymbol{a}_\text{d}\|$ \emph{is} the thrust magnitude per unit mass \\
 $a_z=|\,^\Iframe a_{\text{d},z}|$ & vertical component magnitude --- an \textbf{input}, never a decision variable \\
 $\boldsymbol{y}=P\,(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$ & commanded lean, image axes; $\boldsymbol{y}_\text{d}$ from the unconstrained $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$; $\boldsymbol{y}_\text{curr}=P(-R_{[{:}2,3]}/R_{33})$ from the realized attitude $R$ \\
-$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre (tangent$/$s, gyro-stripped); look-ahead horizon (s) \\
+$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $=$ \texttt{CBF\_DRIFT\_TAU} (s), $\tau=0$ disables the term. Source: the pipeline's de-rotated, calibrated, filtered translational optic flow $\boldsymbol{h}_{xy}$ mapped into image axes; flow-validity-gated to $\boldsymbol{d}=\boldsymbol{0}$ \\
 $A_\text{cap},\ g$ & vehicle maximum thrust-to-mass ratio; gravitational acceleration \\
+$y_\text{max},\ \boldsymbol{s},\ \rho$ & deliverability radius $\sqrt{A_\text{cap}^2/a_z^2-1}$; per-axis visibility slack $\boldsymbol{s}\ge\boldsymbol{0}$ and its penalty weight $\rho=$ \texttt{CBF\_VIS\_RHO} $=2000$ \\
 $g_z\in[g_\text{min},1]$ & descent-governor scale (\S\ref{sec:tier2}); $g_\text{min}=$ \texttt{CBF\_GMIN} $=0.2$, $T_\text{react}=$ \texttt{CBF\_TREACT} $=1.5$\,s \\
 \bottomrule
 \end{tabular}
@@ -93,7 +94,14 @@ ray; \eqref{eq:lin} is its first-order term about the current lean, and the sign
 against an independent pinhole-plus-attitude camera model (\texttt{tools/validate\_visibility\_projection.py}
 check~1). $\boldsymbol{y}_\text{curr}$ is read from the realized attitude, so it needs no rotation from
 acceleration units. The $\tau\boldsymbol{d}$ term extrapolates measured \emph{target} motion over the
-horizon $\tau$; it is zero for a stationary target.
+horizon $\tau$; it is zero for a stationary target. $\boldsymbol{d}$ is taken from the perception
+front-end's translational optic flow $\boldsymbol{h}_{xy}$ --- the de-rotated ($L_\omega\boldsymbol\omega$
+already removed), sensor-calibrated, filtered relative-velocity signal the middle loop already uses ---
+rather than a bespoke differencing of $\tilde{\boldsymbol{r}}$; it is mapped through the same camera-mount
+swap as $\tilde{\boldsymbol{r}}$ and forced to $\boldsymbol{0}$ whenever the flow solve is flagged
+untrustworthy (so the term degrades to the stationary case, never to noise). The lead is clamped so a
+linear extrapolation never predicts the centre crossing an axis origin --- beyond that the first-order
+model does not hold and the prediction would ask for a reversed correction.
 
 \paragraph{Validity envelope.} $L_e$ is evaluated at the measured $\tilde{\boldsymbol{r}}$ and held fixed
 for the solve. The model error of \eqref{eq:lin} is under $8\%$ for a per-cycle lean \emph{change}
@@ -107,16 +115,30 @@ Each control step, given the outer loop's unconstrained command $\,^\Iframe\bold
 (hence $\boldsymbol{y}_\text{d}$) and the measurement $(\tilde{\boldsymbol{r}},\boldsymbol{d},R)$,
 \begin{equation}\label{eq:qp}
 \boxed{\;
-\boldsymbol{y}^\star=\arg\min_{\boldsymbol{y}\in\mathbb{R}^2}\ \tfrac12\|\boldsymbol{y}-\boldsymbol{y}_\text{d}\|^2
-\quad\text{s.t.}\quad
-\big|\,\boldsymbol{c}_\text{next}(\boldsymbol{y})\,\big|_k\le\varphi_k,\ \ k=1,2
+\begin{aligned}
+(\boldsymbol{y}^\star,\boldsymbol{s}^\star)&=\arg\min_{\boldsymbol{y}\in\mathbb{R}^2,\ \boldsymbol{s}\ge\boldsymbol{0}}\
+\tfrac12\|\boldsymbol{y}-\boldsymbol{y}_\text{d}\|^2+\tfrac{\rho}{2}\|\boldsymbol{s}\|^2\\[2pt]
+&\text{s.t.}\quad
+\big|\,\boldsymbol{c}_\text{next}(\boldsymbol{y})\,\big|_k\le\varphi_k+s_k\ \ (k=1,2),
+\qquad
+\|\boldsymbol{y}\|\le y_\text{max}
+\end{aligned}
 \;}
 \end{equation}
-after which $\,^\Iframe\boldsymbol{a}_{\text{d},xy}^{\star}=a_z\,P^{\!\top}\boldsymbol{y}^\star$ and the
-vertical command $\,^\Iframe a_{\text{d},z}$ is passed through unchanged. \eqref{eq:qp} is a convex
-quadratic program: the objective is strictly convex and each constraint
-$|\boldsymbol{c}_\text{next}|_k\le\varphi_k$ is a pair of half-planes affine in $\boldsymbol{y}$ (its
-gradient is the fixed row $L_{e,k}$), so the feasible set $\mathcal{Y}$ is a convex polyhedron.
+with $y_\text{max}=\sqrt{A_\text{cap}^2/a_z^2-1}$, after which
+$\,^\Iframe\boldsymbol{a}_{\text{d},xy}^{\star}=a_z\,P^{\!\top}\boldsymbol{y}^\star$ and the vertical
+command $\,^\Iframe a_{\text{d},z}$ is passed through unchanged. The visibility rows are affine in
+$\boldsymbol{y}$ (gradient the fixed row $L_{e,k}$); their intersection is a convex polyhedron
+$\mathcal{Y}$. The ball $\|\boldsymbol{y}\|\le y_\text{max}$ is \emph{thrust deliverability} written in
+tangent form: since $\|\,^\Iframe\boldsymbol{a}_\text{d}\|^2=a_z^2(1+\|\boldsymbol{y}\|^2)$, it is exactly
+$\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$, equivalently the lean cap
+$\arccos(a_z/A_\text{cap})$ (\S\ref{sec:deliver}). Folding it in makes $\boldsymbol{y}^\star$
+actuator-feasible \emph{by construction}. The per-axis slack $\boldsymbol{s}\ge\boldsymbol{0}$, penalised
+by $\rho\gg1$, keeps visibility effectively hard whenever it is achievable within the ball and degrades it
+gracefully --- rather than going infeasible --- when the buffered FoV box and the deliverability ball are
+disjoint (near-saturated hover with the marker already far off-centre). The objective is strictly convex
+in $\boldsymbol{y}$ and the feasible set (polyhedron $\cap$ ball) is convex and always non-empty, so
+\eqref{eq:qp} has a unique solution.
 
 \paragraph{This is a discrete-time control barrier function.} The constraint of \eqref{eq:qp} is exactly
 $h_k(\boldsymbol{c}_\text{next}(\boldsymbol{y}))\ge0$ for both $k$: it requires the \emph{next-step}
@@ -126,21 +148,23 @@ $\tau\boldsymbol{d}$ look-ahead so the invariance also anticipates exogenous tar
 
 \begin{prop}[Forward invariance]\label{prop:inv}
 Let $\hat{\boldsymbol{c}}_k=\boldsymbol{c}_\text{next}$ evaluated with the realized attitude and drift of
-step $k$, and suppose (i) \eqref{eq:qp} is feasible at every step, and (ii) the realized centre at step
-$k{+}1$ equals $\hat{\boldsymbol{c}}_k$ to within $b\,\mathcal{R}/(2f)$ (the model regime of
-\S\ref{sec:lin}). If $\tilde{\boldsymbol{r}}_0\in\mathcal{S}$ then $\tilde{\boldsymbol{r}}_k\in\mathcal{S}$
-for all $k$.
+step $k$, and suppose (i) $\boldsymbol{s}^\star=\boldsymbol{0}$ at every step (visibility is achievable
+within the deliverability ball --- the normal regime), and (ii) the realized centre at step $k{+}1$
+equals $\hat{\boldsymbol{c}}_k$ to within $b\,\mathcal{R}/(2f)$ (the model regime of \S\ref{sec:lin}). If
+$\tilde{\boldsymbol{r}}_0\in\mathcal{S}$ then $\tilde{\boldsymbol{r}}_k\in\mathcal{S}$ for all $k$.
 \end{prop}
-\noindent\emph{Proof.} By induction. If $\tilde{\boldsymbol{r}}_k\in\mathcal{S}$, feasibility of
-\eqref{eq:qp} gives a $\boldsymbol{y}^\star$ with $|\hat{\boldsymbol{c}}_k|_k\le\varphi_k$, i.e.
-$\hat{\boldsymbol{c}}_k\in\mathcal{S}$. By (ii) the realized $\tilde{\boldsymbol{r}}_{k+1}$ differs from
-$\hat{\boldsymbol{c}}_k$ by at most the buffer margin, so
+\noindent\emph{Proof.} By induction. If $\tilde{\boldsymbol{r}}_k\in\mathcal{S}$, then with
+$\boldsymbol{s}^\star=\boldsymbol{0}$ the solution of \eqref{eq:qp} satisfies
+$|\hat{\boldsymbol{c}}_k|_k\le\varphi_k$, i.e. $\hat{\boldsymbol{c}}_k\in\mathcal{S}$. By (ii) the realized
+$\tilde{\boldsymbol{r}}_{k+1}$ differs from $\hat{\boldsymbol{c}}_k$ by at most the buffer margin, so
 $|\tilde r_{k+1,k}|\le\varphi_k+b\,\mathcal{R}/(2f)=\mathcal{R}/(2f)$: the centre is still on the sensor.
 $\square$
 The buffer thus converts the visual margin into a certified tolerance for the one-step linearization and
-attitude-tracking residual. Feasibility of \eqref{eq:qp} holds whenever $\varphi_k>0$ for both $k$ (the
-marker does not subtend the full buffered FoV); \S\ref{sec:deliver} discusses the interaction with the
-deliverability caps.
+attitude-tracking residual. \eqref{eq:qp} is \emph{always} solvable (the slack relaxes every visibility
+row), so the CBF never stalls the controller; invariance is what the slack buys back, and it holds
+whenever the marker's required lean fits inside the deliverability ball. The condition
+$\boldsymbol{s}^\star=\boldsymbol{0}$ can be certified online --- it is reported each step
+(\texttt{vis\_slack}) --- and is met on every frame of a nominal approach.
 
 \begin{prop}[Pointwise-optimal, minimal intervention]\label{prop:min}
 If $\boldsymbol{y}_\text{d}\in\mathcal{Y}$ then $\boldsymbol{y}^\star=\boldsymbol{y}_\text{d}$; otherwise
@@ -155,34 +179,36 @@ well-behaved approach the projection is a pass-through for essentially every fra
 Leaning toward the marker, or tangentially to it, does not increase $|\boldsymbol{c}_\text{next}|_k$ on
 the binding axis; such a command is left unchanged.
 \end{prop}
-\noindent\emph{Sketch.} A command that reduces $|\tilde r_k|$ makes constraint $k$ slack; the projection
-in \eqref{eq:qp} touches only rows that are active (violated), so a slack row's command component passes
-through. Concretely the alternating projection below adjusts $\boldsymbol{y}$ only along $L_{e,k}$ for a
-$k$ with $|\hat c_k|>\varphi_k$; a re-centring $\boldsymbol{y}_\text{d}$ has $|\hat c_k|\le\varphi_k$ and
-is not adjusted.
+\noindent\emph{Sketch.} A command that reduces $|\tilde r_k|$ makes visibility row $k$ inactive; the
+penalty term of \eqref{eq:qp} contributes zero gradient there, so a re-centring $\boldsymbol{y}_\text{d}$
+(which has $|\hat c_k|\le\varphi_k$ on every axis and $\|\boldsymbol{y}_\text{d}\|\le y_\text{max}$) is a
+stationary point and is returned unchanged.
 
-\paragraph{Solver.} \eqref{eq:qp} is solved by a few sweeps of cyclic projection of
-$\boldsymbol{y}_\text{d}$ onto the (at most two) violated half-planes. Because the two constraint
-normals $L_{e,1},L_{e,2}$ are non-parallel for any $\tilde{\boldsymbol{r}}$, cyclic projection converges
-geometrically to a point of $\mathcal{Y}$; when at most one row is ever active --- the common case, since
-the marker rarely approaches two edges at once --- a single projection is the exact minimum-norm
-solution. Three to four sweeps suffice in practice.
+\paragraph{Solver.} Eliminating the slack in closed form, $s_k^\star=\max(|\hat c_k|-\varphi_k,0)$, turns
+\eqref{eq:qp} into the unconstrained-except-for-the-ball minimisation of
+$\tfrac12\|\boldsymbol{y}-\boldsymbol{y}_\text{d}\|^2+\tfrac{\rho}{2}\sum_k\max(|\hat c_k(\boldsymbol{y})|-\varphi_k,0)^2$,
+a smooth strictly-convex function of $\boldsymbol{y}\in\mathbb{R}^2$. It is solved by projected Newton:
+the Hessian is constant on each active set (identity plus $\rho\,L_{e,k}^{\!\top}L_{e,k}$ over the
+violated rows), so a handful of steps reach the interior optimum exactly; if the ball binds --- only when
+the FoV box and the ball are disjoint --- the boundary optimum is finished with a one-dimensional search
+over the circle $\|\boldsymbol{y}\|=y_\text{max}$. The whole solve is a few $2\times2$ operations.
 
 \section{Deliverability}\label{sec:deliver}
-Thrust deliverability is enforced \emph{after} \eqref{eq:qp}, not folded into it, which is what keeps
-$a_z$ an input and the CBF a plain feasibility projection. Two bounds are applied in order:
-\begin{enumerate}
-\item \textbf{Lean cap:} $\|\boldsymbol{y}^\star\|\le\arccos(a_z/A_\text{cap})$ --- the true deliverable
-tilt at the actual $a_z$ (which equals $\theta_\text{cap}$ only at hover, and correctly loosens below
-hover / tightens above it). If it binds, $\boldsymbol{y}^\star$ is scaled radially toward the origin and
-$\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star$ rescaled to match.
-\item \textbf{Thrust cap:} $\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$ on the full vector.
-\end{enumerate}
-Radial scaling of $\boldsymbol{y}^\star$ toward $\boldsymbol{0}$ moves $\boldsymbol{c}_\text{next}$ toward
-$\tilde{\boldsymbol{r}}+L_e(-\boldsymbol{y}_\text{curr})$; near level flight ($\boldsymbol{y}_\text{curr}$
-small) this is close to the measured $\tilde{\boldsymbol{r}}$, which is in $\mathcal{S}$ whenever the CBF
-is active at all. The caps therefore tighten toward the in-frame measured centre rather than away from
-it; they do not, in the operating regime, invalidate Proposition~\ref{prop:inv}.
+Thrust deliverability is the ball $\|\boldsymbol{y}\|\le y_\text{max}=\sqrt{A_\text{cap}^2/a_z^2-1}$
+folded directly into \eqref{eq:qp}. It is the exact tangent form of $\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le
+A_\text{cap}$, and equivalently of the lean cap $\arccos(a_z/A_\text{cap})$ --- the true deliverable tilt
+at the \emph{actual} $a_z$ (equal to $\theta_\text{cap}$ only at hover; it loosens below hover, tightens
+above). Because $a_z$ is a fixed input to \eqref{eq:qp}, the ball is a plain norm bound on $\boldsymbol{y}$
+and adds no coupling: $\boldsymbol{y}^\star$, hence $\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star$, is
+actuator-feasible with no post-hoc rescaling. When box and ball conflict, the slack (not a hard clip)
+absorbs the visibility deficit, and $\boldsymbol{y}^\star$ sits on the ball at the point of least
+remaining $\sum_k s_k^{\star2}$ --- the best-effort in-frame command the actuator can deliver.
+\par\smallskip\noindent
+Two guards remain outside \eqref{eq:qp}, both normally inert: a repeat of the lean cap and the full-vector
+cap $\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$ (they cover the raw command path and the
+degenerate $A_\text{cap}\le g$ case, in which the ball is empty and $\theta_\text{cap}$ governs instead);
+and Tier~2 (\S\ref{sec:tier2}), which only ever \emph{shrinks} $|\,^\Iframe a_{\text{d},z}|$ toward hover,
+so it cannot push $\,^\Iframe\boldsymbol{a}_\text{d}$ back outside the ball.
 
 \section{Tier 2 --- the descent-rate governor}\label{sec:tier2}
 A change in $a_z$ does not move $\boldsymbol{c}_\text{next}$ this cycle, so it lies outside the CBF. It is
@@ -212,7 +238,7 @@ as it does, $t_\text{edge}\to\infty$ and $g_z\to1$. The trigger is an external \
 ($|\tilde{\boldsymbol{r}}|$ and its rate), so the governor cannot self-sustain on a quantity it
 generates, and it is applied after Tier~1 so it never enters the lean solve. It is not a barrier and
 makes no invariance claim; its role is to widen the time window in which Proposition~\ref{prop:inv}'s
-feasibility assumption holds near touchdown.
+$\boldsymbol{s}^\star=\boldsymbol{0}$ condition holds near touchdown.
 
 \section{Assumptions}
 \begin{assumption} The camera-mount rotation $P$ and the coupling $L_e=-(L_\omega M)$, with its sign, are
@@ -220,7 +246,8 @@ calibrated (validated against an independent pinhole model). \end{assumption}
 \begin{assumption} The conditioned command is realized: the inner attitude loop tracks the attitude built
 from $\boldsymbol{y}^\star$ on a timescale fast relative to the outer loop, with residual lag inside the
 buffer $b$. \end{assumption}
-\begin{assumption} $\boldsymbol{d}$ is the translation part of the observed centre velocity, gyro-stripped;
+\begin{assumption} $\boldsymbol{d}$ is the translation part of the observed centre velocity (from the
+pipeline's de-rotated optic flow $\boldsymbol{h}_{xy}$), zeroed when the flow solve is untrustworthy;
 $\tau=0$ for a stationary target. \end{assumption}
 \begin{assumption} The per-cycle lean change stays within the first-order regime of \S\ref{sec:lin}
 ($\lesssim15^\circ$), which the $50$\,Hz rate and a smooth outer loop provide. \end{assumption}

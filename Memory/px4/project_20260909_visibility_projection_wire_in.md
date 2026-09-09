@@ -167,3 +167,95 @@ a traced CBF effect — but it counts in the tally.)
 - Not yet done: moving-target `drift` wiring (Tier-1 `tau=0`/`drift=None` today --
   stationary is exact); an ArUco 4-corner path (module is cross-marker only, ArUco is
   comparison-only and its CBF is retired -- re-derive if ArUco numbers are ever needed).
+
+---
+
+## UPDATE 2026-09-09 (commit `e63751e2`): Tier-1 QP + deliverability + slack + h-lead
+
+User pushed five refinement ideas; outcome:
+
+| idea | verdict |
+|---|---|
+| 1. fold deliverability into the feasible set | **DONE** |
+| 2. exact ray-rotation map / SCP instead of first-order | **skip** — per-cycle lean change is ~1°/cycle p99 (gate logs), worst spike ~11°, all inside the ~15° envelope + buffer; naive successive re-linearisation was already tried in the module build and *regressed* the barrier test |
+| 3. softened CBF with slack | **DONE** (with 1) |
+| 4. joint lean+descent optimisation | **held** — `vis_gz<1` fires ~35-64% of gate frames (frequent) BUT gently (`gz_min` 0.76-0.93) and outcomes are clean; re-coupling reintroduces the `a_z`-solved-variable structure we deleted (retired joint-QP). Cheap lever first: `t_react`/`buffer_frac` sweep. |
+| 5. state-dependent horizon tau | **partial** — the inward-overshoot clamp (below) is a mild state-dependence; full `tau_k = f(closing rate)` folded into the rover-phase work (stationary centre is quasi-static, no benefit there) |
+
+### What changed
+- **Tier 1 is now a convex QP**, not alternating half-plane projection:
+  `min ½‖y−y_d‖² + ½ρ‖s‖²  s.t. |c_next(y)|_k ≤ φ_k + s_k,  ‖y‖ ≤ y_max,  s ≥ 0`
+  - `y_max = √(A_cap²/a_z² − 1)` — the thrust ball, identical to the `arccos(a_z/A_CAP)`
+    lean cap in tangent form. Folded in ⇒ returned `I_a` is actuator-feasible **by
+    construction**; the post-hoc lean-cap scale-back in `controller.py` is demoted to a
+    redundant guard (still covers the raw path + the degenerate `A_CAP ≤ g` branch).
+  - Per-axis slack `s ≥ 0`, penalty `CBF_VIS_RHO` (default 2000): visibility stays
+    effectively hard when achievable within the ball; **graceful degradation** (never
+    infeasible / no blow-up) when box and ball are disjoint (near-saturated hover +
+    marker far off-centre). `info["deliverable"]`, `info["slack"]` exposed; logged as
+    `vis_slack(t)`.
+  - **Solver:** slack eliminated in closed form (`s_k = max(|c_k|−φ_k, 0)`) → smooth
+    strictly-convex 2-D objective; projected Newton (constant Hessian per active set,
+    exact interior optimum) + a 1-D circle refine when the ball binds. A few 2×2 ops.
+  - Minimal-intervention / inward-free / idempotent behaviour is preserved — validator
+    checks 2/3/6 still pass, and check 1 (barrier) is unchanged (QP reproduces the hard
+    projection in the normal regime).
+- **Moving-target lead** (`τ·d` term), previously stubbed:
+  - `d` is sourced from the **pipeline's translational optic flow `h_xy`**
+    (`self._h[-1][:2]`) — already de-rotated (`L_ω·ω` solved out), `_sensor_cal_hw`-
+    calibrated, savgol/KF-smoothed. Chosen over a bespoke `Δc/dt − L_e·Δy_now/dt`
+    estimator (user's call): cleaner SNR, and it's the same `h` the middle SMC uses.
+    `img_data.py:~1044` confirms `h_x = ṡ_x + x0·h_z + (L_w·w)_x` with the rotational
+    term removed = exactly `d`.
+  - Mapped to the module tangent frame with `_SWAP` (the same swap `marker_tangent`
+    applies). **Sign of the `h_xy`→module-frame map still needs one rover recording to
+    confirm** (used the analytically-consistent `_SWAP`; flagged in-code). Optional
+    `CBF_DRIFT_LOOM_STRIP` removes the `c·h_z` descent-scale term (default OFF pending
+    the same recording).
+  - Flow-validity gated (`_observer_valid` / not `_last_drifted_off`) → `d = 0`
+    fallback (= stationary behaviour, never noise).
+  - **Inward-overshoot clamp** in the module: a linear extrapolation `c + τ·d` is never
+    allowed to predict the centre crossing an axis origin (past first-order validity;
+    would ask for a reversed correction). This is what makes a fast target not trigger
+    spurious projection (validator check 13).
+  - **`CBF_DRIFT_TAU=0` default ⇒ the whole path is inert; stationary behaviour is
+    byte-identical.** `vis_drift(t)` logged.
+
+### Validation
+- `validate_visibility_projection.py`: +4 checks (10 deliverable-by-construction /
+  11 graceful degradation / 12 moving-target lead recovers would-be-lost targets /
+  13 no spurious inward trigger). **14/14 across 5 seeds.** Solver provably within a
+  few % of grid-optimal in the disjoint corner (0 violations across the whole suite),
+  exact in the interior.
+- HEADLESS smoke test (IC2, NEW arm): clean land `xy=0.028 m` / `rel_vel=0.12 m/s`,
+  42 Hz, all new log fields present, `vis_slack`/`vis_drift`/`vis_active` all 0 on the
+  clean approach (as expected).
+- **IC2–5 stationary A/B gate RUNNING**: `test_data/VisProjQPGate/20260909-142528`,
+  NEW (QP, HEAD) vs OLD (`e63751e2^` = ccc41071, pre-QP). Harness
+  `scripts/run_visproj_qp_gate.sh` — this one sets `LANDING_OUT_BASE` **per arm**
+  (fixes the `run_visproj_gate.sh` autosave-collision bug). Result pending.
+
+### Files
+- `src/visibility_projection.py` — `_solve_tier1` added; `visibility_project` +
+  `a_cap`/`rho` args; `condition_for_visibility` passes them through.
+- `src/controller.py` — CBF call site: `a_cap=A_CAP`, `rho`, `tau=_tau`, `drift=_drift`
+  (h-sourced, gated); `_vis_slack_log` / `_vis_drift_log`; params `CBF_VIS_RHO` /
+  `CBF_DRIFT_TAU` / `CBF_DRIFT_LOOM_STRIP` in both dicts; `vis_slack(t)` /
+  `vis_drift(t)` in the log dict. Peer (`soft-precise-landing-fc`/`-29`) yaw + loom
+  work is on other lines — no overlap.
+- `docs/CBF_visibility.tex`/`.pdf` — rewritten §Tier 1 (eq:qp now has slack + ball),
+  §Deliverability (folded in), Prop inv (s*=0 condition, always-solvable), Solver
+  (projected Newton + circle refine), §Feature-response + Assumptions (h-sourced d).
+  6 pp.
+- `docs/CONTROL_FRAMEWORK_REVIEW.md` §4C — `e63751e2` sub-bullet.
+- Backups: `Obsolete/{src,tools}/*_v1_pre_qp_slack.py`.
+
+### Still open
+- IC2–5 QP gate result (running).
+- `h_xy`→module-frame sign confirmation from a rover recording.
+- `CBF_DRIFT_TAU` sweep + rover re-gate — behind the upstream perception blockers
+  (oblique-view detector collapse, terminal-overfill loom); a wired lead won't land
+  the rover until those do.
+- Idea 4 + `t_react`/`buffer_frac` descent-ease knob sweep.
+- OLD worktree at `~/Soft-Precise-Landing-old` now at `ccc41071` — `git worktree
+  remove` when the QP gate is done.
