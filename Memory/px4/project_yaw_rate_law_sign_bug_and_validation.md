@@ -669,3 +669,26 @@ value is turning targets (validated), gated on B4 (turning-target lateral limit 
 **Yaw controller = FINALIZED as a validated opt-in.** Config bundle `FLOW_KF_Q_WZ=1.0 +
 WZ_SCALE=2.5`, `MARKER_TYPE=cross` only. Remaining = separate threads: B4 lateral cycle,
 `WZ_SCALE` recal, `alpha` overfill, real rover turning gate, ASMC removal (keep as fallback).
+
+### 2026-09-09 — WZ_SCALE recal is NOT possible via the phased tool (observability, not flights)
+
+Chased "fold WZ_SCALE=2.5 into `_sensor_cal_hw[5,5]`, drop WZ_SCALE→1.0". Dead end.
+`derive_cross_marker_cal.py` on the 6 existing phased `output_cross` recordings:
+- yaw/yawagg samples ARE in the M-fit (~18k pooled). My earlier "purity gate rejects
+  100% of yaw samples" was WRONG — `clean_axis_mask` only tags x/y windows by design; the
+  printed `yaw=0` counter is meaningless. Corrected in the tool's comments.
+- raw perception `w2` vs GT `wz` over yaw phases: **corr −0.16**, while corr(raw w2, raw
+  Ty-flow) = −0.63. Perception's w_z output is mostly a lateral-flow shadow — the col-5
+  `[-y;x]` ≈ Tx/Ty rank degeneracy (see [[feedback_cross_marker_radial_spread_ceiling]]).
+- isolated 1-col `s_wz`: **sign flips with the filter** — −0.36 @ FLOW_KF_Q_WZ=0.5 →
+  +0.24 @ 20; R² ≤ 0.05 throughout. No real signal to calibrate.
+- regime mismatch: corr is −0.16 in the phased (aggressive yaw + coupled drift) regime
+  vs +0.7 measured during landings — phased cal is the wrong regime for this consumer
+  regardless.
+
+**Resolution:** `PLASMC_YAW_RL_WZ_SCALE` is now documented (controller.py + the cal
+provenance comment + the derive tool) as THE w_z output calibration for the yaw-rate law,
+applied filter-then-scale. Retune it in place. A1 "WZ_SCALE recal" is closed as
+not-actionable via phased excitation; only a bigger marker plate or a pure in-place
+yaw-spin-at-altitude maneuver could observe s_wz, neither pursued. Code edits committed
+(derive tool diagnostics + warnings, controller comment). No behaviour change.

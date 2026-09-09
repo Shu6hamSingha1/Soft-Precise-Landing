@@ -221,12 +221,14 @@ def main():
         # at low alt, best fix is to derive from the CLEANEST (highest-SNR)
         # altitude data only, not to chase coverage. CROSS_CAL_EXCLUDE_LOWALT=0
         # restores the old pooled behavior for comparison.
+        ph2 = np.asarray(phase)   # phase array kept parallel to R/G through the masks
         if os.environ.get("CROSS_CAL_EXCLUDE_LOWALT", "1") != "0":
             lowalt = np.array([str(p).startswith('lowalt') for p in phase])
-            R = R[~lowalt]; G = G[~lowalt]
+            R = R[~lowalt]; G = G[~lowalt]; ph2 = ph2[~lowalt]
 
         m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
         G, R = G[m], R[m]
+        ph_fit = ph2[m]   # per-sample phase label aligned to the fitted R/G rows
         if len(R) < 200:
             print(f"  skip {os.path.basename(d)}: only {len(R)} valid (purity-gated) samples")
             continue
@@ -268,13 +270,32 @@ def main():
         sy = std_ratio(yc_true, raw_s[:, 1], (phase == 'y') & clean_at_sync)
         n_clean_x = int(((phase == 'x') & clean_at_sync).sum())
         n_clean_y = int(((phase == 'y') & clean_at_sync).sum())
-        n_clean_z = int(((phase == 'z') & clean_at_sync).sum())
-        n_clean_yaw = int(((phase == 'yaw') & clean_at_sync).sum())
-        n_clean_yawagg = int(((phase == 'yawagg') & clean_at_sync).sum())
-        n_z_total = int((phase == 'z').sum())
-        print(f"  {os.path.basename(d)}: strict-purity clean samples -- x={n_clean_x} y={n_clean_y} "
-              f"z={n_clean_z}/{n_z_total} yaw={n_clean_yaw} yawagg={n_clean_yawagg} "
-              f"(M-fit total clean samples: {int(m.sum())})")
+        # NOTE: clean_axis_mask only ever tags 'x'/'y' windows (it `continue`s on
+        # z/yaw/yawagg -- see the func + the 2026-08-06 comment above). So a
+        # "clean" count for z/yaw/yawagg is STRUCTURALLY 0 and says nothing about
+        # whether those phases fed the M-fit -- they always do, via the finite mask
+        # `m` only. (A 2026-09-09 analysis was briefly misled by reading yaw=0 here
+        # as "yaw samples rejected"; they are not.) Only x/y are reported now.
+        #
+        # 2026-09-09: standalone w_z observability probe. The Wz row of the joint
+        # 4-col lstsq (idx=[0,1,2,5]) is NOT trustworthy for this marker --
+        # `_fill_A` col-5 `[-y;x]` is ~3x shorter than the Tx/Ty columns at the
+        # cross plate's achievable radial spread (feedback_cross_marker_radial_
+        # spread_ceiling), so the fit dumps the Wz self-term to ~-0.16 and loads
+        # +3.3 onto Ty. Report the ISOLATED yaw-phase-only through-origin ratio +
+        # its R^2 so a reader sees the truth (R^2 ~ 0.03; sign flips with
+        # FLOW_KF_Q_WZ: -0.36 @ 0.5 .. +0.24 @ 20 -- i.e. NO usable signal) rather
+        # than the garbage joint row. Do NOT paste the joint Wz row into the cal.
+        _ym = np.isin(ph_fit, ['yaw', 'yawagg'])
+        if _ym.sum() > 20:
+            _gw, _rw = G[_ym, 5], R[_ym, 5]
+            _s0 = float(_rw @ _gw / (_rw @ _rw))
+            _r2 = 1.0 - np.sum((_gw - _s0 * _rw) ** 2) / np.sum((_gw - _gw.mean()) ** 2)
+            _wz_str = f"s_wz(1-col,yaw,through-0)={_s0:+.3f} R^2={_r2:+.2f} corr={np.corrcoef(_gw,_rw)[0,1]:+.2f}"
+        else:
+            _wz_str = f"s_wz: only {int(_ym.sum())} yaw samples"
+        print(f"  {os.path.basename(d)}: x/y strict-purity clean -- x={n_clean_x} y={n_clean_y}"
+              f"  (M-fit finite total: {int(m.sum())})\n      {_wz_str}")
         calS.append([sx, sy])
         used += 1
 
@@ -293,6 +314,12 @@ def main():
         print(f"  {LAB[i]:>2} " + "  ".join(f"{Mstd[i,j]:6.3f}" for j in range(6)))
     print(f"\ncentroid cal_s:  sx={sx:.4f}  sy={sy:.4f}  (per-run: {np.round(calS,3).tolist()})")
 
+    print("\n⚠ The Wz row (last row) is NOT observable from phased output_cross data -- "
+          "col-5 `[-y;x]` is rank-degenerate with Tx/Ty at this marker's radial spread "
+          "(feedback_cross_marker_radial_spread_ceiling). Per-run 1-col probe above shows "
+          "R^2~0.03 and FLOW_KF_Q_WZ-dependent sign. Keep _sensor_cal_hw[5,5] from the "
+          "landing cal (derive_cross_marker_landing_cal.py) and correct any residual w_z "
+          "magnitude deficit with the runtime PLASMC_YAW_RL_WZ_SCALE gain, NOT this row.")
     print("\n--- paste into CrossMarkerPerception.__init__ (src/cross_marker_perception.py) ---")
     rows = ",\n            ".join(
         "[" + ", ".join(f"{M[i,j]:+.4f}" for j in range(6)) + "]" for i in range(6))

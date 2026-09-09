@@ -591,8 +591,17 @@ class Controller(Thread):
         # ⚠ COMPANION CONFIG (the validated bundle): PLASMC_YAW_RATE_LAW=1 was
         # gated stationary IC1-5 n=5 (24/25) ONLY with FLOW_KF_Q_WZ=1.0 +
         # PLASMC_YAW_RL_WZ_SCALE=2.5. Those are NOT baked (FLOW_KF_Q_WZ default
-        # would change the shared w_z KF for the ASMC lateral path too; WZ_SCALE
-        # compensates a cal deficit pending a recal). Run this law WITH that bundle.
+        # would change the shared w_z KF for the ASMC lateral path too). Run this
+        # law WITH that bundle.
+        # WZ_SCALE=2.5 IS the w_z output calibration for this consumer, applied
+        # filter-then-scale (perception KF runs first, this gain last). It is NOT a
+        # "temporary deficit pending a phased recal": 2026-09-09 analysis showed the
+        # phased output_cross recordings carry NO usable w_z scale information --
+        # `_fill_A` col-5 `[-y;x]` is rank-degenerate with Tx/Ty at the cross
+        # plate's radial spread, so the fitted s_wz has R^2~0.03 and a sign that
+        # flips with FLOW_KF_Q_WZ. See feedback_cross_marker_radial_spread_ceiling
+        # + project_yaw_rate_law_sign_bug_and_validation. Retune WZ_SCALE here;
+        # don't expect derive_cross_marker_cal.py's Wz row to replace it.
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
         # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-09: unified on manuscript) ──

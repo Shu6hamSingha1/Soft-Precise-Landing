@@ -337,3 +337,31 @@ justification going forward. For Wz, that's still accurate and load-
 bearing. For Hz, treat any future weak-Hz reading as a suspect bug first,
 not an accepted ceiling, until the remaining 08-04/05 raw-signal
 regression is actually root-caused (still open, see the entry above).
+
+**2026-09-09 — Wz UNOBSERVABLE from phased output_cross data (yaw-rate-law thread).**
+Investigated whether `PLASMC_YAW_RL_WZ_SCALE=2.5` could be folded into a re-derived
+`_sensor_cal_hw[5,5]`. It cannot. Ran `derive_cross_marker_cal.py` on the 6 existing
+phased recordings (yaw/yawagg phases DO feed the M-fit — the `yaw=0` line it printed is
+just a diagnostic-counter artifact: `clean_axis_mask` structurally only tags x/y windows,
+an earlier claim that "the purity gate rejects yaw samples" was a misread and is wrong).
+Measured, pooled over yaw phases:
+- `corr(raw w2, GT wz) = -0.16`;  `corr(raw w2, raw Ty-flow) = -0.63` → raw perception
+  w_z is mostly a shadow of lateral Ty flow, exactly the col-5 `[-y;x]` ≈ Tx/Ty
+  degeneracy this memory already describes for Wx/Wy, now shown to bite Wz's own output.
+- The phased yaw maneuver **co-excites large lateral drift** (`corr(GT wz, GT Ty)≈+0.6`
+  during yaw windows) — the one regime meant to isolate yaw feeds the degenerate column
+  its worst contaminant.
+- Isolated 1-col through-origin `s_wz` (yaw phases only): **sign AND magnitude are set by
+  the smoother** — `-0.36 @ FLOW_KF_Q_WZ=0.5`, `-0.23 @ 1.0`, `+0.05 @ 5.0`, `+0.24 @ 20`,
+  R² never above ~0.05. No underlying measurement relationship.
+- Regime mismatch on top: `corr(w_iz, ψ̇)` is `-0.16` in this phased regime vs `+0.7`
+  measured during landings (slow alignment yaw, near-stationary) — opposite sign, so
+  phased cal is doubly wrong for the landing/yaw-law consumer.
+
+**How to apply:** `PLASMC_YAW_RL_WZ_SCALE` (runtime, post-KF) IS the w_z calibration for
+the yaw-rate law — retune it there. Do NOT run a phased recal expecting to replace it;
+`derive_cross_marker_cal.py`'s Wz row is garbage (joint 4-col fit dumps the self-term to
+-0.16, loads +3.3 onto Ty). Tool now prints an isolated w_z probe + a warning banner
+(2026-09-09 edits). Only lever that could genuinely observe s_wz remains a bigger marker
+plate (this memory's standing conclusion), or a pure zero-translation in-place yaw spin at
+altitude — neither pursued.
