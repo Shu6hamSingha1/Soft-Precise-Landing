@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T05:19:46.911Z
+  modified: 2026-09-09T05:52:23.473Z
 ---
 
 ## ⛔⛔ THREAD CLOSED — 2026-09-09 (read this, skip the 700-line chronology below unless digging)
@@ -800,3 +800,31 @@ behavior for a signal with no information left. Do not re-attempt terminal-windo
 apparent size — extent, moment-loom, and now geometry-width all die in the same last 0.3m for
 the same reason. If a better `.5-2m` shadow rate is ever wanted: geom width + 0.8s trailing
 LSQ line-fit of ln(w) (~0.31), not the current KF.
+
+### ✅ WHAT ACTUALLY LANDED FOR THE ORIGINAL PROBLEM — loom-channel innovation gate (`b6a0998d`)
+The whole thread's goal was to backstop the intermittent terminal pinv-`h_z` spike (degenerate
+point geometry near overfill: +1.1→+5.6 on `ICValidation/20260831-144626/IC1_rep1`). Size-derived
+loom failed at that. What DID address it: the hw-KF had **no innovation test on the loom channel**
+(the yaw-KF `PLASMC_YAW_KF_GATE` and the VDS lateral-rate KF `PLASMC_VDS_KF_GATE` both have one;
+loom didn't). Added in `_kf_update_hw`:
+- **Innovation gate** (`CROSS_LOOM_INNOV_GATE`, **default OFF**): down-weights (`r[2] *=
+  CROSS_LOOM_GATE_R_MULT=1000`) a loom measurement only when BOTH (a) NIS `= y²/S >
+  CROSS_LOOM_NIS_GATE=25` (`y` = residual beyond the KF's own predicted loom-accel trend) AND
+  (b) `|y|/dt > CROSS_LOOM_SLEW_MAX=12` /s (plausibility bound — clean flight tops ~5-8 /s
+  dt-normalised, GT `|dloom/dt|` p95 ~0.2, the spike ran 20-260). BOTH conditions ⇒ a genuine
+  large-but-smooth terminal loom accel (KF rate state tracks it → low NIS) still passes.
+  Debounced: `CROSS_LOOM_GATE_MAX_STREAK=6` consecutive trips then accept (don't freeze the
+  channel forever — the failure mode of the abandoned origin-ratio veto). New log `"Loom Gate"`.
+- **Hard abs backstop** (`CROSS_LOOM_ABS_MAX`, **default 20 = same as the moment-loom `sol[2]`
+  clip, DEFAULT-ON, independent of the gate**): clamps the loom VALUE + zeros a runaway rate.
+  Catches a NaN / grazing-ray perspective-divide blowup the NIS test can miss (huge `r`
+  inflation → huge `S` → tiny NIS).
+
+**Offline validation** (`gate_replay.py`, 6 OverfillCapture reps, real `process_frame`, OFF vs ON):
+clear wins at altitude — rep1 `>2m` corr **−0.07 → +0.83**, `h_z` range [−3.4, 2.2] → [−0.9, 0.8];
+IC2 killed a −10.9 spike; IC4 `>2m` +0.29 → +0.48 and `<0.5m` −0.30 → **+0.75**. The abs clamp
+caught a **+1601** blowup on rep3 (→ +19). **Cost:** `<0.5m` corr goes more negative on
+rep1/rep3/IC5 (−0.16→−0.52, −0.26→−0.54, +0.03→−0.54) — but that band is already noise / ~70-80%
+post-touchdown, and the touchdown detector (not loom) owns it there. Clean-flight non-spike frames
+are bit-identical. **NEEDS a SITL IC1-5 A/B before `CROSS_LOOM_INNOV_GATE` default-on.** Backup
+`Obsolete/src/cross_marker_perception_pre_loomgate_20260909.py`.
