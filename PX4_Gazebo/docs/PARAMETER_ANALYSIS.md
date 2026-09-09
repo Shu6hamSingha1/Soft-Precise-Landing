@@ -113,13 +113,33 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 
 > ⛔ **REBUILT 2026-09-09.** `cbf2` / the joint QP / `RHOFOV*` / `THETA_FLOOR` d_min-cone / two-phase δ
 > are RETIRED. The visibility mechanism is now **`src/visibility_projection.py`** (spec
-> `docs/CBF_visibility.pdf`): Tier-1 minimal outward-only lean projection keeping the measured
-> cross-marker CENTRE inside `φ = R/(2f)·(1−`**`CBF_BUFFER_FRAC`**`=0.15)` on the real camera plane
-> (`I_a[2]` untouched); Tier-2 **`CBF_DESCENT_EASE`** (default 1) scales only the downward part of
-> `I_a[2]` on a measured time-to-edge, self-releasing. New knobs: `CBF_BUFFER_FRAC`,
-> `CBF_DESCENT_EASE`, `CBF_GMIN` (0.2), `CBF_TREACT` (1.5), `CBF_DRIFT_PULLBACK_FRAC` (per-axis buffer
-> bump on a persistent one-sided breach). IC2-5 n=5 SITL A/B vs the old machinery: PASS (mean xy 0.14
-> vs 0.24, no regression). → `[[project_20260909_visibility_projection_wire_in]]`.
+> `docs/CBF_visibility.pdf`).
+>
+> **Tier 1 — one convex QP, every cycle** (`e63751e2`; was alternating half-plane projection):
+> `min ½‖y−y_d‖² + ½ρ‖s‖²  s.t. |c + L_e(y−y_now) + τ·d|_k ≤ φ_k + s_k,  ‖y‖ ≤ y_max,  s ≥ 0`,
+> with `φ = R/(2f)·(1−`**`CBF_BUFFER_FRAC`**`=0.15)`, `y_max = √(A_cap²/a_z² − 1)` (= the
+> `arccos(a_z/A_CAP)` lean cap = the thrust sphere, **folded in** so `I_a` is actuator-feasible by
+> construction), and per-axis slack `s` penalised by **`CBF_VIS_RHO`**`=2000` for graceful degradation
+> (never infeasible) when the FoV box and the thrust ball are disjoint. `a_d[2]` is a fixed input.
+> Solver: slack eliminated in closed form → projected Newton (exact interior) + a 1-D circle refine
+> when the ball binds. Still minimal-intervention / inward-free / idempotent.
+>
+> **Moving-target lead** `τ·d`: `d` = the pipeline's de-rotated translational optic flow `h_xy`
+> (identity-mapped to the CBF frame — verified `28e4417b`), flow-validity-gated to 0. **`CBF_DRIFT_TAU`**
+> = the lead horizon (s); **`=0` default → the term is inert and stationary behaviour is byte-identical**.
+> `CBF_DRIFT_LOOM_STRIP` (default 0) removes the `c·h_z` descent-scale part. The one QP serves both the
+> stationary (`τ·d = 0`) and rover (`τ·d ≠ 0`) cases — no scenario branching, no rover conditionals.
+>
+> **Tier 2 — `CBF_DESCENT_EASE`** (default 1): scales only the downward part of `I_a[2]` on a measured
+> time-to-edge, self-releasing (`CBF_GMIN`=0.2, `CBF_TREACT`=1.5). Not a CBF.
+>
+> Knobs: `CBF_BUFFER_FRAC`, `CBF_VIS_RHO`, `CBF_DRIFT_TAU`, `CBF_DRIFT_LOOM_STRIP`, `CBF_DESCENT_EASE`,
+> `CBF_GMIN`, `CBF_TREACT`, `CBF_DRIFT_PULLBACK_FRAC` (per-axis buffer bump on a persistent one-sided
+> breach). Logs: `vis_active(t)`, `vis_slack(t)`, `vis_drift(t)`, `vis_c(t)`, `vis_gz(t)`. Validator
+> `tools/validate_visibility_projection.py` **14/14**. IC2-5 n=5 SITL A/B (QP vs pre-QP, stationary,
+> `CBF_DRIFT_TAU=0`): **wash / PASS** — 20/20 land both arms, 0 TL, pooled mean xy 0.07 vs 0.06.
+> **Moving rover: NOT yet SITL-tested** (offline oracle only; rover landings are perception-blocked).
+> → `[[project_20260909_visibility_projection_wire_in]]`.
 
 The line below stays true of the NEW mechanism too: **it is a safety net, not a controller** — if
 `vis_active(t)` fires in normal ops the control law is failing; bound κ at the control level. On a

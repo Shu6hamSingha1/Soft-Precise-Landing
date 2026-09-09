@@ -14,7 +14,9 @@ Compiled 2026-06-02 at the start of the post-calibration gain-tuning campaign.
 > **`visibility_projection.py` two-tier mechanism** (2026-09-09 — replaced `cbf2`/the joint QP entirely;
 > MATLAB has no equivalent — its `cbf2_filter.m` mirrors the RETIRED Python. The addendum below about
 > corner-vs-centroid is now moot on the Python side: the new module is single-point by design, and its
-> Jacobian sign is `Le = −(Lw@M)`, negated vs everything MATLAB carries). The §1 control-law math ports
+> Jacobian sign is `Le = −(Lw@M)`, negated vs everything MATLAB carries. As of `e63751e2` Tier 1 is one
+> convex QP — visibility half-planes + a deliverability ball + a penalised slack + an optional `τ·d`
+> moving-target lead — with no MATLAB counterpart at all). The §1 control-law math ports
 > below remain valid; the *defaults* differ.
 > See `test_data/Landing_Test/parameter_record.ods` (PX4_NewCal_Record) for the why behind each.
 

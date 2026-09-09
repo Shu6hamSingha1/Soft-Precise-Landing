@@ -82,7 +82,7 @@ then `tools/build_test_index.py`.
   (x/y/z where per-axis): `K_rp=3.0 · K_ri=0.1 · K_rd=0.5 · gamma_s(XIS)=0.5 · PSINF=0.35 ·
   XI2=1.0/1.0/1.0 · P=2.5/2.5/5.0 · P2INF=2.5/2.5/0.5 · E=0.8/0.8/0.5 · Γ=2.0/2.0/1.0 ·
   Ω=0.1/0.1/0.1 · N=0.1/0.1/0.1 · KAPPA0=0.5/0.5/1.0 · KAPPA_MAX_Z=3.0 · KAPPA_MAX_XY=30 ·
-  W_U_MAX=2.0 · YAW_PSID_RATE=1.0 · DH_D_MAX=50 · BODY_YAW_SOURCE=alpha · visibility_projection (CBF_BUFFER_FRAC=0.15/CBF_DESCENT_EASE=1) · SEN_FUNNEL=1`.
+  W_U_MAX=2.0 · YAW_PSID_RATE=1.0 · DH_D_MAX=50 · BODY_YAW_SOURCE=alpha · visibility_projection QP (CBF_BUFFER_FRAC=0.15/CBF_VIS_RHO=2000/CBF_DESCENT_EASE=1/CBF_DRIFT_TAU=0) · SEN_FUNNEL=1`.
   Notes: `P2INF_xy` is `pa()`-based 1.5 **rebaked to 2.5 at controller.py:466-467** when the env var
   is unset (2026-08-28) — the effective default is 2.5. `KAPPA_MAX_XY` 1e6→30 is a 2026-08-19
   hardware-parity port, **not yet Gazebo gate-validated**.
@@ -110,16 +110,24 @@ then `tools/build_test_index.py`.
 - **⭐ (09-09) VISIBILITY CBF REBUILT + BAKED** — `cbf_visibility.py` / `cbf_visibility_aruco.py`
   / `validate_cbf.py` and the joint-QP / deliverability-sphere / `CBF_AZ_COST_GAIN` relief /
   two-phase-δ / `rho_fov`-cone machinery → `Obsolete/`. Replaced by **`src/visibility_projection.py`**:
-  Tier-1 minimal outward-only lean projection keeping the measured cross-marker CENTRE inside
-  `φ = R/(2f)·(1−CBF_BUFFER_FRAC=0.15)` on the REAL camera plane (`a_d[2]` fixed; `Le = −(Lw@M)`,
-  sign NEGATED vs the old machinery — old sign was backwards for a down-camera); Tier-2
+  Tier-1 keeps the measured cross-marker CENTRE inside `φ = R/(2f)·(1−CBF_BUFFER_FRAC=0.15)` on the
+  REAL camera plane (`a_d[2]` fixed; `Le = −(Lw@M)`, sign NEGATED vs the old machinery); Tier-2
   `descent_ease` (`CBF_DESCENT_EASE=1`) scales only the downward part of `a_z` on a measured
-  time-to-edge, self-releasing (none of the `CBF_AZ_COST_GAIN` failure modes). Wire-in `82fa9c16`
-  (controller −289 lines). **IC2-5 n=5 SITL A/B vs the old machinery: PASS** — both 20/20 land / 0 TL,
-  new pooled mean xy 0.14 vs old 0.24, precise 11 vs 8, no regression. New logs `vis_gz(t)` /
-  `vis_active(t)`; new env `CBF_BUFFER_FRAC` / `CBF_DESCENT_EASE` / `CBF_GMIN` / `CBF_TREACT`.
-  Spec `docs/CBF_visibility.pdf` (9-Sep rewrite). Validator `tools/validate_visibility_projection.py`
-  10/10. → [[project_20260909_visibility_projection_wire_in]]
+  time-to-edge, self-releasing. Wire-in `82fa9c16` (controller −289 lines). Validator 10/10;
+  IC2-5 n=5 A/B vs old machinery PASS. → [[project_20260909_visibility_projection_wire_in]]
+- **⭐ (09-09) VISIBILITY CBF → ONE CONVEX QP + moving-target lead** (`e63751e2`, `28e4417b`) — Tier 1
+  is now a single QP solved every cycle: `min ½‖y−y_d‖² + ½ρ‖s‖²` s.t. `|c + Le(y−y_now) + τ·d|_k ≤
+  φ_k + s_k`, `‖y‖ ≤ y_max=√(A_CAP²/a_z²−1)` (deliverability ball = the `arccos(a_z/A_CAP)` lean cap,
+  **folded in** → `I_a` feasible by construction), slack `s` penalised by **`CBF_VIS_RHO`**=2000
+  (graceful degradation, never infeasible). `a_d[2]` still a fixed input. `τ·d` = moving-target lead,
+  `d` = the pipeline's de-rotated optic flow `h_xy` (identity-mapped, verified); **`CBF_DRIFT_TAU`=0
+  default → term inert, stationary byte-identical**. The SAME QP serves stationary and rover — no
+  branching. Solver = projected Newton + 1-D circle refine. `controller.py` lean/thrust caps kept as
+  redundant guards. New knobs `CBF_VIS_RHO` / `CBF_DRIFT_TAU` / `CBF_DRIFT_LOOM_STRIP`; new logs
+  `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Validator **14/14**; IC2-5 n=5 A/B (QP vs pre-QP,
+  stationary): **wash / PASS** (20/20 land both arms, 0 TL, pooled mean xy 0.07 vs 0.06). **Moving
+  rover: NOT yet SITL-tested** (offline oracle + frame-check only; rover landings perception-blocked).
+  Spec `docs/CBF_visibility.pdf` (rewritten). → [[project_20260909_visibility_projection_wire_in]]
 - **(09-03) `CBF_SPHERE_TRUE_THRUST` BAKED default-ON** *(now moot — the CBF sphere it fixed is
   retired; the controller-side `|I_a|≤A_CAP` cap it also fixed is KEPT)* — the deliverability bound was
   `|I_a + g·e3| ≤ A_CAP`, which bounds VEHICLE accel (zero at hover), not thrust; it admitted
@@ -181,7 +189,7 @@ PLASMC lands a quadrotor by image-based visual servoing, **scale-free & depth-fr
 A number from one regime does **not** transfer to another — the #1 historical analysis error.
 
 ## §4 — Parameter inventory
-Knobs are **direct per-axis values** `PLASMC_<PARAM>_{X,Y,Z}` (all `*_SCALE` factors removed 2026-06-03). Current baked defaults are in §STATUS. For the full per-parameter role/empirical analysis, read **`docs/PARAMETER_ANALYSIS.md` §3**; for the complete env-knob table + sweep methodology, the **`tune-plasmc` skill**. Groups: Outer PID + outer funnel (`KP, KI, KD, XIS/gamma_s, PS0, PSINF, DH_D_MAX, TAU_DS`); middle SMC (`XI2, P20, P2INF, OMEGA, GAMMA, E, N, P, KAPPA0, KAPPA_MAX`); yaw (`YAW_*, KR_YAW, PSID_RATE, TAU_UA`); visibility (`src/visibility_projection.py` — `CBF_BUFFER_FRAC, CBF_DESCENT_EASE, CBF_GMIN, CBF_TREACT, CBF_DRIFT_PULLBACK_FRAC`; the old `THETA_FLOOR/RHOFOV*/CBF_JOINT_QP/CBF_AZ_COST_GAIN` are gone); inner (`KR_*, W_U_MAX`); image (`IMG_FEATURE_FILTER, MARKER_KLT_MAX_STEPS, ARUCO_*, BODY_YAW_SOURCE, CTRL_ZERO_WXY`); landing-test (`LANDING_REF_RAD_OPT_FLOW, LANDING_IC_*`).
+Knobs are **direct per-axis values** `PLASMC_<PARAM>_{X,Y,Z}` (all `*_SCALE` factors removed 2026-06-03). Current baked defaults are in §STATUS. For the full per-parameter role/empirical analysis, read **`docs/PARAMETER_ANALYSIS.md` §3**; for the complete env-knob table + sweep methodology, the **`tune-plasmc` skill**. Groups: Outer PID + outer funnel (`KP, KI, KD, XIS/gamma_s, PS0, PSINF, DH_D_MAX, TAU_DS`); middle SMC (`XI2, P20, P2INF, OMEGA, GAMMA, E, N, P, KAPPA0, KAPPA_MAX`); yaw (`YAW_*, KR_YAW, PSID_RATE, TAU_UA`); visibility (`src/visibility_projection.py` QP — `CBF_BUFFER_FRAC, CBF_VIS_RHO, CBF_DRIFT_TAU, CBF_DRIFT_LOOM_STRIP, CBF_DESCENT_EASE, CBF_GMIN, CBF_TREACT, CBF_DRIFT_PULLBACK_FRAC`; the old `THETA_FLOOR/RHOFOV*/CBF_JOINT_QP/CBF_AZ_COST_GAIN` are gone); inner (`KR_*, W_U_MAX`); image (`IMG_FEATURE_FILTER, MARKER_KLT_MAX_STEPS, ARUCO_*, BODY_YAW_SOURCE, CTRL_ZERO_WXY`); landing-test (`LANDING_REF_RAD_OPT_FLOW, LANDING_IC_*`).
 
 ## §5 — Failure modes & the κ-runaway explosion chain
 Almost every catastrophe is one chain (detail in `PARAMETER_ANALYSIS.md` §2):
@@ -198,7 +206,7 @@ Bounding rules: **P** bounds κ cleanly (`κ_eq∝1/P`); **E** bounds κ but sof
 
 ## §7 — Known dead-ends & winners (R3)
 **Dead-ends (don't retry):** `KI≥2` / `KI=0.35` · `KP≥13` · `KP=12 + E_XY=2.5` · `W_U_MAX>1.7` · `E_Z≥1.5` · `N_XY=0.05` · `N_Z=0.05` alone · `tau_ua=0.3` · `P_XY=3` · `TAU_DS=0.05` · `K_rd=0` alone (needs gamma_s=1.0) · `gamma_s=0.1` · `KR_YAW≠2` · `YAW_OMEGA=1` · `YAW_GAMMA=1` · RHOFOVINF/THETACAP terminal sweeps (frontier mapped) · `MC_*RATE_P>1` via MAVSDK · enlarging the marker · sensor-cal refresh via `aggregate_calibration.py`.
-**Winners / baked:** `K_rd=0 + gamma_s=1.0` (the 1.32 m stack) · `KAPPA0_Z=1.0 + KAPPA_MAX_Z=3.0 + κ-freeze` (descent bootstrap) · `P=5/5/5` (κ bound) · yaw 2π-wrap + conditional `ie_a` integration · `visibility_projection` (09-09, replaced cbf2) · `BODY_YAW_SOURCE=alpha`.
+**Winners / baked:** `K_rd=0 + gamma_s=1.0` (the 1.32 m stack) · `KAPPA0_Z=1.0 + KAPPA_MAX_Z=3.0 + κ-freeze` (descent bootstrap) · `P=5/5/5` (κ bound) · yaw 2π-wrap + conditional `ie_a` integration · `visibility_projection` QP (09-09, replaced cbf2; deliverability+slack folded in, `e63751e2`) · `BODY_YAW_SOURCE=alpha`.
 
 ## §8 — Data-integrity gotchas
 - **Cal regime** (§3) — check it before trusting any number.
