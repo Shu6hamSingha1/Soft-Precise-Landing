@@ -11,9 +11,10 @@ for k = 1:N
 
     idx_k = results(k).data.idx;
     P = results(k).data.P_DS;
-    nP = P(:, 9:12, 1:idx_k+1);
+    Np = size(P,2)/3;                       % feature-point count (4 legacy quad, 5 cross)
+    nP = P(:, 2*Np+1:3*Np, 1:idx_k+1);      % C_nP block (last Np cols of [V_nP_i|V_nP_a|C_nP])
 
-    for i = 1:4
+    for i = 1:Np
         x = squeeze(nP(1,i,:));
         y = squeeze(nP(2,i,:));
 
@@ -37,11 +38,9 @@ for k = 1:N
 
     %% Desired pixels
     P_d = results(k).data.V_nP_d;
-    nP_d = P_d(:, 1:4, 1:min(idx_k, size(P_d,3)));
+    nP_d = P_d(:, 1:Np);
 
-    h_des = scatter(squeeze(nP_d(1,:,:)), ...
-                    squeeze(nP_d(2,:,:)), ...
-                    40, 'r', 'filled');
+    h_des = scatter(nP_d(1,:).', nP_d(2,:).', 40, 'r', 'filled');
 
     %% Labels
     title(sprintf('Run %d', k));
