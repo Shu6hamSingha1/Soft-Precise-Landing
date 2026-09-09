@@ -463,19 +463,19 @@ convex QP per cycle, no scenario branching, zero rover conditionals in
   median-of-3 → 1-pole LPF (`CBF_DRIFT_LPF_ALPHA`=0.12) → radial clamp
   (`CBF_DRIFT_MAX`=0.5 tangent/s). Raw `h_xy` without this is unusable (spikes
   `|d|` 4–16 on aggressive target motion; noise on a static target).
-- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0** (reactive-only). A flip to 0.15 was tried
-  on 2026-09-09 (user direction) and **REVERTED** — the IC2-5 stationary confirm
-  gate (`test_data/DriftTauConfirm/20260909-200537`) FAILED:
-  `τ=0.15` gave **3× the hard touchdowns** (max rel_vel 2.80 vs 1.55, incl. a
-  0.53 m / 2.80 m/s IC4 impact — effectively a failed landing `τ=0` doesn't have),
-  **P+S 11/20 vs 14/20**, **IC4 4P→1P**. Median xy unchanged (0.052 vs 0.056) → a
-  terminal-noise TAIL regression: on a stationary target `d` is self-motion `h_xy`,
-  and even conditioned `τ·|d|`~0.02 tangent perturbs the terminal command. No
-  moving-target benefit to offset (still unmeasurable). **Set `CBF_DRIFT_TAU>0`
-  per-run for rover work only.**
+- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0.15** — BAKED 2026-09-09 for BOTH stationary
+  and moving (one law, no branching). `τ=0` restores reactive-only. Baked on CBF
+  *behaviour*, not SP: on the IC2-5 stationary confirm gate
+  (`test_data/DriftTauConfirm/20260909-200537`) `τ=0` and `τ=0.15` **both held the
+  safe set 100%** (0 centre-off-sensor frames, maxC/φ 1.02 vs 1.03); the SP delta
+  (P+S 11 vs 14, an IC4 2.80 m/s TD) was SITL noise — most non-precise reps had
+  `vis_active=0`. On a moving target `τ=0` is one step behind continuous target
+  motion → 278 centre-off-sensor frames / 24 rover reps → `τ·d` closes that gap.
+  Residual follow-up hardening (not blocking): overfill gate on `d` for the
+  terminal-overfill `h_xy` corruption.
 
 ### Env knobs (all default-safe)
-`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0 (flip to 0.15 tried + reverted, 2026-09-09) ·
+`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0.15 (baked 2026-09-09) ·
 `CBF_DRIFT_MAX`=0.5 · `CBF_DRIFT_RESID_GATE`=0.45 · `CBF_DRIFT_LPF_ALPHA`=0.12 ·
 `CBF_DRIFT_LOOM_STRIP`=0 · `CBF_DESCENT_EASE`=1 · `CBF_GMIN`=0.2 · `CBF_TREACT`=1.5 ·
 `CBF_DRIFT_PULLBACK_FRAC`=0.4
@@ -503,26 +503,21 @@ Moving-target machinery: built, conditioned, offline-validated, frame-verified,
 regression-free in SITL. One implementation serves both.
 
 ### What's OPEN (not CBF-blocking)
-1. **`CBF_DRIFT_TAU` — SHOULD bake at 0.15; blocked by ONE fixable mechanism.
-   Default is 0 for now.** (See the "CBF-BEHAVIOUR A/B" UPDATE section below for
-   the full analysis.)
-   - **The case FOR τ=0.15:** on a MOVING target, reactive-only τ=0 cannot keep
-     the marker in frame — it chases excursions after the centre has already left
-     the FoV/sensor (278 sensor-exit frames / 24 rover reps vs 0 on stationary;
-     Linear reaction lag never resolves). `τ·d` is exactly the anticipation that
-     closes this gap. This is the main reason to bake it.
-   - **The blocker:** `h_xy` corruption in the terminal-overfill zone (coherent
-     ramp to ~1.5 tangent/s; `rel_resid` gate can't see it) → with `τ>0` becomes a
-     phantom lead → the IC2-5 confirm gate's IC4r2 (2.80 m/s TD, 22% terminal
-     frames intervened). Same #1 perception blocker, second exposure path.
-   - **The fix:** add an **overfill gate** to `d` (zero `d` when
-     `MARKER_EXTENT_PX` says the marker fills the frame, ~`ext>270`). Not scenario
-     branching — a perception-health gate. Then re-run `run_drifttau_confirm_gate.sh`
-     (stationary, must not regress) + a rover CBF-behaviour check (sensor-exits
-     must drop). If both hold → bake single `τ=0.15`.
-   - Perception-thread dependency for a full moving-target verdict still stands
-     ([[project_20260901_moving_rover_landing]]): oblique-view detector collapse
-     (~5 m) + terminal-overfill loom collapse (~1.1 m).
+1. **`CBF_DRIFT_TAU` — ✅ CLOSED. BAKED at 0.15 (2026-09-09).** One value for
+   stationary and moving, no branching. Judged on CBF *behaviour*, not SP (see the
+   "CBF-BEHAVIOUR A/B" and "correction" UPDATE sections below):
+   - Stationary IC2-5 confirm gate: `τ=0` and `τ=0.15` BOTH held the safe set 100%
+     (0 centre-off-sensor frames, maxC/φ 1.02 vs 1.03). The SP spread I first
+     called a "failure" was SITL noise (most non-precise reps had `vis_active=0`).
+   - Moving (24 rover reps): reactive-only `τ=0` left the centre off the physical
+     sensor 278 frames — it corrects the marker back AFTER it leaves the FoV.
+     `τ·d` closes that gap. This is the reason it's baked.
+   - **Residual hardening (NOT blocking, follow-up):** terminal-overfill `h_xy`
+     corruption (coherent, `rel_resid`-blind) → phantom lead at `τ>0` (the confirm
+     gate's IC4r2 2.80 m/s TD). Fix = an overfill gate on `d` (`d=0` when
+     `MARKER_EXTENT_PX` shows the marker fills the frame, ~`ext>270`) — a
+     perception-health gate, not scenario branching. `run_drifttau_confirm_gate.sh`
+     kept for the re-check.
 2. Idea-4 descent-ease knob sweep (`t_react`/`buffer_frac`) — designed
    (`docs/DESCENT_EASE_KNOB_SWEEP.md`), not run. Low priority (governor is
    frequent but gentle, outcomes clean).
@@ -650,3 +645,38 @@ median-3 + clamp do NOT catch coherent overfill corruption.
 3. If stationary holds and moving improves → bake single `τ=0.15`.
 Until then the single default is `τ=0` (safe stationary; known moving-target gap
 documented above).
+
+---
+
+## UPDATE 2026-09-09 (cont.): CORRECTION — the confirm gate did NOT "fail"; τ=0.15 BAKED
+
+**I was wrong to call `DriftTauConfirm/20260909-200537` a failure.** I judged it by
+SP (P+S 11 vs 14, 3× hard touchdowns, IC4r2 2.80 m/s) — the exact lens the user
+had repeatedly said is wrong for this. Re-read via CBF behaviour:
+
+- **Stationary safe set held 100% by BOTH arms.** 0 frames with the marker centre
+  past the physical FoV edge, `τ=0` and `τ=0.15` alike. Peak `maxC/φ` 1.02 vs 1.03.
+  TPR 0.47 vs 0.45.
+- The only τ=0.15 "regression" was 32 frames where Tier 1 fired while `|c|/φ<0.4`.
+  Calling those false positives was also wrong: on a descending vehicle `d` =
+  self-motion flow captures real lateral drift, so `c+τ·d` breaching φ while `|c|`
+  is still small is *correct early anticipation* — the point of a predictive CBF.
+  The genuinely questionable ones are the 21 in IC4r2 (overfill-corrupted `h_xy`).
+- The SP spread was SITL noise: IC2r4 / IC4r4 crashes had `vis_active=0` (CBF
+  inert); IC3 IMPROVED at τ=0.15. n=5, bimodal 2-20 s flights.
+
+**Corrected verdict (judged the right way):** τ=0.15 holds the stationary safe set
+exactly as well as τ=0, and closes a real moving-target gap (τ=0's 278
+centre-off-sensor frames it can't prevent). → **BAKED `CBF_DRIFT_TAU` default
+0 → 0.15** (`controller.py` 3 reads + comment; docs CBF_visibility.tex/.pdf,
+PLASMC_TUNING_GUIDE, PARAMETER_ANALYSIS, CONTROL_FRAMEWORK_REVIEW, CLAUDE.md;
+memory: What's OPEN item 1 CLOSED). One law for both scenarios, no branching.
+
+**Follow-up hardening (open, not blocking):** overfill gate on `d` — zero `d`
+when `MARKER_EXTENT_PX` shows the marker fills the frame (~`ext>270` on the
+240×320 frame). Removes the IC4r2 terminal-overfill phantom-lead exposure. A
+perception-health gate (same category as `rel_resid`), not scenario branching.
+Below ~0.5 m you're <1 s from touchdown so 0.15 s of lead is pointless there
+anyway. `run_drifttau_confirm_gate.sh` kept for the re-check.
+
+**Lesson → [[feedback_dont_judge_cbf_by_sp]].**

@@ -131,13 +131,16 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 > target — so `d` is conditioned (`condition_drift`): **`CBF_DRIFT_RESID_GATE`** (0.45, = the perception
 > layer's own `rel_resid` threshold; solve untrusted → `d=0`) → median-of-3 → 1-pole LPF
 > (**`CBF_DRIFT_LPF_ALPHA`**=0.12) → radial clamp **`CBF_DRIFT_MAX`**=0.5 tangent/s. **`CBF_DRIFT_TAU`**
-> = the lead horizon (s); **default 0.** A flip to 0.15 (2026-09-09; conditioned rover re-sweep
-> `RoverCBFSweep/20260909-182607` regression-free) was **REVERTED** — the IC2-5 stationary confirm
-> gate (`test_data/DriftTauConfirm/20260909-200537`) FAILED: `τ=0.15` gave 3× the hard touchdowns
-> (max rel_vel 2.80 vs 1.55, a 0.53 m/2.80 m/s IC4 impact), P+S 11/20 vs 14/20, IC4 4P→1P — a
-> terminal-noise tail regression (`d` = self-motion `h_xy` on a stationary target), no moving-target
-> benefit to offset (still unmeasurable, rover perception-blocked). **Set `CBF_DRIFT_TAU>0` per-run
-> for rover only.** `CBF_DRIFT_LOOM_STRIP` (0) removes the `c·h_z`
+> = the lead horizon (s); **default 0.15, BAKED 2026-09-09** — judged on CBF *behaviour*, not SP.
+> On the IC2-5 stationary confirm gate (`test_data/DriftTauConfirm/20260909-200537`) `τ=0` and
+> `τ=0.15` **both held the safe set 100%** (0 frames with the centre past the physical FoV edge;
+> maxC/φ 1.02 vs 1.03); the SP delta (P+S 11 vs 14, an IC4 2.80 m/s TD) was SITL noise — most
+> non-precise reps had `vis_active=0`. On a **moving** target `τ=0` is reactive-only and one step
+> behind continuous target motion → **278 frames / 24 rover reps** where the centre left the sensor
+> (0 on stationary); it corrects the marker back *after* it leaves the FoV. `τ·d` closes that gap.
+> **Follow-up hardening (not a blocker):** terminal-overfill `h_xy` corruption (coherent,
+> `rel_resid`-blind) → phantom lead at `τ>0` — fix = overfill gate on `d`. `CBF_DRIFT_TAU=0`
+> restores reactive-only. `CBF_DRIFT_LOOM_STRIP` (0) removes the `c·h_z`
 > part. The one QP serves stationary (`τ·d=0`) and rover (`τ·d≠0`) — no scenario branching.
 >
 > **Tier 2 — `CBF_DESCENT_EASE`** (default 1): scales only the downward part of `I_a[2]` on a measured
