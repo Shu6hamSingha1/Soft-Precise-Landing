@@ -82,7 +82,7 @@ then `tools/build_test_index.py`.
   (x/y/z where per-axis): `K_rp=3.0 · K_ri=0.1 · K_rd=0.5 · gamma_s(XIS)=0.5 · PSINF=0.35 ·
   XI2=1.0/1.0/1.0 · P=2.5/2.5/5.0 · P2INF=2.5/2.5/0.5 · E=0.8/0.8/0.5 · Γ=2.0/2.0/1.0 ·
   Ω=0.1/0.1/0.1 · N=0.1/0.1/0.1 · KAPPA0=0.5/0.5/1.0 · KAPPA_MAX_Z=3.0 · KAPPA_MAX_XY=30 ·
-  W_U_MAX=2.0 · YAW_PSID_RATE=1.0 · DH_D_MAX=50 · BODY_YAW_SOURCE=alpha · visibility_projection QP (CBF_BUFFER_FRAC=0.15/CBF_VIS_RHO=2000/CBF_DESCENT_EASE=1/CBF_DRIFT_TAU=0) · SEN_FUNNEL=1`.
+  W_U_MAX=2.0 · YAW_PSID_RATE=1.0 · DH_D_MAX=50 · BODY_YAW_SOURCE=alpha · visibility_projection QP (CBF_BUFFER_FRAC=0.15/CBF_VIS_RHO=2000/CBF_DESCENT_EASE=1/CBF_DRIFT_TAU=0.15) · SEN_FUNNEL=1`.
   Notes: `P2INF_xy` is `pa()`-based 1.5 **rebaked to 2.5 at controller.py:466-467** when the env var
   is unset (2026-08-28) — the effective default is 2.5. `KAPPA_MAX_XY` 1e6→30 is a 2026-08-19
   hardware-parity port, **not yet Gazebo gate-validated**.
@@ -120,8 +120,8 @@ then `tools/build_test_index.py`.
   φ_k + s_k`, `‖y‖ ≤ y_max=√(A_CAP²/a_z²−1)` (deliverability ball = the `arccos(a_z/A_CAP)` lean cap,
   **folded in** → `I_a` feasible by construction), slack `s` penalised by **`CBF_VIS_RHO`**=2000
   (graceful degradation, never infeasible). `a_d[2]` still a fixed input. `τ·d` = moving-target lead,
-  `d` = the pipeline's de-rotated optic flow `h_xy` (identity-mapped, verified); **`CBF_DRIFT_TAU`=0
-  default → term inert, stationary byte-identical**. The SAME QP serves stationary and rover — no
+  `d` = the pipeline's de-rotated optic flow `h_xy` (identity-mapped, verified, conditioned — see next
+  entry); **`CBF_DRIFT_TAU` default 0.15** (flipped from 0 on 2026-09-09). The SAME QP serves stationary and rover — no
   branching. Solver = projected Newton + 1-D circle refine. `controller.py` lean/thrust caps kept as
   redundant guards. Solver = projected Newton + 1-D circle refine. Spec `docs/CBF_visibility.pdf`
   (rewritten).
@@ -130,8 +130,13 @@ then `tools/build_test_index.py`.
   `p50`~0.1; `|d|`~0.1–2 of pure noise on a *static* target). `condition_drift()`:
   **`CBF_DRIFT_RESID_GATE`** (0.45 = the flow layer's own `rel_resid` gate; untrusted solve → `d=0`)
   → median-of-3 → 1-pole LPF (**`CBF_DRIFT_LPF_ALPHA`**=0.12) → radial clamp **`CBF_DRIFT_MAX`**=0.5.
-  Sweep-trace replay: `|d|max` 16→0.5 every rep, `p50` unchanged. **`CBF_DRIFT_TAU`=0 still default**;
-  a useful `τ>0` (~0.15) needs the rover-approach-stable re-sweep. New knobs `CBF_VIS_RHO` /
+  Sweep-trace replay: `|d|max` 16→0.5 every rep, `p50` unchanged. **`CBF_DRIFT_TAU` default FLIPPED
+  0→0.15** (2026-09-09) — the conditioned re-sweep (`RoverCBFSweep/20260909-182607`) was regression-free
+  vs `τ=0` on all 7 profiles (no TL, Static not pushed out of the FoV box, lower peak slack); on a
+  stationary target the lead is tiny (`τ·|d|`~0.017 tangent from self-motion flow). ⚠ the IC2-5
+  stationary gate (`VisProjQPGate`) ran at `τ=0` — a confirm gate at 0.15 is recommended. Whether the
+  lead *improves* moving-target visibility is still unmeasured (rover approach dies in 2-20 s,
+  perception-blocked). `CBF_DRIFT_TAU=0` restores reactive-only. New knobs `CBF_VIS_RHO` /
   `CBF_DRIFT_TAU` / `CBF_DRIFT_MAX` / `CBF_DRIFT_RESID_GATE` / `CBF_DRIFT_LPF_ALPHA` /
   `CBF_DRIFT_LOOM_STRIP`; new logs `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Validator **15/15**;
   IC2-5 stationary A/B **wash / PASS**; rover sweep — machinery triggers correctly, flight quality

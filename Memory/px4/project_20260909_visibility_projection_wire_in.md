@@ -463,12 +463,17 @@ convex QP per cycle, no scenario branching, zero rover conditionals in
   median-of-3 → 1-pole LPF (`CBF_DRIFT_LPF_ALPHA`=0.12) → radial clamp
   (`CBF_DRIFT_MAX`=0.5 tangent/s). Raw `h_xy` without this is unusable (spikes
   `|d|` 4–16 on aggressive target motion; noise on a static target).
-- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0** → term absent, stationary byte-identical.
-  `τ=0` is reactive-only: sufficient for stationary (centre doesn't self-drift),
-  incomplete for moving.
+- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0.15** (flipped from 0 on 2026-09-09 at user
+  direction, after the conditioned rover re-sweep was regression-free vs `τ=0`).
+  `τ=0` restores reactive-only (sufficient stationary, incomplete moving). On a
+  stationary target `d ≠ 0` — `h_xy` carries the vehicle's own approach flow —
+  but conditioned `|d|`~0.11 × 0.15 ≈ 0.017 tangent lead, ~inert.
+  ⚠ **The IC2-5 stationary gate (`VisProjQPGate`) ran at `τ=0`. A confirm gate at
+  `τ=0.15` is recommended** (deferred: SITL lane was occupied by the peer B4
+  AU_LEAD gate at flip time).
 
 ### Env knobs (all default-safe)
-`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0 ·
+`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0.15 (flipped from 0, 2026-09-09) ·
 `CBF_DRIFT_MAX`=0.5 · `CBF_DRIFT_RESID_GATE`=0.45 · `CBF_DRIFT_LPF_ALPHA`=0.12 ·
 `CBF_DRIFT_LOOM_STRIP`=0 · `CBF_DESCENT_EASE`=1 · `CBF_GMIN`=0.2 · `CBF_TREACT`=1.5 ·
 `CBF_DRIFT_PULLBACK_FRAC`=0.4
@@ -496,11 +501,15 @@ Moving-target machinery: built, conditioned, offline-validated, frame-verified,
 regression-free in SITL. One implementation serves both.
 
 ### What's OPEN (not CBF-blocking)
-1. `CBF_DRIFT_TAU` default stays 0 — flip to ~0.15 (safe, inert on stationary)
-   only after a rover A/B can actually measure benefit, i.e. after the rover
-   approach is survivable → **perception thread**
+1. **`CBF_DRIFT_TAU` default FLIPPED 0 → 0.15 (2026-09-09, user direction).** The
+   moving-target lead is ON by default; it's regression-free vs `τ=0` (conditioned
+   rover re-sweep) and near-inert on stationary. Two follow-ups:
+   (a) **IC2-5 stationary confirm gate at `τ=0.15`** — the `VisProjQPGate` ran at
+   `τ=0`; deferred at flip time (peer had the SITL lane). Run it when free.
+   (b) Whether the lead *improves* moving-target visibility is still unmeasured —
+   needs the rover approach survivable → **perception thread**
    ([[project_20260901_moving_rover_landing]]): oblique-view detector collapse
-   (~5 m) + terminal-overfill loom collapse (~1.1 m).
+   (~5 m) + terminal-overfill loom collapse (~1.1 m). `CBF_DRIFT_TAU=0` reverts.
 2. Idea-4 descent-ease knob sweep (`t_react`/`buffer_frac`) — designed
    (`docs/DESCENT_EASE_KNOB_SWEEP.md`), not run. Low priority (governor is
    frequent but gentle, outcomes clean).

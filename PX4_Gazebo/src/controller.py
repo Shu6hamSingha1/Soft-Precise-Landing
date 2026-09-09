@@ -3822,9 +3822,16 @@ class Controller(Thread):
         # condition_drift() then gates on the flow solve's rel_resid (untrusted h
         # -> 0), median-of-3 (kills the 4-16 tangent/s single-frame spikes the
         # 7-profile rover sweep found), 1-pole LPF, and a radial clamp to
-        # CBF_DRIFT_MAX. CBF_DRIFT_TAU=0 (default) disables the whole path ->
-        # stationary behaviour byte-identical.
-        _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.0"))
+        # CBF_DRIFT_MAX. CBF_DRIFT_TAU default FLIPPED 0.0 -> 0.15 (2026-09-09):
+        # the rover re-sweep (RoverCBFSweep/20260909-182607) showed tau=0.15 +
+        # condition_drift is regression-free vs tau=0 on all 7 motion profiles
+        # (no TL, Static not pushed out of the FoV box, lower peak slack). On a
+        # STATIONARY target d is not exactly 0 -- h_xy carries the vehicle's own
+        # lateral-approach flow -- but conditioned |d|~0.11 * tau 0.15 ~ 0.017
+        # tangent lead, ~inert. NOTE: the IC2-5 stationary gate (VisProjQPGate)
+        # ran at tau=0; a confirm gate at 0.15 is recommended. CBF_DRIFT_TAU=0
+        # restores the pre-flip reactive-only behaviour.
+        _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.15"))
         _drift = None
         if _tau > 0.0 and len(self._h) > 0 and marker_center_px is not None:
             _flow_ok = (bool(getattr(self._img_node, "_observer_valid", True))
@@ -4183,7 +4190,7 @@ class Controller(Thread):
             # visibility_projection knobs (mirrored with their live defaults)
             "CBF_BUFFER_FRAC": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
             "CBF_VIS_RHO": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
-            "CBF_DRIFT_TAU": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
+            "CBF_DRIFT_TAU": float(os.environ.get("CBF_DRIFT_TAU", "0.15")),
             "CBF_DRIFT_LOOM_STRIP": os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1",
             "CBF_DRIFT_MAX": float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
             "CBF_DRIFT_RESID_GATE": float(os.environ.get("CBF_DRIFT_RESID_GATE", "0.45")),
@@ -4229,7 +4236,7 @@ class Controller(Thread):
             "theta_floor_deg": np.rad2deg(self._theta_floor),
             "cbf_buffer_frac": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
             "cbf_vis_rho": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
-            "cbf_drift_tau": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
+            "cbf_drift_tau": float(os.environ.get("CBF_DRIFT_TAU", "0.15")),
             "cbf_drift_max": float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
             "cbf_g_min": float(os.environ.get("CBF_GMIN", "0.2")),
             "cbf_t_react": float(os.environ.get("CBF_TREACT", "1.5")),
