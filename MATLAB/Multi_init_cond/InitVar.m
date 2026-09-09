@@ -46,11 +46,20 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % Computing Desired Image Features Parameters
 % *************************************************************************
 % Defining Desired Feature Points wrt to Target Origin in Target Reference Frame
-% T_nP3 = [-30, 15, 15, -15; 30, 15, -15, -15; 0, 0, 0, 0]/150; 
-% T_nP3 = [-15, 15, 15, -15; 15, 15, -15, -15; 0, 0, 0, 0]/2; 
-T_nP3 = [-20, 15, 15, -15; 20, 15, -15, -15; 0, 0, 0, 0]/250; 
+% 5-point CROSS marker (abstraction of the PX4 SITL cross marker, same camera
+% model f=135 / res=[320;240]): cols 1-4 are the four arm tips of a SYMMETRIC
+% plus; col 5 is the STUB, a fifth point extending the +x arm. The stub is the
+% only asymmetry and is what makes the image orientation a full 2pi direction
+% (yaw observable past the +-90deg principal-axis fold) -- consumed by the N==5
+% weighted-centroid branch in image_feature.m. Column order (stub LAST) is a
+% contract with that branch; do not permute. Aligned cross -> alpha = 0.
+% Legacy 4-point trapezoid (pre-2026-09-09): [-20 15 15 -15; 20 15 -15 -15; 0 0 0 0]/250
+% Sized so the recentred half-extent (~19.4/250) matches the legacy marker's (~18.8/250).
+T_nP3 = [ 15, -15,   0,   0,  22 ;
+           0,   0,  15, -15,   0 ;
+           0,   0,   0,   0,   0 ] / 250;
 
-% Removing offset due to unsymmetry
+% Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame

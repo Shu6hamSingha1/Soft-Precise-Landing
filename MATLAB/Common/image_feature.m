@@ -42,7 +42,16 @@ mu_03 = centered_moment(nP, P_g, 0, 3);
 % rotates 1:1 over a full turn. Flip the axis to the 180deg end aligned with it
 % -> full +-180deg orientation (yaw observable past the old +-90deg fold).
 N = size(nP, 2);
-if N == 4, wq = [4, 3, 2, 1]; else, wq = ones(1, N); end
+if N == 4
+    wq = [4, 3, 2, 1];              % square: monotone corner weights break the 180deg symmetry
+elseif N == 5
+    % 5-point cross: cols 1-4 arm tips, col 5 the stub. Over-weight the stub so the
+    % weighted centroid shifts toward it; (weighted - geometric) centroid is then a
+    % 1st-moment vector along the stub that disambiguates the pi-axis to a 2pi direction.
+    wq = [1, 1, 1, 1, 3];
+else
+    wq = ones(1, N);
+end
 Wq  = sum(wq);
 xcw = sum(wq.*nP(1,:))/Wq;   ycw = sum(wq.*nP(2,:))/Wq;     % weighted centroid
 Xcw = nP(1,:) - xcw;         Ycw = nP(2,:) - ycw;

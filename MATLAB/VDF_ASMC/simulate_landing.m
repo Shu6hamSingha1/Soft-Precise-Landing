@@ -12,6 +12,7 @@ function R = simulate_landing(x0, trajType, opts)
     if nargin < 3, opts = struct(); end
     if ~isfield(opts,'noise'), opts.noise = false; end
     Constants; InitVar;                       % T_nP3, V_s_d, limits, r, GE, delay, ZOH
+    Npts = size(T_nP3, 2);                    % feature-point count (4 legacy quad / 5 cross)
     P = vdf_params();
     NOISE = opts.noise;                       % noiseless reference by default
 
@@ -26,7 +27,7 @@ function R = simulate_landing(x0, trajType, opts)
     cs.kappa = P.kappa0;  cs.kappa_a = P.kappa_a0;  cs.psi_d = yaw0;
     cs.izeta3 = 0; cs.zeta3_prev = 0; cs.ie_a = 0; cs.e_a_prev = 0;
     cs.ie_R = zeros(3,1); cs.thetahat = zeros(2,1);
-    cs.V_2nP_i_prev = zeros(8,1); cs.V_w_i_prev = zeros(3,1);
+    cs.V_2nP_i_prev = zeros(2*Npts,1); cs.V_w_i_prev = zeros(3,1);
     cs.V_s_prev = zeros(2,1); cs.h_d_noS_prev = zeros(3,1);
     cs.raw_ds = zeros(2,4); cs.raw_dh = zeros(3,4);
     cs.V_s_raw = zeros(4,N_steps); cs.V_h_raw = zeros(3,N_steps);
@@ -34,7 +35,7 @@ function R = simulate_landing(x0, trajType, opts)
     cs.I_a_cd_filt = -P.g;
     cs.cbf_state = struct('delta_prev',[],'ddelta_ref',zeros(2,1),'decode_fail_n',0, ...
                           'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
-    C_nP = zeros(2,4); V_s=zeros(4,1); V_h=zeros(3,1); V_w=zeros(3,1); V_nP_i=zeros(2,4);
+    C_nP = zeros(2,Npts); V_s=zeros(4,1); V_h=zeros(3,1); V_w=zeros(3,1); V_nP_i=zeros(2,Npts);
     u_buf = zeros(4,N_steps);  landed=false; idx=N_steps; t0=0;
     LG = struct('Vs',zeros(4,N_steps),'Vh',zeros(3,N_steps),'sigma',zeros(3,N_steps), ...
                 'Iacd',zeros(3,N_steps),'Iaf',zeros(3,N_steps),'Vhe',zeros(3,N_steps), ...

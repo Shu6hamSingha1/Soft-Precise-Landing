@@ -28,6 +28,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     Constants;
     InitVar;
     init_robustness;          % robustness params (only active when NOISE=1)
+    Npts = size(T_nP3, 2);    % feature-point count (4 = legacy quad, 5 = cross marker)
 
     % Optional environment override (NOISE / GE / delay) for the sweep harnesses.
     if ~isempty(cfg_override)
@@ -56,7 +57,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     cs.kappa = P.kappa0;  cs.kappa_a = P.kappa_a0;  cs.psi_d = yaw0;
     cs.izeta3 = 0; cs.zeta3_prev = 0; cs.ie_a = 0; cs.e_a_prev = 0;
     cs.ie_R = zeros(3,1); cs.thetahat = zeros(2,1);
-    cs.V_2nP_i_prev = zeros(8,1); cs.V_w_i_prev = zeros(3,1);
+    cs.V_2nP_i_prev = zeros(2*Npts,1); cs.V_w_i_prev = zeros(3,1);
     cs.V_s_prev = zeros(2,1); cs.h_d_noS_prev = zeros(3,1);
     cs.raw_ds = zeros(2,4); cs.raw_dh = zeros(3,4);
     cs.V_s_raw = zeros(4,N_steps); cs.V_h_raw = zeros(3,N_steps);
@@ -65,14 +66,14 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     cs.cbf_state = struct('delta_prev',[],'ddelta_ref',zeros(2,1),'decode_fail_n',0, ...
                           'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
     cs.V_s_i = zeros(4,1); cs.V_h_i = zeros(3,1); cs.V_w_i = zeros(3,1);
-    cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,4);
+    cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,Npts);
 
     % --- logging arrays the manuscript plotters / analyzers read ---
     U_DS   = zeros(4,  N_steps);
     X_DS   = zeros(13, N_steps + 1);  X_DS(:,1) = x_c;
     V_X_DS = zeros(24, N_steps);
     D_DS   = zeros(15, N_steps);       % [V_h_d(3); I_a_cd(3); e_R(3); tau(3); T; psi_d; u_a]
-    P_DS   = zeros(2, 12, N_steps);
+    P_DS   = zeros(2, 3*Npts, N_steps);   % [V_nP_i | V_nP_a | C_nP], Npts cols each
     x_t    = zeros(7,  N_steps);
     dx_t   = zeros(6,  N_steps);
     V_h_d  = zeros(3,  N_steps);
@@ -107,7 +108,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     u_2_buf      = zeros(4, N_steps);
     raw_dw_a     = zeros(3, N_steps + 3);
     V_w_a_prev   = zeros(3,1);
-    V_nP_i = zeros(2,4); V_nP_a = zeros(2,4); C_nP = zeros(2,4);
+    V_nP_i = zeros(2,Npts); V_nP_a = zeros(2,Npts); C_nP = zeros(2,Npts);
     V_s_a = zeros(4,1); V_h_a = zeros(3,1); V_w_a = zeros(3,1); V_dw_a = zeros(3,1);
     V_s = zeros(4,1); V_h = zeros(3,1); V_w = zeros(3,1);
     precise = false; soft = false;
