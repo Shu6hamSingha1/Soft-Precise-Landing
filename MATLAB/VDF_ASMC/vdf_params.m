@@ -79,9 +79,12 @@ P.Xi_h   = diag([0.2, 0.2, 0.2]);       % Xi_h contraction rate (code gamma_2; P
                                         % the pa("XI2",...) default, which it overrides.
 
 % ---- Combined sliding surface  sigma = zeta_h + chi*zeta_aug  (tex eq. sliding) -
-P.chi_r = [1.5; 1.5];                   % lateral surface gain (PD: zeta_h + chi_r*zeta_r).
-                                        % PORTED FROM PX4 2026-09-03 (PLASMC_CHI_R_{X,Y}=1.5; PRIOR 2.0).
-                                        % PRIOR rationale follows: 1.15->2.0 baked
+P.chi_r = [2.0; 2.0];                   % lateral surface gain (PD: zeta_h + chi_r*zeta_r).
+                                        % REVERTED 2026-09-09 to MATLAB's own value (PX4's PLASMC_CHI_R=1.5
+                                        % loosened the moving-traj terminal error: Linear worst xy 3.4->2.4 cm
+                                        % at chi_r=2.0, full 5x5 realistic gate 25/25 SP; gain VALUES don't
+                                        % port -- see feedback_gain_values_not_portable_either_direction).
+                                        % Rationale for MATLAB's 2.0: 1.15->2.0 baked
                                         % 2026-06-25: drives terminal lateral barrier harder to kill the
                                         % per-axis terminal y-chase-lag (the standing lateral limit, proof
                                         % S6). With p_hinf 1.0 + per-axis: Lissajous 1.4x 0.0758->0.0654 at
@@ -143,15 +146,16 @@ P.S_margin   = 0.05;                    % funnel-saturation guard (|zeta|<=3.66,
 P.drop_sddot = true;                    % s_ddot-drop (validated combined-barrier default)
 
 % ---- Descent reference  (tex h_d final: h_rd < 0) ------------------------------
-P.h_rd = -0.30;                         % desired descent optic flow. PORTED FROM PX4 2026-09-03
-                                        % (PRIOR -0.42; PX4 env is LANDING_REF_RAD_OPT_FLOW, set in
-                                        % apps/landing_test.py:31, NOT controller.py). ⚠ -0.42 was the
-                                        % LOCKED Table S1 value: a deep sweep flagged -0.38 as +SP on the
-                                        % run_simulation seed-ensemble, but re-running EVERYTHING exposed
-                                        % that it reintroduces the terminal 1/z fly-away (Linear 28 m
-                                        % fly-away on comparison seed 1002; L1/L2/L4 fails in the combo)
-                                        % -> reverted then. -0.30 is a LARGER step in that same direction,
-                                        % so watch specifically for the terminal 1/z fly-away on Linear.
+P.h_rd = -0.38;                         % desired descent optic flow. RE-TUNED 2026-09-09.
+                                        % PX4's -0.30 (ported 2026-09-03, LANDING_REF_RAD_OPT_FLOW)
+                                        % slowed the descent ~40% -> multi-init mean t_f 10.3 s -> 16.7 s
+                                        % with no accuracy gain; that was the entire moving-traj
+                                        % "regression" vs the manuscript numbers. -0.42 (the old locked
+                                        % value) is now too aggressive noiseless (1 FoV fail); -0.38 is
+                                        % the sweet spot on the CURRENT stack (two-tier CBF + drift lead +
+                                        % yaw rate law + per-axis theta): 5x5 NOISELESS 25/25 SP 0 FoV
+                                        % t_f 8.8 s, REALISTIC 25/25 SP 0 FoV t_f 11.4 s, no 1/z fly-away.
+                                        % Gain VALUES don't port (feedback_gain_values_not_portable_either_direction).
 
 % ---- Virtual-compass yaw ASMC  (tex eq. yaw control law) -----------------------
 P.Omega_a = 0.1;   % chi_alpha  (sigma_a = alpha_e + chi_a*int alpha_e). PORTED FROM PX4 2026-09-03
