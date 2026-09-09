@@ -34,33 +34,45 @@ mu_12 = centered_moment(nP, P_g, 1, 2);
 mu_03 = centered_moment(nP, P_g, 0, 3);
 
 %% Computation of Image Features
-% Orientation: weighted-corner 2pi-disambiguated principal angle (ported from
-% the PX4 perception layer, _marker_principal_angle). The pi-period 2nd-moment
-% axis 0.5*atan2(2 mu11, mu20-mu02) is invariant under 180deg; corner weights
-% [4 3 2 1] shift the weighted centroid toward the high-weight corners, and that
-% (weighted - geometric) centroid DISPLACEMENT is a 1st-moment vector that
-% rotates 1:1 over a full turn. Flip the axis to the 180deg end aligned with it
-% -> full +-180deg orientation (yaw observable past the old +-90deg fold).
+% Orientation: 2pi-disambiguated principal angle. The pi-period 2nd-moment axis
+% 0.5*atan2(2 mu11, mu20-mu02) is invariant under 180deg. A 1st-moment vector
+% (weighted - geometric centroid displacement) that rotates 1:1 over a full turn
+% flips the axis to the aligned 180deg end -> full +-180deg orientation.
+%  - N==5 cross (default path): pi-axis from PLAIN unweighted centered moments,
+%    matching PX4 cross_marker_perception._unweighted_principal_angle and the
+%    manuscript. Disambiguation vector over-weights the stub (wq=[1 1 1 1 3]).
+%  - N==4 ArUco square: mu11==0 by symmetry, so both axis and disambiguation
+%    use corner weights [4 3 2 1] (legacy ArUco path, _marker_principal_angle).
 N = size(nP, 2);
 if N == 4
-    wq = [4, 3, 2, 1];              % square: monotone corner weights break the 180deg symmetry
+    % ArUco square: mu11 == 0 by symmetry, so the plain 2nd-moment axis is
+    % undefined. Monotone corner weights [4 3 2 1] break the 180deg symmetry.
+    wq = [4, 3, 2, 1];
 elseif N == 5
-    % 5-point cross: cols 1-4 arm tips, col 5 the stub. Over-weight the stub so the
-    % weighted centroid shifts toward it; (weighted - geometric) centroid is then a
-    % 1st-moment vector along the stub that disambiguates the pi-axis to a 2pi direction.
+    % 5-point cross: cols 1-4 arm tips, col 5 the stub. The stub is a REAL
+    % geometric asymmetry, so the pi-axis comes from the PLAIN unweighted
+    % centered moments (matches PX4 cross_marker_perception._unweighted_principal_angle
+    % and manuscript eq. "image orientation principal axis"). The stub weight
+    % below is used ONLY to build the disambiguation vector.
     wq = [1, 1, 1, 1, 3];
 else
     wq = ones(1, N);
 end
-Wq  = sum(wq);
-xcw = sum(wq.*nP(1,:))/Wq;   ycw = sum(wq.*nP(2,:))/Wq;     % weighted centroid
-Xcw = nP(1,:) - xcw;         Ycw = nP(2,:) - ycw;
-wm20 = sum(wq.*Xcw.*Xcw);  wm02 = sum(wq.*Ycw.*Ycw);  wm11 = sum(wq.*Xcw.*Ycw);
+if N == 4
+    Wq  = sum(wq);
+    xcw = sum(wq.*nP(1,:))/Wq;   ycw = sum(wq.*nP(2,:))/Wq;
+    Xcw = nP(1,:) - xcw;         Ycw = nP(2,:) - ycw;
+    wm20 = sum(wq.*Xcw.*Xcw);  wm02 = sum(wq.*Ycw.*Ycw);  wm11 = sum(wq.*Xcw.*Ycw);
+else
+    wm20 = mu_20;  wm02 = mu_02;  wm11 = mu_11;             % plain centered moments about P_g
+end
 if abs(wm11) < 1e-9 && abs(wm20 - wm02) < 1e-9
     s_alpha = 0;
 else
     s_alpha = 0.5*atan2(2*wm11, wm20 - wm02);               % pi-period axis
 end
+Wq  = sum(wq);
+xcw = sum(wq.*nP(1,:))/Wq;   ycw = sum(wq.*nP(2,:))/Wq;     % weighted centroid (disambiguation only)
 dxw = xcw - mean(nP(1,:));   dyw = ycw - mean(nP(2,:));     % weighted-centroid displacement
 if dxw*dxw + dyw*dyw > 1e-18
     dd = s_alpha - atan2(dyw, dxw);
