@@ -259,3 +259,61 @@ User pushed five refinement ideas; outcome:
 - Idea 4 + `t_react`/`buffer_frac` descent-ease knob sweep.
 - OLD worktree at `~/Soft-Precise-Landing-old` now at `ccc41071` — `git worktree
   remove` when the QP gate is done.
+
+---
+
+## UPDATE 2026-09-09 (cont.): QP gate result + h-sign fix + rover status
+
+### IC2-5 stationary QP A/B gate — `test_data/VisProjQPGate/20260909-142528`
+NEW (QP, HEAD) vs OLD (`e63751e2^`=ccc41071, pre-QP alternating projection). n=5/cell.
+
+| pool | land | TL | mean xy | med | max | precise | P+S |
+|---|---|---|---|---|---|---|---|
+| NEW (QP) | 20/20 | 0 | 0.07 | 0.06 | 0.24 | 15 | 16 |
+| OLD | 20/20 | 0 | 0.06 | 0.05 | 0.21 | 17 | 18 |
+
+**Verdict: statistical wash, PASSES the reject bar** (no failed landing either arm).
+IC3 exact tie; IC5 (the only IC where `vis_active` genuinely fires, ~10% of terminal
+frames, BOTH arms) near-identical -> QP and alternating projection behave the same
+when active. `vis_slack` fired on exactly one rep (IC2/new5): 5 frames in the last
+0.4 s at ~0.1 m alt with the vehicle 0.24 m off-centre (the known terminal-overfill
+wall) -> slack absorbed it (max 0.188), landing completed 0.24 m soft. The thrust
+ball was NOT binding there; it was the visibility constraint itself unsatisfiable in
+that terminal geometry. Graceful degradation did its job.
+The 2-rep P+S gap is within n=5 SITL noise. **QP is functionally equivalent on
+stationary; the structural wins (deliverability-by-construction, graceful slack,
+moving-target infra) come free.** -> BAKED as the standing Tier-1 (no runtime flag;
+unconditional since e63751e2; rollback = `Obsolete/src/visibility_projection_v1_pre_qp_slack.py`).
+
+### h_xy -> module-frame map: IDENTITY (not _SWAP) -- commit `28e4417b`
+Regressed `d(vis_c)/dt` on the pipeline's `h(t)[:2]` over a real approach
+(`test_data/_hsign`, one HEADLESS rep with the new `vis_c(t)` log):
+
+| candidate map | median cos vs d(c)/dt |
+|---|---|
+| **+I** | **+0.87** |
+| -I | -0.87 |
+| +/-SWAP, SWAP^T, diag(±1,∓1) | ~0 |
+
+So `h_xy` is ALREADY in the module tangent frame -- the perception front-end applies
+the camera-mount swap upstream (consistent with the module doc's "_SWAP matches
+_getVirtualPts"). The wire-in's `_drift = _SWAP @ h_xy` was WRONG; fixed to
+`_drift = h_xy`. LS scale ~0.45 (rotational term not removed in the check + h's own
+cal), so `CBF_DRIFT_TAU` absorbs residual scale as well as being the lead horizon.
+Added `vis_c(t)` telemetry permanently.
+
+### Rover: what "working CBF for rover" still needs
+The CBF module + wiring are now CORRECT for a moving target (QP + slack + validated
+`tau*d` lead + correct frame map). Outstanding:
+1. **`CBF_DRIFT_TAU` value** -- needs a rover A/B (`0` vs ~`0.3-0.5`). Not baked;
+   env-gated; the rover launcher does NOT set it yet (kept out of the control path
+   per the no-rover-conditionals rule).
+2. **Rover SITL gate** -- BLOCKED on perception: rover doesn't complete a landing
+   today (oblique-view detector collapse from ~5 m + terminal-overfill loom collapse
+   ~1.1 m, per STATUS block / [[project_20260901_moving_rover_landing]]). A wired
+   moving-target lead cannot land the rover until those are fixed. A scoped A/B
+   ("does `tau>0` keep the marker in frame longer / delay `_last_drifted_off` /
+   reduce `vis_active`") is possible on runs that don't complete -- that measures the
+   CBF's job without needing a successful landing.
+3. Optional: Tier-2 `c_rate` gyro-strip (currently raw finite-diff of the smoothed
+   `c`); refinement, not a blocker.
