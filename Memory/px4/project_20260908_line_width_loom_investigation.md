@@ -5,16 +5,31 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T11:48:27.156Z
+  modified: 2026-09-09T12:42:53.218Z
 ---
 
-## ⛔⛔ THREAD CLOSED — 2026-09-09 (read this, skip the 700-line chronology below unless digging)
+## ⛔✅ THREAD CLOSED — 2026-09-09 (read this; skip the chronology below unless digging)
 
 **Goal was:** replace / backstop the corrupted terminal-overfill `h_z` (LK image-Jacobian Tz
-spikes to +5.6 when tracked points lose spread) with a loom estimate derived from the marker's
-apparent SIZE (line-width, then extent). **Outcome: dead end, exhaustively verified.**
+spikes to +5.6 when tracked points lose spread).
 
-**Final state of each piece:**
+**Outcome, in one line:** the SIZE-derived-loom approach (line-width, extent, moment-loom) is a
+**dead end** for this — but the original problem WAS addressed, by a different route: a
+**loom-channel innovation gate** on the hw-KF (`CROSS_LOOM_INNOV_GATE=1`, BAKED default-ON
+`7e9843ae`) + a hard abs backstop (`CROSS_LOOM_ABS_MAX=20`, default-on). See "✅ WHAT ACTUALLY
+LANDED" section below for the full spec + validation (stationary n=3 IC2-5 clean wash; 7-profile
+moving-rover analysis: trip rate 0.7-1.8%, h_z bounded, abs clamp never fired).
+
+**Baked state (all in `cross_marker_perception.py`, all perception-layer, `controller.py`
+untouched):**
+- **default-ON:** geometry `width_loom_from_detection` (`CROSS_WIDTH_GEOM=1`); loom abs clamp
+  (`CROSS_LOOM_ABS_MAX=20`); loom innovation gate (`CROSS_LOOM_INNOV_GATE=1`).
+- **default-OFF by verdict:** scale-rate→`h_z` fusion (`CROSS_SCALE_RATE_FUSE=0`, confirmed
+  dead-end, machinery kept + marked in-file).
+- **shadow logs only, consumed by nothing:** `"Width Loom Px"`, `"Width Loom Rate"`,
+  `"Scale Loom Rate"`, `"Scale Fuse Z"`, `"Loom Gate"`.
+
+**Final state of each SIZE-derived piece:**
 | piece | verdict |
 |---|---|
 | Static line-width VALUE (mask-scan → now geometry-width) | **Good** (0.89-1.00 corr w/ GT altitude). `width_loom_from_detection` DEFAULTS to the geometry method (`CROSS_WIDTH_GEOM=1`, `bf812f1f`): `2√3·std(transverse residual of arm inliers)`, gated on arm-perpendicularity + junction-in-frame, `None` on gate-fail. Bounded terminally (12-35 px vs mask-scan's 14-201). SHADOW-ONLY, consumed by nothing. |
@@ -26,19 +41,25 @@ apparent SIZE (line-width, then extent). **Outcome: dead end, exhaustively verif
 detector (`_touchdownDetectV2`: n_corners / extent / flow-freeze — **none use `h_z`**) already
 owns the regime; every landing in every gate latched via `[overfill]`/`[flow-freeze]`.
 
-**Do not re-open** without a fundamentally different observable (not apparent size, not its
-derivative) OR a fundamentally different consumer (not a KF measurement of the live `h_z`).
+For the SIZE-derived RATE: **do not re-open** without a fundamentally different observable (not
+apparent size, not its derivative) OR a fundamentally different consumer (not a KF measurement of
+the live `h_z`). The loom innovation gate (below) is the accepted resolution of the original
+spike problem.
 
-**Artifacts kept (all shadow / diagnostic, nothing control-facing):**
-- `cross_marker_perception.py`: `"Width Loom Px/Rate"`, `"Scale Loom Rate"`, `"Scale Fuse Z"`
-  logs; `_wgeom_arm` + geometry `width_loom_from_detection` (default); `_wloom_*` mask-scan
-  (`CROSS_WIDTH_GEOM=0` fallback); `_scale_rate_*` KF; the whole `_scale_fuse_*` fusion machinery
-  behind `CROSS_SCALE_RATE_FUSE` (default 0, marked DEAD-END in-file).
+**Artifacts kept:**
+- `cross_marker_perception.py`: the 5 shadow log channels above; `_wgeom_arm` + geometry
+  `width_loom_from_detection` (default, `CROSS_WIDTH_GEOM=0` → `_wloom_*` mask-scan fallback);
+  `_scale_rate_*` KF; the whole `_scale_fuse_*` fusion machinery behind `CROSS_SCALE_RATE_FUSE`
+  (default 0, DEAD-END in-file); the loom innovation gate + abs clamp (`_loom_gate_*` /
+  `_loom_abs_max`, both default-ON).
 - `tools/overlay_width_loom_rate.py` — width/extent/scale loom-RATE overlay on raw IMG_RECORD
   frames vs GT loom (companion to `overlay_image_features.py`).
 - `tools/gt_optical_flow.py` — the 3-bug fix (stale Z_REG, missing mount offset, stale alt gate)
   from this thread is a real correctness fix that OUTLIVES it; keep.
-- Backups: `Obsolete/src/cross_marker_perception_pre_{scalerate,geomwidth}_20260909.py`.
+- Backups: `Obsolete/src/cross_marker_perception_pre_{scalerate,geomwidth,loomgate}_20260909.py`.
+- Scratchpad analysis scripts (session 8506cf0a): `diag_wloom_*`, `debias.py`, `reinvestigate.py`,
+  `epsilon.py`, `window_fit.py`, `level_test.py`, `geom_width.py`, `gate_replay.py`,
+  `rover_loomgate.py` — the full offline-validation trail.
 
 Related: [[feedback_cross_detector_contrast_not_darkness]] (the terminal-overfill blocker this
 was trying to help), [[reference_gt_optical_flow]], [[project_20260831_perception_mode_landing]].
