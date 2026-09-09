@@ -138,7 +138,9 @@ unresolved, but descent's main coupling to TLs is *reaching* the perception-brea
     de-rotated optic flow `h_xy` (identity-mapped, `28e4417b`), conditioned by `condition_drift`
     (`e1b094e8` — `rel_resid` gate / median-3 / LPF / radial clamp) because raw `h_xy` spikes to
     `|d|` 4–16 on aggressive target motion and carries pure noise on a static target. Inert at
-    `CBF_DRIFT_TAU=0` default. New logs `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Offline:
+    `CBF_DRIFT_TAU` default 0.15 (flipped from 0 on 2026-09-09 — conditioned rover re-sweep
+    regression-free vs 0; IC2-5 stationary confirm gate at 0.15 still recommended; `=0` restores
+    reactive-only). New logs `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Offline:
     `validate_visibility_projection.py` 15/15. IC2–5 stationary A/B: wash / PASS
     (`test_data/VisProjQPGate/`). Rover 7-profile sweep (`test_data/RoverCBFSweep/20260909-163929`):
     machinery triggers correctly; flight quality unjudgeable (rover perception-blocked). A validated

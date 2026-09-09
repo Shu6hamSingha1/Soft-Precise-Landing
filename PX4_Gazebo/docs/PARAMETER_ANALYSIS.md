@@ -131,8 +131,12 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 > target — so `d` is conditioned (`condition_drift`): **`CBF_DRIFT_RESID_GATE`** (0.45, = the perception
 > layer's own `rel_resid` threshold; solve untrusted → `d=0`) → median-of-3 → 1-pole LPF
 > (**`CBF_DRIFT_LPF_ALPHA`**=0.12) → radial clamp **`CBF_DRIFT_MAX`**=0.5 tangent/s. **`CBF_DRIFT_TAU`**
-> = the lead horizon (s); **`=0` default → term absent, stationary behaviour byte-identical**; a useful
-> `τ>0` (~0.15) needs the rover-approach-stable re-sweep. `CBF_DRIFT_LOOM_STRIP` (0) removes the `c·h_z`
+> = the lead horizon (s); **default FLIPPED 0→0.15 on 2026-09-09** — the conditioned rover re-sweep
+> (`RoverCBFSweep/20260909-182607`) was regression-free vs `τ=0` on all 7 motion profiles (no TL,
+> Static not pushed out of the box, lower peak slack); stationary lead is `τ·|d|`~0.017 tangent
+> (self-motion flow). ⚠ the IC2-5 stationary gate ran at `τ=0` — confirm gate at 0.15 recommended.
+> Whether the lead *improves* moving-target visibility is still unmeasured (rover perception-blocked).
+> `CBF_DRIFT_TAU=0` restores reactive-only. `CBF_DRIFT_LOOM_STRIP` (0) removes the `c·h_z`
 > part. The one QP serves stationary (`τ·d=0`) and rover (`τ·d≠0`) — no scenario branching.
 >
 > **Tier 2 — `CBF_DESCENT_EASE`** (default 1): scales only the downward part of `I_a[2]` on a measured
