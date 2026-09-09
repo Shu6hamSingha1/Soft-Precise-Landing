@@ -426,3 +426,96 @@ ready. It **cannot be shown beneficial on the rover** until the rover flies a
 survivable approach. `CBF_DRIFT_TAU=0` stays the default (no unvalidated-benefit
 default); flip to 0.15 whenever the rover approach is fixed — it's safe and inert
 on stationary already.
+
+---
+
+## ===== SESSION CLOSE 2026-09-09 — consolidated state =====
+
+**Read this block first; the UPDATE sections above are the detail trail.**
+
+### What the visibility CBF IS now (all baked / committed / pushed)
+`src/visibility_projection.py`, spec `docs/CBF_visibility.pdf` (rewritten). ONE
+convex QP per cycle, no scenario branching, zero rover conditionals in
+`controller.py`:
+
+    (y*, s*) = argmin ½‖y − y_d‖² + ½ρ‖s‖²
+      s.t. |c + L_e(y − y_now) + τ·d|_k ≤ φ_k + s_k        (visibility, soft)
+           ‖y‖ ≤ y_max = √(A_CAP²/a_z² − 1)               (deliverability, hard)
+           s ≥ 0
+
+- `L_e = −(L_ω M)` (sign negated vs the retired machinery; verified).
+- Deliverability ball = the `arccos(a_z/A_CAP)` lean cap / thrust sphere, FOLDED
+  IN → `I_a` actuator-feasible by construction; `controller.py` lean/thrust caps
+  are now redundant guards (cover the raw path + degenerate `A_CAP ≤ g`).
+- Slack `s` penalised by `CBF_VIS_RHO`=2000 → graceful degradation, never
+  infeasible, when the FoV box and the thrust ball are disjoint.
+- `a_d[2]` is a FIXED input to the QP. Solver: slack eliminated in closed form →
+  projected Newton (exact interior) + 1-D circle refine when the ball binds.
+- Tier 2 `descent_ease` (`CBF_DESCENT_EASE`=1): scales ONLY the downward part of
+  `a_d[2]` on a measured time-to-edge, self-releasing. NOT a CBF.
+
+### Moving-target lead `τ·d`
+- `d` = the front-end's de-rotated optic flow `h_xy`, **identity map** to the CBF
+  frame (verified: `+I` cos 0.87, every other signed permutation ≈0 —
+  `h_xy` is already post-camera-mount-swap).
+- Conditioned by `condition_drift()`: `rel_resid` gate
+  (`_img_node._bgflow_health[0]` > `CBF_DRIFT_RESID_GATE`=0.45 → `d=0`) →
+  median-of-3 → 1-pole LPF (`CBF_DRIFT_LPF_ALPHA`=0.12) → radial clamp
+  (`CBF_DRIFT_MAX`=0.5 tangent/s). Raw `h_xy` without this is unusable (spikes
+  `|d|` 4–16 on aggressive target motion; noise on a static target).
+- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0** → term absent, stationary byte-identical.
+  `τ=0` is reactive-only: sufficient for stationary (centre doesn't self-drift),
+  incomplete for moving.
+
+### Env knobs (all default-safe)
+`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0 ·
+`CBF_DRIFT_MAX`=0.5 · `CBF_DRIFT_RESID_GATE`=0.45 · `CBF_DRIFT_LPF_ALPHA`=0.12 ·
+`CBF_DRIFT_LOOM_STRIP`=0 · `CBF_DESCENT_EASE`=1 · `CBF_GMIN`=0.2 · `CBF_TREACT`=1.5 ·
+`CBF_DRIFT_PULLBACK_FRAC`=0.4
+Logs: `vis_active(t)` `vis_slack(t)` `vis_drift(t)` `vis_c(t)` `vis_gz(t)`.
+
+### Validation status
+- Offline: `tools/validate_visibility_projection.py` **15/15** across 5 seeds
+  (independent pinhole+attitude oracle; +checks for deliverability-by-construction,
+  graceful degradation, moving-target lead, condition_drift).
+- **Stationary IC2-5 SITL A/B (QP vs pre-QP):** wash / PASS — 20/20 land both arms,
+  0 TL, pooled mean xy 0.07 vs 0.06. `test_data/VisProjQPGate/20260909-142528`.
+- **Rover 7-profile sweeps** (`test_data/RoverCBFSweep/20260909-163929` raw,
+  `.../20260909-182607` conditioned+τ=0.15): CBF machinery **triggers correctly on
+  all 7 motion profiles** — `d` live, `vis_active` fires, `_last_drifted_off` never
+  logged, marker in-frame ~100%. `condition_drift` caps `|d|` at 0.5 in-loop,
+  `τ=0.15` shows **no regression** vs `τ=0` (no TL, Static no longer pushed out of
+  box, lower peak slack on noisy profiles).
+  **BUT "does the lead improve rover visibility" is UNANSWERABLE** — the rover
+  approach dies in 2–20 s (bimodal, perception-driven) on both arms, no stable
+  window to measure. NOT a CBF problem.
+
+### What's DONE
+Stationary visibility CBF: designed, built, validated, gated, baked, documented.
+Moving-target machinery: built, conditioned, offline-validated, frame-verified,
+regression-free in SITL. One implementation serves both.
+
+### What's OPEN (not CBF-blocking)
+1. `CBF_DRIFT_TAU` default stays 0 — flip to ~0.15 (safe, inert on stationary)
+   only after a rover A/B can actually measure benefit, i.e. after the rover
+   approach is survivable → **perception thread**
+   ([[project_20260901_moving_rover_landing]]): oblique-view detector collapse
+   (~5 m) + terminal-overfill loom collapse (~1.1 m).
+2. Idea-4 descent-ease knob sweep (`t_react`/`buffer_frac`) — designed
+   (`docs/DESCENT_EASE_KNOB_SWEEP.md`), not run. Low priority (governor is
+   frequent but gentle, outcomes clean).
+3. `CBF_DRIFT_LOOM_STRIP` sign never confirmed on a rover recording (default OFF).
+4. ArUco 4-corner variant — module is cross-marker-only; retired ArUco CBF.
+   Re-derive only if ArUco comparison numbers are needed for the paper.
+
+### Harnesses / tools built this thread
+`scripts/run_visproj_qp_gate.sh`, `scripts/run_rover_cbf_sweep.sh`,
+`tools/analyze_rover_cbf_sweep.py`, `tools/validate_visibility_projection.py`.
+Backups: `Obsolete/{src,tools}/*_v1_pre_qp_slack.py`,
+`Obsolete/src/visibility_projection_v_pre_visproj.py` (+ pre-visproj pair).
+
+### Key commits
+`8884f43d` module · `82fa9c16` wire-in · `e63751e2` QP+slack+deliverability+lead ·
+`28e4417b` h_xy identity-map fix + `vis_c(t)` · `e1b094e8` `condition_drift` ·
+`16eb5d2d` all-docs · `9f08c799` re-sweep memory. (Peer `032e79ea` ported the
+two-tier design to MATLAB + manuscript.)
