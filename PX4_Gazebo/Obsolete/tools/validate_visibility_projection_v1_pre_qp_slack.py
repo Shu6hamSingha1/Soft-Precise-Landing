@@ -13,13 +13,6 @@ TIER 1 (visibility_project):
   5. PASSTHROUGH    -- marker None / degenerate a_z return the command unchanged.
   6. IDEMPOTENT     -- projecting an already-projected command is a no-op.
 
-TIER 1 -- deliverability folded in (a_cap set):
- 10. DELIVERABLE    -- ||a_star|| <= a_cap for EVERY scene, by construction.
- 11. GRACEFUL       -- when the ball and the visibility set are disjoint the solve
-                       still returns a finite on-ball command with slack>0 and is
-                       within tol of the brute-force min-penalty point (no
-                       infeasibility, no blow-up).
-
 TIER 2 (descent_ease):
   7. ONE-WAY        -- never speeds a descent, never reverses one, floors at g_min.
   8. TRIGGERED-BY-CLOSING -- eases only when |c| is genuinely approaching the edge.
@@ -34,7 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from visibility_projection import (visibility_project, descent_ease,  # noqa: E402
                                    marker_tangent, fov_limit)
 
-RNG = np.random.default_rng(int(os.environ.get("VVP_SEED", "0")))
+RNG = np.random.default_rng(0)
 CENTER = np.array([160.0, 120.0])
 FOCAL = np.array([135.0, 135.0])
 G = 9.81
@@ -216,140 +209,6 @@ def test_idempotent():
          worst < 3e-2, f"max |a2 - a1| = {worst:.1e}")
 
 
-def test_deliverable():
-    """With a_cap passed, the returned command is inside the thrust sphere for
-    every scene -- including ones where visibility wants a big lean."""
-    worst_ratio, N = 0.0, 0
-    for _ in range(4000):
-        yaw, cam, marker, _ = _scene()
-        R0 = R_from_lean(RNG.uniform(-0.2, 0.2, 2), yaw)
-        c0 = project_centre(R0, cam, marker)
-        if np.any(np.abs(c0) > PHI):
-            continue
-        N += 1
-        a_z = RNG.uniform(7.0, 11.0)
-        a_cap = a_z * RNG.uniform(1.02, 1.8)                 # feasible hover, varying lean budget
-        cz, sz = np.cos(yaw), np.sin(yaw)
-        P = np.array([[0.0, -1.0], [1.0, 0.0]]) @ np.array([[cz, sz], [-sz, cz]])
-        a_xy = a_z * (P.T @ RNG.uniform(-1.6, 1.6, 2))       # desired lean often past the ball
-        a_s, y_s, info = visibility_project(np.array([a_xy[0], a_xy[1], -a_z]), R0, yaw,
-                                            centre_to_px(c0), CENTER, FOCAL, a_cap=a_cap)
-        worst_ratio = max(worst_ratio, float(np.linalg.norm(a_s) / a_cap))
-    _rec("10. deliverable (||a_star|| <= a_cap by construction)",
-         worst_ratio <= 1.0 + 1e-6, f"worst ||a_star||/a_cap = {worst_ratio:.6f} over {N}")
-
-
-def test_graceful():
-    """Tiny lean budget + marker far outside phi -> the solve must NOT go
-    infeasible or blow up: it returns a finite in-ball command that is within
-    tol of the brute-force min of the SAME penalised objective, and the
-    deliverable/slack label is self-consistent.  Includes genuinely-disjoint
-    cases (ball too small for any lean to satisfy visibility)."""
-    RHO = 2000.0
-    bad, blew, ndis, N = 0, 0, 0, 0
-    for _ in range(600):
-        yaw = RNG.uniform(-np.pi, np.pi)
-        R0 = R_from_lean(RNG.uniform(-0.05, 0.05, 2), yaw)
-        c0 = RNG.uniform(-1.0, 1.0, 2)
-        c0 *= (RNG.uniform(1.2, 3.5) * np.max(PHI)) / (np.linalg.norm(c0) + 1e-9)
-        N += 1
-        a_z = RNG.uniform(7.0, 11.0)
-        a_cap = a_z * RNG.uniform(1.002, 1.03)               # very small lean budget
-        cz, sz = np.cos(yaw), np.sin(yaw)
-        P = np.array([[0.0, -1.0], [1.0, 0.0]]) @ np.array([[cz, sz], [-sz, cz]])
-        a_xy = a_z * (P.T @ np.clip(c0, -0.4, 0.4))
-        a_s, y_s, info = visibility_project(np.array([a_xy[0], a_xy[1], -a_z]), R0, yaw,
-                                            centre_to_px(c0), CENTER, FOCAL,
-                                            a_cap=a_cap, rho=RHO)
-        y_max = info["y_max"]
-        if not (np.all(np.isfinite(a_s)) and np.linalg.norm(a_s) <= a_cap * (1 + 1e-6)
-                and np.linalg.norm(y_s) <= y_max * (1 + 1e-6)):
-            blew += 1
-            continue
-        Le = -( (lambda x, y: np.array([[x*y, -(1+x*x)], [1+y*y, -x*y]]))(*info["c"])
-                @ np.array([[0.0, 1.0], [-1.0, 0.0]]) )
-        anchor = info["c"] - Le @ info["y_now"]
-        y_d = info["y_desired"]
-
-        def obj(yv):
-            over = np.maximum(np.abs(anchor + Le @ yv) - info["phi"], 0.0)
-            return 0.5 * np.dot(yv - y_d, yv - y_d) + 0.5 * RHO * np.dot(over, over)
-
-        gr = np.linspace(-y_max, y_max, 121)
-        best = min(obj(np.array([gx, gy])) for gx in gr for gy in gr
-                   if gx * gx + gy * gy <= y_max * y_max)
-        # "graceful" == on-ball, finite, best-effort -- not provably optimal in
-        # this physically-unachievable corner (near-saturated hover + marker far
-        # outside FoV). The band is vs a discrete grid reference, so it is loose;
-        # a real solver regression shows as a large systematic excess, not 1/600.
-        if obj(y_s) > best + 0.08 * abs(best) + 1e-9:
-            bad += 1
-        smax = float(np.max(info["slack"]))
-        ndis += int(smax > 1e-6)
-        # label must be the negation of "has real slack" -- ignore the numerical
-        # mush band 1e-7..1e-4 where either label is defensible
-        if smax > 1e-4 and info["deliverable"]:
-            bad += 1
-        if smax < 1e-7 and not info["deliverable"]:
-            bad += 1
-    _rec("11. graceful degradation (no infeasibility; on-ball min-penalty point)",
-         blew == 0 and bad == 0,
-         f"{blew} blow-ups, {bad} sub-optimal/mislabelled over {N} ({ndis} genuinely disjoint)")
-
-
-def test_moving_target():
-    """tau*d lead: a target drifting OUTWARD toward the buffer must make Tier 1
-    act earlier (predicted look-ahead centre inside phi, and the real re-projection
-    after the target has moved tau*v_t is inside the true sensor edge); a target
-    drifting INWARD must not trigger a spurious outward projection."""
-    TAU = 1.2
-    need_lead, fixed_by_lead, ok_future, N = 0, 0, 0, 0
-    spurious, Nin = 0, 0
-    for _ in range(4000):
-        yaw = RNG.uniform(-np.pi, np.pi)
-        alt = RNG.uniform(1.0, 6.0)
-        cam = np.array([0.0, 0.0, -alt])
-        R0 = R_from_lean(RNG.uniform(-0.12, 0.12, 2), yaw)
-        m0 = np.array([RNG.uniform(-0.55, 0.55) * alt, RNG.uniform(-0.55, 0.55) * alt, 0.0])
-        c0 = project_centre(R0, cam, m0)
-        if np.any(np.abs(c0) > PHI):
-            continue
-        vt = RNG.uniform(-1.2, 1.2, 3) * np.array([1.0, 1.0, 0.0])   # ground-plane target vel
-        m1 = m0 + vt / 50.0                                          # one 50 Hz step
-        d_true = (project_centre(R0, cam, m1) - c0) * 50.0           # true centre drift, R fixed
-        # outward if the drift grows |c| on its worst axis
-        outward = np.max(np.sign(c0) * d_true) > 0.05
-        cz, sz = np.cos(yaw), np.sin(yaw)
-        P = np.array([[0.0, -1.0], [1.0, 0.0]]) @ np.array([[cz, sz], [-sz, cz]])
-        a_z = RNG.uniform(7.0, 11.0)
-        lean_now = -R0[:2, 2] / R0[2, 2]
-        a_d = np.array([a_z * lean_now[0], a_z * lean_now[1], -a_z])   # desired lean == current attitude (no lateral demand)
-        a_no, y_no, i_no = visibility_project(a_d, R0, yaw, centre_to_px(c0), CENTER, FOCAL, tau=0.0)
-        a_ld, y_ld, i_ld = visibility_project(a_d, R0, yaw, centre_to_px(c0), CENTER, FOCAL,
-                                              tau=TAU, drift=d_true)
-        if outward and np.max(np.abs(c0) / PHI) > 0.5:
-            N += 1
-            mF = m0 + vt * TAU                       # where the target is TAU later
-            # would the STATIONARY (tau=0) projection lose it once it has moved?
-            cF_no = project_centre(R_from_lean(y_no, yaw), cam, mF)
-            cF_ld = project_centre(R_from_lean(y_ld, yaw), cam, mF)
-            if np.max(np.abs(cF_no) - SENSOR) > 0.02:
-                need_lead += 1
-                if np.max(np.abs(cF_ld) - SENSOR) <= 0.06:
-                    fixed_by_lead += 1
-            if np.max(np.abs(cF_ld) - SENSOR) <= 0.06:
-                ok_future += 1
-        if (not outward) and np.max(np.abs(c0) / PHI) < 0.5:
-            Nin += 1
-            if i_ld["active"]:
-                spurious += 1
-    _rec("12. moving-target lead recovers targets the stationary projection would lose",
-         N > 50 and need_lead > 20 and fixed_by_lead >= 0.8 * need_lead and ok_future >= 0.9 * N,
-         f"need-lead {need_lead}/{N}, fixed {fixed_by_lead}/{need_lead}, look-ahead-safe {ok_future}/{N}")
-    _rec("13. moving-target lead is not spuriously triggered by inward drift",
-         spurious == 0, f"{spurious}/{Nin} inward-drift cases projected")
-
-
 # ---- TIER 2 ------------------------------------------------------------------
 def test_descent_oneway():
     bad = 0
@@ -403,9 +262,8 @@ def main():
     print("visibility_projection.py -- independent validation")
     print("=" * 70)
     for t in (test_barrier, test_min_intervention, test_inward_free, test_conventions,
-              test_passthrough, test_idempotent, test_deliverable, test_graceful,
-              test_moving_target,
-              test_descent_oneway, test_descent_triggered, test_descent_selfrelease):
+              test_passthrough, test_idempotent, test_descent_oneway,
+              test_descent_triggered, test_descent_selfrelease):
         t()
     nf = _R.count(False)
     print("-" * 70)

@@ -2129,6 +2129,8 @@ class Controller(Thread):
         self._az_joint_log = []            # a_z delta from the downstream thrust-magnitude cap (0 when it didn't bind)
         self._vis_gz_log = []              # Tier-2 descent-ease scale g_z in [g_min, 1]
         self._vis_active_log = []          # 1.0 when Tier-1 modified a_xy this step
+        self._vis_slack_log = []           # max per-axis Tier-1 visibility slack (tangent; >0 = FoV vs thrust-ball conflict, degraded)
+        self._vis_drift_log = []           # |d| fed to Tier-1 tau*d moving-target lead (tangent/s; 0 unless CBF_DRIFT_TAU>0)
         self._theta_safe = None            # Tier-1 safe lean vector (image axes) -> Fix B direct rd3
         self._vis_prev_c = None            # image-tangent marker centre from the previous step (for c_rate)
         self._vis_state = {}               # descent_ease g_z low-pass carry
@@ -3789,16 +3791,54 @@ class Controller(Thread):
         #   Tier 2 -- soft, self-releasing descent ease (scales the downward part of
         #             a_z when the centre is predicted to reach the edge before the
         #             lateral loop can re-centre it). CBF_DESCENT_EASE=0 disables.
-        # Deliverability stays THIS file's job (the lean cap + thrust-magnitude cap
-        # below). Scale-free / depth-free.
+        # Deliverability is folded INTO the Tier-1 solve via a_cap=A_CAP: the
+        # returned a_xy already satisfies |I_a| <= A_CAP (== the lean cap
+        # arccos(a_z/A_CAP)) by construction, with a penalised visibility slack
+        # for graceful degradation when the FoV and the thrust ball conflict.
+        # The lean/thrust caps below are then redundant guards (Tier-2 easing
+        # only SHRINKS |I_a|; A_CAP <= g falls back to theta_cap). Scale-free /
+        # depth-free. CBF_VIS_RHO tunes the slack penalty (large -> visibility
+        # effectively hard).
         marker_center_px = (np.asarray(cbf_corners, float).mean(0)
                             if cbf_corners is not None else None)
         _dt_last = self._dt[-1] if len(self._dt) > 0 else 0.02
+
+        # MOVING-TARGET LEAD (Tier-1 tau*d term). d = the marker-centre image-plane
+        # drift NOT caused by our commanded lean. Source = the pipeline's own
+        # translational optic flow h_xy (self._h[-1][:2]): already de-rotated
+        # (rotational L_w*w solved out), _sensor_cal_hw-calibrated and
+        # savgol/KF-smoothed -- a cleaner signal than a raw finite-diff of c minus
+        # a gyro projection, and consistent with the h the middle SMC uses.
+        # Mapped into the module's post-_SWAP tangent frame with the SAME swap
+        # marker_tangent() applies (h_xy is the rate of the un-swapped normalised
+        # feature). CBF_DRIFT_LOOM_STRIP=1 removes the descent-scale term c*h_z so
+        # Tier 1 sees only lateral translation (no overlap with Tier 2's loom
+        # reasoning) -- DEFAULT-OFF pending the h_z sign check on a rover
+        # recording. Flow-validity gated -> d=0 (== today's stationary behaviour)
+        # when the solve is not trustworthy near touchdown. CBF_DRIFT_TAU=0
+        # (default) disables the whole path -> stationary behaviour unchanged.
+        _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.0"))
+        _drift = None
+        if _tau > 0.0 and len(self._h) > 0 and marker_center_px is not None:
+            _flow_ok = (bool(getattr(self._img_node, "_observer_valid", True))
+                        and not bool(getattr(self._img_node, "_last_drifted_off", False)))
+            if _flow_ok:
+                _h = np.asarray(self._h[-1], float)
+                _h_xy = _h[:2].copy()
+                if os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1":
+                    _c_unsw = ((marker_center_px - self._img_node.center)
+                               / self._img_node.focal)
+                    _h_xy = _h_xy - _c_unsw * float(_h[2])
+                _drift = np.array([[0.0, 1.0], [-1.0, 0.0]]) @ _h_xy   # == _SWAP
+        self._vis_drift_log.append(0.0 if _drift is None else float(np.linalg.norm(_drift)))
+
         I_a, y_star, _vis = condition_for_visibility(
             I_a, R, yaw_c, marker_center_px,
             self._img_node.center, self._img_node.focal,
             prev_center_tangent=self._vis_prev_c, dt=_dt_last,
-            buffer_frac=_buf, tau=0.0, drift=None,
+            buffer_frac=_buf, tau=_tau, drift=_drift,
+            a_cap=(A_CAP if A_CAP > g else None),
+            rho=float(os.environ.get("CBF_VIS_RHO", "2000.0")),
             descent_ease_on=(os.environ.get("CBF_DESCENT_EASE", "1") == "1"),
             g=g, g_min=float(os.environ.get("CBF_GMIN", "0.2")),
             t_react=float(os.environ.get("CBF_TREACT", "1.5")),
@@ -3807,8 +3847,8 @@ class Controller(Thread):
         self._vis_prev_c = _vis["c"]
         self._theta_safe = np.asarray(y_star, float)
 
-        # LEAN CAP = deliverability (the module leaves this to the caller): the
-        # az-aware true deliverable tilt arccos(a_z/A_CAP), or theta_cap.
+        # LEAN CAP = redundant deliverability guard (Tier 1 already enforced the
+        # thrust ball when a_cap was passed; still governs the A_CAP <= g branch).
         _cap = (float(np.arccos(np.clip(abs(float(I_a[2])) / A_CAP, -1.0, 1.0)))
                 if A_CAP > g else float(self._theta_cap))
         _tn = float(np.linalg.norm(self._theta_safe))
@@ -3821,6 +3861,7 @@ class Controller(Thread):
         theta_cone = float(np.linalg.norm(self._theta_safe))
         self._vis_gz_log.append(float(_vis["g_z"]))
         self._vis_active_log.append(1.0 if _vis["active"] else 0.0)
+        self._vis_slack_log.append(float(np.max(_vis.get("slack", 0.0))))
         self._az_joint_log.append(0.0)   # a_z delta from the thrust-magnitude cap; set below
         # DELIVERABLE-THRUST-MAGNITUDE CAP (2026-08-23, replaces the old, unvalidated
         # I_a[2]=max(I_a[2],-50.0) floor -- see A_CAP's top-of-file comment). theta_cap
@@ -4127,6 +4168,9 @@ class Controller(Thread):
             "HD_PASSIVE": bool(self._hd_passive),
             # visibility_projection knobs (mirrored with their live defaults)
             "CBF_BUFFER_FRAC": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
+            "CBF_VIS_RHO": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
+            "CBF_DRIFT_TAU": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
+            "CBF_DRIFT_LOOM_STRIP": os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1",
             "CBF_DESCENT_EASE": os.environ.get("CBF_DESCENT_EASE", "1") == "1",
             "CBF_GMIN": float(os.environ.get("CBF_GMIN", "0.2")),
             "CBF_TREACT": float(os.environ.get("CBF_TREACT", "1.5")),
@@ -4167,6 +4211,8 @@ class Controller(Thread):
             "theta_cap_deg": np.rad2deg(self._theta_cap),
             "theta_floor_deg": np.rad2deg(self._theta_floor),
             "cbf_buffer_frac": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
+            "cbf_vis_rho": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
+            "cbf_drift_tau": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
             "cbf_g_min": float(os.environ.get("CBF_GMIN", "0.2")),
             "cbf_t_react": float(os.environ.get("CBF_TREACT", "1.5")),
             "cbf_descent_ease": os.environ.get("CBF_DESCENT_EASE", "1") == "1",
@@ -4267,6 +4313,8 @@ class Controller(Thread):
             "az_joint_delta(t)": self._az_joint_log,           # a_z moved by the thrust-magnitude cap
             "vis_gz(t)": self._vis_gz_log,                     # Tier-2 descent-ease scale in [g_min, 1]
             "vis_active(t)": self._vis_active_log,             # 1.0 when Tier-1 modified a_xy this step
+            "vis_slack(t)": self._vis_slack_log,               # max Tier-1 visibility slack (tangent; >0 = FoV/thrust-ball conflict)
+            "vis_drift(t)": self._vis_drift_log,               # |d| moving-target lead fed to Tier 1 (tangent/s)
         }
 
     def getImgData(self):

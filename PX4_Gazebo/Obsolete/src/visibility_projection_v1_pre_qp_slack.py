@@ -25,18 +25,9 @@ two channels:
     marker will hit the buffer before the lateral loop can re-centre it, ease off
     the descent to buy that loop time.
 
-    Tier 1 -- ``visibility_project``  : hard, this-cycle lean projection, solved
-              as a tiny convex QP over the safe lean ``y`` and a per-axis
-              visibility slack ``sigma >= 0``:
-                  min  1/2||y - y_d||^2 + 1/2 rho ||sigma||^2
-                  s.t. |c + Le(y - y_now) + tau*d|_k <= phi_k + sigma_k
-                       ||y|| <= y_max            (deliverability: lean/thrust ball)
-              ``a_d[2]`` is a fixed input.  The deliverability ball is folded in
-              so the returned ``a_xy`` is actuator-feasible BY CONSTRUCTION (no
-              post-hoc lean-cap scale-back); the slack gives graceful degradation
-              -- visibility stays effectively hard for finite-but-large ``rho``
-              while the solve never goes infeasible when the ball and the
-              visibility set are disjoint (thrust-saturated / hard off-centre).
+    Tier 1 -- ``visibility_project``  : hard, this-cycle lean projection.
+              ``a_d[2]`` is a fixed input; ``a_xy`` is projected so
+              ``|c + Lw@M@(y - y_now) + tau*d|_k <= phi_k``.
     Tier 2 -- ``descent_ease``        : soft, self-releasing scale ``g_z in
               [g_min, 1]`` on the DOWNWARD part of ``a_d[2]``, driven by the
               measured time-for-``|c|``-to-reach-the-edge.  Never reverses a
@@ -94,78 +85,8 @@ def fov_limit(center_px, focal_px, buffer_frac=0.15):
 # ===========================================================================
 # TIER 1 -- hard, this-cycle lean projection
 # ===========================================================================
-def _solve_tier1(y_d, anchor, Le, phi, y_max, rho, n_iter):
-    """min  1/2||y-y_d||^2 + 1/2 rho sum_k max(|g_k(y)|-phi_k, 0)^2
-       s.t. ||y|| <= y_max,     g(y) = anchor + Le@y.
-    The >=0 slack is eliminated in closed form (sigma_k = max(|g_k|-phi_k, 0)),
-    leaving a smooth convex 2-D problem.  Projected Newton finds the interior
-    (minimal-intervention) optimum exactly; when the ball binds -- the
-    ball-vs-visibility disjoint case -- Newton only projects radially and can
-    stall off the true circle optimum, so that case is finished with a 1-D search
-    over the circle angle.  Returns (y, slack)."""
-    y_d = np.asarray(y_d, float)
-
-    def _obj(yv):
-        over = np.maximum(np.abs(anchor + Le @ yv) - phi, 0.0)
-        return 0.5 * float(np.dot(yv - y_d, yv - y_d)) + 0.5 * rho * float(np.dot(over, over))
-
-    if y_max <= 0.0:                       # thrust-saturated: no lean budget at all
-        return np.zeros(2), np.maximum(np.abs(anchor) - phi, 0.0)
-
-    y = y_d.copy()
-    nrm = float(np.linalg.norm(y))
-    if np.isfinite(y_max) and nrm > y_max:
-        y *= y_max / nrm
-    I2 = np.eye(2)
-    for _ in range(max(int(n_iter), 1)):
-        g = anchor + Le @ y
-        over = np.abs(g) - phi
-        grad = y - y_d
-        H = I2.copy()
-        for k in (0, 1):
-            if over[k] > 0.0:
-                r = Le[k]
-                grad = grad + rho * over[k] * np.sign(g[k]) * r
-                H = H + rho * np.outer(r, r)
-        y_new = y - np.linalg.solve(H, grad)
-        nrm = float(np.linalg.norm(y_new))
-        if np.isfinite(y_max) and nrm > y_max:
-            y_new *= y_max / nrm
-        if float(np.linalg.norm(y_new - y)) < 1e-10:
-            y = y_new
-            break
-        y = y_new
-
-    # ball binding -> refine on the circle ||y|| = y_max (1-D, convex enough for a
-    # coarse grid + golden-section; keeps the better of the two iterates)
-    if np.isfinite(y_max) and float(np.linalg.norm(y)) >= y_max * (1.0 - 1e-6):
-        th = np.linspace(0.0, 2.0 * np.pi, 289)
-        pts = y_max * np.stack([np.cos(th), np.sin(th)], axis=1)
-        j = int(np.argmin([_obj(p) for p in pts]))
-        lo, hi = th[j] - (th[1] - th[0]), th[j] + (th[1] - th[0])
-        gr = 0.5 * (np.sqrt(5.0) - 1.0)
-        a, b = lo, hi
-        c1, c2 = b - gr * (b - a), a + gr * (b - a)
-        for _ in range(40):
-            p1 = y_max * np.array([np.cos(c1), np.sin(c1)])
-            p2 = y_max * np.array([np.cos(c2), np.sin(c2)])
-            if _obj(p1) < _obj(p2):
-                b, c2 = c2, c1
-                c1 = b - gr * (b - a)
-            else:
-                a, c1 = c1, c2
-                c2 = a + gr * (b - a)
-        y_circ = y_max * np.array([np.cos(0.5 * (a + b)), np.sin(0.5 * (a + b))])
-        if _obj(y_circ) < _obj(y):
-            y = y_circ
-
-    slack = np.maximum(np.abs(anchor + Le @ y) - phi, 0.0)
-    return y, slack
-
-
 def visibility_project(a_d, R, yaw, marker_center_px, center_px, focal_px,
-                       buffer_frac=0.15, tau=0.0, drift=None, n_iter=6,
-                       a_cap=None, rho=2000.0):
+                       buffer_frac=0.15, tau=0.0, drift=None, n_iter=4):
     """Minimal change to ``a_d[:2]`` so the marker centre stays inside ``phi``.
 
     ``a_d`` : (3,) desired inertial specific-thrust command (NED, hover a_d[2]=-g).
@@ -178,20 +99,11 @@ def visibility_project(a_d, R, yaw, marker_center_px, center_px, focal_px,
               to also absorb one-cycle linearisation error + attitude-tracking lag.
     ``tau``/``drift`` : moving-target look-ahead (s) and measured centre drift
               rate (tangent units/s, gyro-stripped); tau=0 disables.
-    ``n_iter`` : projected-Newton iterations for the Tier-1 QP (4-6 is plenty).
-    ``a_cap`` : thrust magnitude the caller can deliver (same units as ``a_d``),
-              or None to skip the deliverability ball (post-hoc caps then stay
-              the caller's job).  With it set, ``||y|| <= sqrt(a_cap^2/a_z^2 - 1)``
-              == the lean cap ``arccos(a_z/a_cap)`` -- folded in so ``a_star`` is
-              actuator-feasible by construction.
-    ``rho`` : visibility-slack penalty weight.  Large -> visibility effectively
-              hard; finite -> graceful trade against ``||y - y_d||`` (and the
-              ball) when the sets conflict.
+    ``n_iter`` : alternating-projection sweeps over the two rows (3-4 is plenty).
 
     Returns ``(a_star, y_star, info)`` where ``y_star`` is the safe lean (image
     axes) for a caller that builds attitude directly, and ``info`` is a dict with
-    ``c``, ``phi``, ``y_now``, ``y_desired``, ``active``, ``slack``, ``y_max``,
-    ``deliverable``.
+    ``c``, ``phi``, ``y_now``, ``y_desired``, ``active``.
     """
     a_d = np.asarray(a_d, float).reshape(3)
     R = np.asarray(R, float)
@@ -204,16 +116,8 @@ def visibility_project(a_d, R, yaw, marker_center_px, center_px, focal_px,
     y_d = P @ (a_d[:2] / a_z)
     phi = fov_limit(center_px, focal_px, buffer_frac)
 
-    # deliverability ball on the lean tangent: ||a*|| = a_z*sqrt(1+||y||^2) <= a_cap
-    if a_cap is None:
-        y_max = np.inf
-    else:
-        a_cap = float(a_cap)
-        y_max = np.sqrt(max(a_cap * a_cap / (a_z * a_z) - 1.0, 0.0)) if a_cap > a_z else 0.0
-
     if marker_center_px is None or abs(float(a_d[2])) < _AZ_MIN:
-        info = dict(c=None, phi=phi, y_now=None, y_desired=y_d, active=False,
-                    slack=np.zeros(2), y_max=y_max, deliverable=True)
+        info = dict(c=None, phi=phi, y_now=None, y_desired=y_d, active=False)
         return a_d.copy(), y_d, info
 
     c = marker_tangent(marker_center_px, center_px, focal_px)
@@ -234,26 +138,25 @@ def visibility_project(a_d, R, yaw, marker_center_px, center_px, focal_px,
     R33 = np.sign(R33) * max(abs(R33), _R33_MIN) if R33 != 0.0 else _R33_MIN
     y_now = P @ (-np.asarray(R[:2, 2], float) / R33)
 
-    # moving-target lead tau*d, but never PREDICT the centre crossing to the
-    # opposite side of an axis: a linear extrapolation that flips sign is past the
-    # model's validity (and would ask for a backwards correction).  Clamp the
-    # predicted centre to at most the axis origin on any inward-overshooting axis.
-    lead = float(tau) * drift
-    _pred = c + lead
-    lead = np.where((np.sign(_pred) != np.sign(c)) & (c != 0.0), -c, lead)
-    anchor = c - Le @ y_now + lead
+    anchor = c - Le @ y_now + float(tau) * drift
 
-    # Tier-1 QP: minimal change to the desired lean s.t. the predicted centre
-    # stays inside phi (softly, weight rho) AND the lean is deliverable (hard
-    # ball).  Zero penalty gradient at y_d whenever y_d already satisfies both
-    # -> minimal intervention, inward/tangential moves stay free.
-    y_s, slack = _solve_tier1(y_d, anchor, Le, phi, y_max, float(rho), n_iter)
+    # alternating projection from the unconstrained desired lean; a row is touched
+    # ONLY when predicted to breach -> minimal intervention, inward/tangential free.
+    y_s = y_d.copy()
+    for _ in range(max(int(n_iter), 1)):
+        f = anchor + Le @ y_s
+        for k in (0, 1):
+            r = Le[k]
+            rr = float(r @ r) + 1e-12
+            if f[k] > phi[k]:
+                y_s = y_s - (f[k] - phi[k]) / rr * r
+            elif f[k] < -phi[k]:
+                y_s = y_s - (f[k] + phi[k]) / rr * r
+            f = anchor + Le @ y_s
 
     a_star = a_d.copy()
     a_star[:2] = a_z * (P.T @ y_s)
-    deliverable = bool(np.max(slack) <= 1e-6)   # residual < ~0.1 px -> visibility met
     info = dict(c=c, phi=phi, y_now=y_now, y_desired=y_d,
-                slack=slack, y_max=y_max, deliverable=deliverable,
                 active=not np.allclose(a_star[:2], a_d[:2], atol=1e-9, rtol=0.0))
     return a_star, y_s, info
 
@@ -316,8 +219,7 @@ def descent_ease(a_z_cmd, c, phi, c_rate, g,
 # ===========================================================================
 def condition_for_visibility(a_d, R, yaw, marker_center_px, center_px, focal_px,
                              prev_center_tangent=None, dt=0.02, *,
-                             buffer_frac=0.15, tau=0.0, drift=None, n_iter=6,
-                             a_cap=None, rho=2000.0,
+                             buffer_frac=0.15, tau=0.0, drift=None, n_iter=4,
                              descent_ease_on=True, g=9.81, g_min=0.2, t_react=1.5,
                              gz_tau=0.25, state=None):
     """Tier 1 then (optionally) Tier 2. Returns ``(a_star, y_star, info)`` with
@@ -325,8 +227,7 @@ def condition_for_visibility(a_d, R, yaw, marker_center_px, center_px, focal_px,
     ``prev_center_tangent``.
     """
     a1, y1, info = visibility_project(a_d, R, yaw, marker_center_px, center_px,
-                                      focal_px, buffer_frac, tau, drift, n_iter,
-                                      a_cap=a_cap, rho=rho)
+                                      focal_px, buffer_frac, tau, drift, n_iter)
     info["g_z"] = 1.0
     if descent_ease_on and info["c"] is not None:
         c_rate = (np.zeros(2) if prev_center_tangent is None
