@@ -392,3 +392,37 @@ tracks a slow drift); **15/15**.
 + a smaller `τ` (~0.15) so Static-rover residual noise (`|d|p50`~0.05) →
 `τ·|d|`~0.007 tangent (inert). Gated on the rover approach being stable enough to
 judge (perception thread).
+
+### Rover CBF RE-SWEEP with condition_drift + τ=0.15 — `test_data/RoverCBFSweep/20260909-182607`
+Same 7 profiles × A/B `CBF_DRIFT_TAU` 0 vs **0.15** (down from 0.4) × n=2, WITH
+`condition_drift` active (commit `e1b094e8`).
+
+**`condition_drift` works in-loop — decisive:**
+- `vis_drift` `|d|max` **capped at exactly 0.5** on every profile (vs raw sweep's
+  9.9 / 16.4 / 4.3 / 3.4). `|d|p50` 0.05–0.21 preserved. Only 0–8 frames/rep hit
+  the clamp (median-3 + LPF handle the rest first).
+
+**`τ=0.15` + conditioning is SAFE — no regression vs `τ=0`:**
+- **Static** (stationary rover): first sweep `maxC/φ` lead 1.23–1.49 (lead pushed
+  marker OUT of box). Re-sweep: off 1.25 / **lead 0.73** — the lead arm is now no
+  worse (slightly better; n=2 noise). `τ·|d|` ≈ 0.15×0.11 ≈ 0.017 tangent = inert.
+- **No TL events** anywhere this sweep (raw sweep had 3, all lead).
+- Slack: `slk_max` CircularYaw off **3.0** vs lead 0.43; Lissajous off 0.51 vs lead
+  0.17 — the conditioned lead arm has LOWER peak slack than off on the noisy
+  profiles (opposite of the raw sweep). Conditioning helped.
+- `drift_off` 0/2 every cell both arms; marker in-frame ~100%.
+
+**"Does the moving-target lead improve rover visibility" — STILL UNANSWERABLE.**
+Flight durations bimodal 2–20 s on BOTH arms (Linear/off 1.9 s, EightShape/off
+2.8 s, Sinusoidal/lead 2.5 s — never descended). When a run dies at 2–3 s the CBF
+metrics are meaningless (`t1stAct=nan`, `maxC` tiny). `maxC/φ` off-vs-lead deltas
+track flight duration (longer flight → marker gets closer to the edge) more than
+the lead. Same wall: the rover approach must survive a stable window first —
+perception thread ([[project_20260901_moving_rover_landing]]).
+
+**Bottom line:** the CBF is now **correct and safe for moving targets** — machinery
+triggers on all 7 profiles, `d` properly conditioned, no regressions, `τ=0.15`
+ready. It **cannot be shown beneficial on the rover** until the rover flies a
+survivable approach. `CBF_DRIFT_TAU=0` stays the default (no unvalidated-benefit
+default); flip to 0.15 whenever the rover approach is fixed — it's safe and inert
+on stationary already.
