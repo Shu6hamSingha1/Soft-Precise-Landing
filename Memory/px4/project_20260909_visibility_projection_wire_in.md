@@ -317,3 +317,58 @@ The CBF module + wiring are now CORRECT for a moving target (QP + slack + valida
    CBF's job without needing a successful landing.
 3. Optional: Tier-2 `c_rate` gyro-strip (currently raw finite-diff of the smoothed
    `c`); refinement, not a blocker.
+
+---
+
+## UPDATE 2026-09-09 (cont.): rover CBF sweep — all 7 motion profiles
+
+`test_data/RoverCBFSweep/20260909-163929` — 7 `ROVER_TRAJ` (Static/Linear/Circular/
+EightShape/Sinusoidal/Lissajous/CircularYaw) × A/B `CBF_DRIFT_TAU` 0 vs 0.4 × n=2,
+cross-marker rover, `ROVER_MOTION=1`, HEADLESS. Analyzer `tools/analyze_rover_cbf_sweep.py`.
+Judged on CBF trigger correctness + moving-target-lead behaviour, NOT SP (user directive).
+Ran with `CROSS_LOOM_INNOV_GATE=1` (peer bake `7e9843ae`) consistently — shared by
+both arms, gates h_z only, does not touch the CBF's h_xy lead or trigger metrics.
+
+### CBF machinery — TRIGGERS CORRECTLY on all 7 profiles
+- `off` arm: `|d|` identically 0 (correct — `CBF_DRIFT_TAU=0` → lead inert).
+- `lead` arm: `|d|` live every frame on every moving profile (`p50` ~0.05–0.21
+  tangent/s = plausible real drift). `vis_active` fires on every cell (5–17% of
+  frames). QP runs. **`_last_drifted_off` NEVER logged (0/2 every cell)** — the
+  marker never left the FoV off-centre. Marker in-frame ~99.7–100%, last-seen
+  ~99.4–99.9% both arms. The wired mechanism does what it should.
+
+### The `τ=0.4` lead is NOT usable as-is — `h_xy` is too noisy raw
+1. **Static rover (true target drift ≈ 0): the lead injects noise.** `|d|p95` up
+   to 1.4, `|d|max` up to 2.5 — all self-motion flow + `h_xy` sensor noise, no real
+   target motion to lead. `maxC/φ` went **0.59 → 1.49** (Static/off/2 vs lead/2):
+   the lead pushed the marker OUT of the buffered box on a static target. It should
+   be a no-op there.
+2. **Moving profiles: huge `h_xy` transient spikes pass the validity gate.**
+   `|d|max` = 9.9 (EightShape), **16.4 (Lissajous)**, 4.3 (Linear), 3.4 (CircularYaw).
+   `τ·|d|` = 0.4×16.4 = 6.6 tangent predicted lead — clamped by the inward-overshoot
+   guard but still a massive one-frame Tier-1 perturbation. The `_flow_ok` gate
+   (`_observer_valid` / not `_last_drifted_off`) does NOT catch these.
+3. **TL correlation (weak, tiny n):** the only 3 TL events in the sweep are all
+   `lead` reps (Circular/lead/1, Lissajous/lead/1&2); 0 `off` reps TL'd. Base state
+   is "everything fails anyway" so this is suggestive, not conclusive.
+4. `maxC/φ` improvement is inconsistent: lead helps Circular (1.24→0.81) and
+   EightShape (0.99→0.69), hurts Static (0.88→1.23) and Lissajous (1.08→1.39).
+
+### Can't judge flight/landing quality
+Nearly every rep on BOTH arms ends `crash/flyoff/timeout` — the rover approach is
+not stable (perception-blocked upstream). Flight durations are bimodal SITL noise
+(Linear/off: 7.3 s and 2.0 s; EightShape/off: 2.7 s and 18.7 s), so the aggregate
+"lead flights shorter" is not attributable to the lead.
+
+### Verdict / next
+- **CBF machinery: works for moving targets.** `d` from `h_xy` is live, QP triggers,
+  no drift-off, marker stays in frame. Stationary QP is baked and equivalent.
+- **Moving-target LEAD: needs `d` conditioning before it can be defaulted.**
+  Required: (a) hard magnitude clamp on `d` (~0.5 tangent/s — real drift `p50`~0.1),
+  (b) light LPF / median filter on `d`, (c) tighter flow-validity gate (the spikes
+  slip through `_observer_valid`), and/or (d) much smaller `τ` (0.1–0.2). Then
+  re-sweep. **`CBF_DRIFT_TAU=0` stays the default.**
+- A clean "does the lead help" A/B is not possible until the rover approach itself
+  survives past ~10 s consistently — that's the perception thread
+  ([[project_20260901_moving_rover_landing]]).
+- Harness: `scripts/run_rover_cbf_sweep.sh` + `tools/analyze_rover_cbf_sweep.py`.
