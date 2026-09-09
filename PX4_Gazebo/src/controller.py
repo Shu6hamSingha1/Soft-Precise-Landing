@@ -2131,6 +2131,7 @@ class Controller(Thread):
         self._vis_active_log = []          # 1.0 when Tier-1 modified a_xy this step
         self._vis_slack_log = []           # max per-axis Tier-1 visibility slack (tangent; >0 = FoV vs thrust-ball conflict, degraded)
         self._vis_drift_log = []           # |d| fed to Tier-1 tau*d moving-target lead (tangent/s; 0 unless CBF_DRIFT_TAU>0)
+        self._vis_c_log = []               # measured marker-centre tangent c (module frame, post-_SWAP) -- for h-sign / rover diagnosis
         self._theta_safe = None            # Tier-1 safe lean vector (image axes) -> Fix B direct rd3
         self._vis_prev_c = None            # image-tangent marker centre from the previous step (for c_rate)
         self._vis_state = {}               # descent_ease g_z low-pass carry
@@ -3809,14 +3810,16 @@ class Controller(Thread):
         # (rotational L_w*w solved out), _sensor_cal_hw-calibrated and
         # savgol/KF-smoothed -- a cleaner signal than a raw finite-diff of c minus
         # a gyro projection, and consistent with the h the middle SMC uses.
-        # Mapped into the module's post-_SWAP tangent frame with the SAME swap
-        # marker_tangent() applies (h_xy is the rate of the un-swapped normalised
-        # feature). CBF_DRIFT_LOOM_STRIP=1 removes the descent-scale term c*h_z so
-        # Tier 1 sees only lateral translation (no overlap with Tier 2's loom
-        # reasoning) -- DEFAULT-OFF pending the h_z sign check on a rover
-        # recording. Flow-validity gated -> d=0 (== today's stationary behaviour)
-        # when the solve is not trustworthy near touchdown. CBF_DRIFT_TAU=0
-        # (default) disables the whole path -> stationary behaviour unchanged.
+        # FRAME: h_xy is ALREADY in the module's tangent frame (identity map) --
+        # verified 2026-09-09 by regressing d(vis_c)/dt on h_xy over a real
+        # approach (test_data/_hsign): +I median cos +0.87, every other signed
+        # permutation ~0. The pipeline applies the camera-mount swap upstream, so
+        # c (post marker_tangent _SWAP) and h_xy share a frame -> no swap here.
+        # CBF_DRIFT_LOOM_STRIP=1 removes the descent-scale term c*h_z so Tier 1
+        # sees only lateral translation (no overlap with Tier 2's loom reasoning).
+        # Flow-validity gated -> d=0 (== stationary behaviour) when the solve is
+        # not trustworthy near touchdown. CBF_DRIFT_TAU=0 (default) disables the
+        # whole path -> stationary behaviour byte-identical.
         _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.0"))
         _drift = None
         if _tau > 0.0 and len(self._h) > 0 and marker_center_px is not None:
@@ -3825,11 +3828,10 @@ class Controller(Thread):
             if _flow_ok:
                 _h = np.asarray(self._h[-1], float)
                 _h_xy = _h[:2].copy()
-                if os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1":
-                    _c_unsw = ((marker_center_px - self._img_node.center)
-                               / self._img_node.focal)
-                    _h_xy = _h_xy - _c_unsw * float(_h[2])
-                _drift = np.array([[0.0, 1.0], [-1.0, 0.0]]) @ _h_xy   # == _SWAP
+                if (os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1"
+                        and self._vis_prev_c is not None):
+                    _h_xy = _h_xy - np.asarray(self._vis_prev_c, float) * float(_h[2])
+                _drift = _h_xy                         # identity map (verified)
         self._vis_drift_log.append(0.0 if _drift is None else float(np.linalg.norm(_drift)))
 
         I_a, y_star, _vis = condition_for_visibility(
@@ -3862,6 +3864,8 @@ class Controller(Thread):
         self._vis_gz_log.append(float(_vis["g_z"]))
         self._vis_active_log.append(1.0 if _vis["active"] else 0.0)
         self._vis_slack_log.append(float(np.max(_vis.get("slack", 0.0))))
+        _vc = _vis.get("c")
+        self._vis_c_log.append(np.zeros(2) if _vc is None else np.asarray(_vc, float).copy())
         self._az_joint_log.append(0.0)   # a_z delta from the thrust-magnitude cap; set below
         # DELIVERABLE-THRUST-MAGNITUDE CAP (2026-08-23, replaces the old, unvalidated
         # I_a[2]=max(I_a[2],-50.0) floor -- see A_CAP's top-of-file comment). theta_cap
@@ -4315,6 +4319,7 @@ class Controller(Thread):
             "vis_active(t)": self._vis_active_log,             # 1.0 when Tier-1 modified a_xy this step
             "vis_slack(t)": self._vis_slack_log,               # max Tier-1 visibility slack (tangent; >0 = FoV/thrust-ball conflict)
             "vis_drift(t)": self._vis_drift_log,               # |d| moving-target lead fed to Tier 1 (tangent/s)
+            "vis_c(t)": self._vis_c_log,                       # measured marker-centre tangent (module frame)
         }
 
     def getImgData(self):
