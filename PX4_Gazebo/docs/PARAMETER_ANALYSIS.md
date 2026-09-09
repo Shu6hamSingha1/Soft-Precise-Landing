@@ -124,21 +124,29 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 > Solver: slack eliminated in closed form → projected Newton (exact interior) + a 1-D circle refine
 > when the ball binds. Still minimal-intervention / inward-free / idempotent.
 >
-> **Moving-target lead** `τ·d`: `d` = the pipeline's de-rotated translational optic flow `h_xy`
-> (identity-mapped to the CBF frame — verified `28e4417b`), flow-validity-gated to 0. **`CBF_DRIFT_TAU`**
-> = the lead horizon (s); **`=0` default → the term is inert and stationary behaviour is byte-identical**.
-> `CBF_DRIFT_LOOM_STRIP` (default 0) removes the `c·h_z` descent-scale part. The one QP serves both the
-> stationary (`τ·d = 0`) and rover (`τ·d ≠ 0`) cases — no scenario branching, no rover conditionals.
+> **Moving-target lead** `τ·d` (`e1b094e8`): `d` = the front-end's de-rotated optic flow `h_xy`,
+> **identity-mapped** to the CBF frame (verified `28e4417b` — `h_xy` is already post-camera-mount-swap;
+> `+I` cos 0.87, every other permutation ≈0). Raw `h_xy` is unusable — single-frame spikes `|d|` 4–16
+> on aggressive target motion (real drift `p50`≈0.1), and `|d|` ~0.1–2 of pure noise on a *static*
+> target — so `d` is conditioned (`condition_drift`): **`CBF_DRIFT_RESID_GATE`** (0.45, = the perception
+> layer's own `rel_resid` threshold; solve untrusted → `d=0`) → median-of-3 → 1-pole LPF
+> (**`CBF_DRIFT_LPF_ALPHA`**=0.12) → radial clamp **`CBF_DRIFT_MAX`**=0.5 tangent/s. **`CBF_DRIFT_TAU`**
+> = the lead horizon (s); **`=0` default → term absent, stationary behaviour byte-identical**; a useful
+> `τ>0` (~0.15) needs the rover-approach-stable re-sweep. `CBF_DRIFT_LOOM_STRIP` (0) removes the `c·h_z`
+> part. The one QP serves stationary (`τ·d=0`) and rover (`τ·d≠0`) — no scenario branching.
 >
 > **Tier 2 — `CBF_DESCENT_EASE`** (default 1): scales only the downward part of `I_a[2]` on a measured
 > time-to-edge, self-releasing (`CBF_GMIN`=0.2, `CBF_TREACT`=1.5). Not a CBF.
 >
-> Knobs: `CBF_BUFFER_FRAC`, `CBF_VIS_RHO`, `CBF_DRIFT_TAU`, `CBF_DRIFT_LOOM_STRIP`, `CBF_DESCENT_EASE`,
-> `CBF_GMIN`, `CBF_TREACT`, `CBF_DRIFT_PULLBACK_FRAC` (per-axis buffer bump on a persistent one-sided
-> breach). Logs: `vis_active(t)`, `vis_slack(t)`, `vis_drift(t)`, `vis_c(t)`, `vis_gz(t)`. Validator
-> `tools/validate_visibility_projection.py` **14/14**. IC2-5 n=5 SITL A/B (QP vs pre-QP, stationary,
-> `CBF_DRIFT_TAU=0`): **wash / PASS** — 20/20 land both arms, 0 TL, pooled mean xy 0.07 vs 0.06.
-> **Moving rover: NOT yet SITL-tested** (offline oracle only; rover landings are perception-blocked).
+> Knobs: `CBF_BUFFER_FRAC`, `CBF_VIS_RHO`, `CBF_DRIFT_TAU`, `CBF_DRIFT_MAX`, `CBF_DRIFT_RESID_GATE`,
+> `CBF_DRIFT_LPF_ALPHA`, `CBF_DRIFT_LOOM_STRIP`, `CBF_DESCENT_EASE`, `CBF_GMIN`, `CBF_TREACT`,
+> `CBF_DRIFT_PULLBACK_FRAC`. Logs: `vis_active(t)`, `vis_slack(t)`, `vis_drift(t)`, `vis_c(t)`,
+> `vis_gz(t)`. Validator `tools/validate_visibility_projection.py` **15/15**. IC2-5 n=5 SITL A/B (QP vs
+> pre-QP, stationary, `CBF_DRIFT_TAU=0`): **wash / PASS** — 20/20 land both arms, 0 TL, pooled mean xy
+> 0.07 vs 0.06. **Rover CBF sweep (7 motion profiles, `test_data/RoverCBFSweep/20260909-163929`):**
+> machinery triggers correctly (d live, `vis_active` fires, no drift-off, marker in-frame ~100%) but
+> the raw-`h_xy` `τ=0.4` lead was net-harmful (spikes + static-target noise) — hence `condition_drift`;
+> flight quality unjudgeable (rover perception-blocked, ~all reps flyoff/timeout both arms).
 > → `[[project_20260909_visibility_projection_wire_in]]`.
 
 The line below stays true of the NEW mechanism too: **it is a safety net, not a controller** — if

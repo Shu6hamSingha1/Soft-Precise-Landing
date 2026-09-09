@@ -123,11 +123,19 @@ then `tools/build_test_index.py`.
   `d` = the pipeline's de-rotated optic flow `h_xy` (identity-mapped, verified); **`CBF_DRIFT_TAU`=0
   default → term inert, stationary byte-identical**. The SAME QP serves stationary and rover — no
   branching. Solver = projected Newton + 1-D circle refine. `controller.py` lean/thrust caps kept as
-  redundant guards. New knobs `CBF_VIS_RHO` / `CBF_DRIFT_TAU` / `CBF_DRIFT_LOOM_STRIP`; new logs
-  `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Validator **14/14**; IC2-5 n=5 A/B (QP vs pre-QP,
-  stationary): **wash / PASS** (20/20 land both arms, 0 TL, pooled mean xy 0.07 vs 0.06). **Moving
-  rover: NOT yet SITL-tested** (offline oracle + frame-check only; rover landings perception-blocked).
-  Spec `docs/CBF_visibility.pdf` (rewritten). → [[project_20260909_visibility_projection_wire_in]]
+  redundant guards. Solver = projected Newton + 1-D circle refine. Spec `docs/CBF_visibility.pdf`
+  (rewritten).
+- **(09-09) moving-target lead `d` — CONDITIONED** (`e1b094e8`) — raw `h_xy` is unusable as the lead
+  (7-profile rover sweep: `|d|` spikes 4–16 tangent/s on aggressive target motion vs real drift
+  `p50`~0.1; `|d|`~0.1–2 of pure noise on a *static* target). `condition_drift()`:
+  **`CBF_DRIFT_RESID_GATE`** (0.45 = the flow layer's own `rel_resid` gate; untrusted solve → `d=0`)
+  → median-of-3 → 1-pole LPF (**`CBF_DRIFT_LPF_ALPHA`**=0.12) → radial clamp **`CBF_DRIFT_MAX`**=0.5.
+  Sweep-trace replay: `|d|max` 16→0.5 every rep, `p50` unchanged. **`CBF_DRIFT_TAU`=0 still default**;
+  a useful `τ>0` (~0.15) needs the rover-approach-stable re-sweep. New knobs `CBF_VIS_RHO` /
+  `CBF_DRIFT_TAU` / `CBF_DRIFT_MAX` / `CBF_DRIFT_RESID_GATE` / `CBF_DRIFT_LPF_ALPHA` /
+  `CBF_DRIFT_LOOM_STRIP`; new logs `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Validator **15/15**;
+  IC2-5 stationary A/B **wash / PASS**; rover sweep — machinery triggers correctly, flight quality
+  unjudgeable (perception-blocked). → [[project_20260909_visibility_projection_wire_in]]
 - **(09-03) `CBF_SPHERE_TRUE_THRUST` BAKED default-ON** *(now moot — the CBF sphere it fixed is
   retired; the controller-side `|I_a|≤A_CAP` cap it also fixed is KEPT)* — the deliverability bound was
   `|I_a + g·e3| ≤ A_CAP`, which bounds VEHICLE accel (zero at hover), not thrust; it admitted
@@ -189,7 +197,7 @@ PLASMC lands a quadrotor by image-based visual servoing, **scale-free & depth-fr
 A number from one regime does **not** transfer to another — the #1 historical analysis error.
 
 ## §4 — Parameter inventory
-Knobs are **direct per-axis values** `PLASMC_<PARAM>_{X,Y,Z}` (all `*_SCALE` factors removed 2026-06-03). Current baked defaults are in §STATUS. For the full per-parameter role/empirical analysis, read **`docs/PARAMETER_ANALYSIS.md` §3**; for the complete env-knob table + sweep methodology, the **`tune-plasmc` skill**. Groups: Outer PID + outer funnel (`KP, KI, KD, XIS/gamma_s, PS0, PSINF, DH_D_MAX, TAU_DS`); middle SMC (`XI2, P20, P2INF, OMEGA, GAMMA, E, N, P, KAPPA0, KAPPA_MAX`); yaw (`YAW_*, KR_YAW, PSID_RATE, TAU_UA`); visibility (`src/visibility_projection.py` QP — `CBF_BUFFER_FRAC, CBF_VIS_RHO, CBF_DRIFT_TAU, CBF_DRIFT_LOOM_STRIP, CBF_DESCENT_EASE, CBF_GMIN, CBF_TREACT, CBF_DRIFT_PULLBACK_FRAC`; the old `THETA_FLOOR/RHOFOV*/CBF_JOINT_QP/CBF_AZ_COST_GAIN` are gone); inner (`KR_*, W_U_MAX`); image (`IMG_FEATURE_FILTER, MARKER_KLT_MAX_STEPS, ARUCO_*, BODY_YAW_SOURCE, CTRL_ZERO_WXY`); landing-test (`LANDING_REF_RAD_OPT_FLOW, LANDING_IC_*`).
+Knobs are **direct per-axis values** `PLASMC_<PARAM>_{X,Y,Z}` (all `*_SCALE` factors removed 2026-06-03). Current baked defaults are in §STATUS. For the full per-parameter role/empirical analysis, read **`docs/PARAMETER_ANALYSIS.md` §3**; for the complete env-knob table + sweep methodology, the **`tune-plasmc` skill**. Groups: Outer PID + outer funnel (`KP, KI, KD, XIS/gamma_s, PS0, PSINF, DH_D_MAX, TAU_DS`); middle SMC (`XI2, P20, P2INF, OMEGA, GAMMA, E, N, P, KAPPA0, KAPPA_MAX`); yaw (`YAW_*, KR_YAW, PSID_RATE, TAU_UA`); visibility (`src/visibility_projection.py` QP — `CBF_BUFFER_FRAC, CBF_VIS_RHO, CBF_DRIFT_TAU, CBF_DRIFT_MAX, CBF_DRIFT_RESID_GATE, CBF_DRIFT_LPF_ALPHA, CBF_DRIFT_LOOM_STRIP, CBF_DESCENT_EASE, CBF_GMIN, CBF_TREACT, CBF_DRIFT_PULLBACK_FRAC`; the old `THETA_FLOOR/RHOFOV*/CBF_JOINT_QP/CBF_AZ_COST_GAIN` are gone); inner (`KR_*, W_U_MAX`); image (`IMG_FEATURE_FILTER, MARKER_KLT_MAX_STEPS, ARUCO_*, BODY_YAW_SOURCE, CTRL_ZERO_WXY`); landing-test (`LANDING_REF_RAD_OPT_FLOW, LANDING_IC_*`).
 
 ## §5 — Failure modes & the κ-runaway explosion chain
 Almost every catastrophe is one chain (detail in `PARAMETER_ANALYSIS.md` §2):

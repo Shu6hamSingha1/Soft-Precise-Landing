@@ -134,10 +134,15 @@ unresolved, but descent's main coupling to TLs is *reaching* the perception-brea
     `‖y‖ ≤ √(A_cap²/a_z² − 1)` (= the `arccos(a_z/A_CAP)` lean cap) folded in, so `I_a` is
     actuator-feasible by construction; penalised visibility slack `CBF_VIS_RHO=2000` for graceful
     degradation instead of infeasibility when the FoV box and the thrust ball are disjoint. Post-hoc
-    lean/thrust caps kept as redundant guards. Moving-target lead (`τ·d`, `d` sourced from the pipeline's
-    de-rotated optic flow `h_xy`) wired but inert at `CBF_DRIFT_TAU=0` default (rover-phase knob). New
-    logs `vis_slack(t)` / `vis_drift(t)`. Offline: `validate_visibility_projection.py` 14/14 across 5
-    seeds. IC2–5 stationary A/B gate: `test_data/VisProjQPGate/`.
+    lean/thrust caps kept as redundant guards. Moving-target lead `τ·d`: `d` from the front-end's
+    de-rotated optic flow `h_xy` (identity-mapped, `28e4417b`), conditioned by `condition_drift`
+    (`e1b094e8` — `rel_resid` gate / median-3 / LPF / radial clamp) because raw `h_xy` spikes to
+    `|d|` 4–16 on aggressive target motion and carries pure noise on a static target. Inert at
+    `CBF_DRIFT_TAU=0` default. New logs `vis_slack(t)` / `vis_drift(t)` / `vis_c(t)`. Offline:
+    `validate_visibility_projection.py` 15/15. IC2–5 stationary A/B: wash / PASS
+    (`test_data/VisProjQPGate/`). Rover 7-profile sweep (`test_data/RoverCBFSweep/20260909-163929`):
+    machinery triggers correctly; flight quality unjudgeable (rover perception-blocked). A validated
+    `τ>0` still needs a rover-approach-stable re-sweep.
 
 ### D. Proper anti-windup (replaced fixed band-aids)
 - Conditional integration in `_yawCtrl` (replaced `_ie_a_clamp`); the `izeta`/`iV_s_e_n` integral clamps.

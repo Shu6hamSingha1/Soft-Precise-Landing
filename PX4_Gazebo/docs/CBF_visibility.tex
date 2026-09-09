@@ -51,7 +51,7 @@ $P=R_z(90^\circ)R_z(-\psi_\text{b})$ & inertial $x$-$y$ $\to$ image axes ($\psi_
 $\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust} (thrust/mass), NED. Hover $=-g\boldsymbol{e}_3$, so $\|\,^\Iframe\boldsymbol{a}_\text{d}\|$ \emph{is} the thrust magnitude per unit mass \\
 $a_z=|\,^\Iframe a_{\text{d},z}|$ & vertical component magnitude --- an \textbf{input}, never a decision variable \\
 $\boldsymbol{y}=P\,(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$ & commanded lean, image axes; $\boldsymbol{y}_\text{d}$ from the unconstrained $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$; $\boldsymbol{y}_\text{curr}=P(-R_{[{:}2,3]}/R_{33})$ from the realized attitude $R$ \\
-$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $=$ \texttt{CBF\_DRIFT\_TAU} (s), $\tau=0$ disables the term. Source: the pipeline's de-rotated, calibrated, filtered translational optic flow $\boldsymbol{h}_{xy}$ mapped into image axes; flow-validity-gated to $\boldsymbol{d}=\boldsymbol{0}$ \\
+$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $=$ \texttt{CBF\_DRIFT\_TAU} (s), $\tau=0$ (default) disables the term. Source: the front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$ (identity map to the $\tilde{\boldsymbol r}$ frame), conditioned by \texttt{condition\_drift} --- residual gate / median-3 / low-pass / radial clamp \\
 $A_\text{cap},\ g$ & vehicle maximum thrust-to-mass ratio; gravitational acceleration \\
 $y_\text{max},\ \boldsymbol{s},\ \rho$ & deliverability radius $\sqrt{A_\text{cap}^2/a_z^2-1}$; per-axis visibility slack $\boldsymbol{s}\ge\boldsymbol{0}$ and its penalty weight $\rho=$ \texttt{CBF\_VIS\_RHO} $=2000$ \\
 $g_z\in[g_\text{min},1]$ & descent-governor scale (\S\ref{sec:tier2}); $g_\text{min}=$ \texttt{CBF\_GMIN} $=0.2$, $T_\text{react}=$ \texttt{CBF\_TREACT} $=1.5$\,s \\
@@ -94,14 +94,28 @@ ray; \eqref{eq:lin} is its first-order term about the current lean, and the sign
 against an independent pinhole-plus-attitude camera model (\texttt{tools/validate\_visibility\_projection.py}
 check~1). $\boldsymbol{y}_\text{curr}$ is read from the realized attitude, so it needs no rotation from
 acceleration units. The $\tau\boldsymbol{d}$ term extrapolates measured \emph{target} motion over the
-horizon $\tau$; it is zero for a stationary target. $\boldsymbol{d}$ is taken from the perception
-front-end's translational optic flow $\boldsymbol{h}_{xy}$ --- the de-rotated ($L_\omega\boldsymbol\omega$
-already removed), sensor-calibrated, filtered relative-velocity signal the middle loop already uses ---
-rather than a bespoke differencing of $\tilde{\boldsymbol{r}}$; it is mapped through the same camera-mount
-swap as $\tilde{\boldsymbol{r}}$ and forced to $\boldsymbol{0}$ whenever the flow solve is flagged
-untrustworthy (so the term degrades to the stationary case, never to noise). The lead is clamped so a
-linear extrapolation never predicts the centre crossing an axis origin --- beyond that the first-order
-model does not hold and the prediction would ask for a reversed correction.
+horizon $\tau$ (\texttt{CBF\_DRIFT\_TAU}); $\tau=0$, the default, removes it entirely and the QP is
+purely reactive --- sufficient for a stationary marker (whose centre does not drift on its own),
+incomplete for a moving one.
+
+\paragraph{The drift source $\boldsymbol{d}$.} $\boldsymbol{d}$ is taken from the perception front-end's
+translational optic flow $\boldsymbol{h}_{xy}$ --- the de-rotated ($L_\omega\boldsymbol\omega$ already
+removed), sensor-calibrated, filtered relative-velocity signal the middle loop already uses --- rather
+than a bespoke differencing of $\tilde{\boldsymbol{r}}$. $\boldsymbol{h}_{xy}$ is \emph{already} in the
+image-tangent frame of $\tilde{\boldsymbol{r}}$ (the front-end applies the camera-mount swap upstream):
+the map is the identity, verified by regressing $\mathrm{d}\tilde{\boldsymbol{r}}/\mathrm{d}t$ on
+$\boldsymbol{h}_{xy}$ over a real approach ($+I$ cosine $0.87$; every other signed permutation
+$\approx 0$). Raw $\boldsymbol{h}_{xy}$ is unusable as a lead --- on aggressive target trajectories the
+$\boldsymbol{h}$ least-squares solve throws single-frame spikes of $|\boldsymbol{h}_{xy}|\sim 4$--$16$
+(vs a real drift $\sim 0.1$), and on a stationary target it carries $\sim 0.1$--$2$ of pure self-motion
+and sensor noise --- so $\boldsymbol{d}$ is conditioned before use (\texttt{condition\_drift}):
+(i) the solve's own in-sample residual $\mathrm{rel\_resid}=\lVert A\hat s-b\rVert/\lVert b\rVert$ gates
+the whole vector to $\boldsymbol{0}$ when it exceeds \texttt{CBF\_DRIFT\_RESID\_GATE} (or is non-finite);
+(ii) a median-of-3 removes isolated spikes; (iii) a one-pole low-pass (\texttt{CBF\_DRIFT\_LPF\_ALPHA})
+smooths it; (iv) a radial clamp bounds $|\boldsymbol{d}|\le$ \texttt{CBF\_DRIFT\_MAX} with direction
+preserved. Finally the lead itself is clamped so a linear extrapolation never predicts the centre
+crossing an axis origin --- beyond that the first-order model does not hold and the prediction would ask
+for a reversed correction.
 
 \paragraph{Validity envelope.} $L_e$ is evaluated at the measured $\tilde{\boldsymbol{r}}$ and held fixed
 for the solve. The model error of \eqref{eq:lin} is under $8\%$ for a per-cycle lean \emph{change}
@@ -247,8 +261,11 @@ calibrated (validated against an independent pinhole model). \end{assumption}
 from $\boldsymbol{y}^\star$ on a timescale fast relative to the outer loop, with residual lag inside the
 buffer $b$. \end{assumption}
 \begin{assumption} $\boldsymbol{d}$ is the translation part of the observed centre velocity (from the
-pipeline's de-rotated optic flow $\boldsymbol{h}_{xy}$), zeroed when the flow solve is untrustworthy;
-$\tau=0$ for a stationary target. \end{assumption}
+front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$, identity-mapped), \emph{after}
+\texttt{condition\_drift}: residual-gated to $\boldsymbol{0}$ on a low-confidence solve, median- and
+low-pass-filtered, and radially clamped. With $\tau=0$ the term is absent (default; the stationary
+case). A useful $\tau>0$ additionally requires the rover approach to be dynamically stable enough to
+observe --- not yet established. \end{assumption}
 \begin{assumption} The per-cycle lean change stays within the first-order regime of \S\ref{sec:lin}
 ($\lesssim15^\circ$), which the $50$\,Hz rate and a smooth outer loop provide. \end{assumption}
 \begin{assumption} $A_\text{cap}$ and $g$ are fixed vehicle/physical constants, used directly. \end{assumption}
