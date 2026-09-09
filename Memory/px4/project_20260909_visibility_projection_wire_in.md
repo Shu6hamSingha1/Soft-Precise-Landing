@@ -463,17 +463,19 @@ convex QP per cycle, no scenario branching, zero rover conditionals in
   median-of-3 → 1-pole LPF (`CBF_DRIFT_LPF_ALPHA`=0.12) → radial clamp
   (`CBF_DRIFT_MAX`=0.5 tangent/s). Raw `h_xy` without this is unusable (spikes
   `|d|` 4–16 on aggressive target motion; noise on a static target).
-- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0.15** (flipped from 0 on 2026-09-09 at user
-  direction, after the conditioned rover re-sweep was regression-free vs `τ=0`).
-  `τ=0` restores reactive-only (sufficient stationary, incomplete moving). On a
-  stationary target `d ≠ 0` — `h_xy` carries the vehicle's own approach flow —
-  but conditioned `|d|`~0.11 × 0.15 ≈ 0.017 tangent lead, ~inert.
-  ⚠ **The IC2-5 stationary gate (`VisProjQPGate`) ran at `τ=0`. A confirm gate at
-  `τ=0.15` is recommended** (deferred: SITL lane was occupied by the peer B4
-  AU_LEAD gate at flip time).
+- `τ` = `CBF_DRIFT_TAU`, **DEFAULT 0** (reactive-only). A flip to 0.15 was tried
+  on 2026-09-09 (user direction) and **REVERTED** — the IC2-5 stationary confirm
+  gate (`test_data/DriftTauConfirm/20260909-200537`) FAILED:
+  `τ=0.15` gave **3× the hard touchdowns** (max rel_vel 2.80 vs 1.55, incl. a
+  0.53 m / 2.80 m/s IC4 impact — effectively a failed landing `τ=0` doesn't have),
+  **P+S 11/20 vs 14/20**, **IC4 4P→1P**. Median xy unchanged (0.052 vs 0.056) → a
+  terminal-noise TAIL regression: on a stationary target `d` is self-motion `h_xy`,
+  and even conditioned `τ·|d|`~0.02 tangent perturbs the terminal command. No
+  moving-target benefit to offset (still unmeasurable). **Set `CBF_DRIFT_TAU>0`
+  per-run for rover work only.**
 
 ### Env knobs (all default-safe)
-`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0.15 (flipped from 0, 2026-09-09) ·
+`CBF_BUFFER_FRAC`=0.15 · `CBF_VIS_RHO`=2000 · `CBF_DRIFT_TAU`=0 (flip to 0.15 tried + reverted, 2026-09-09) ·
 `CBF_DRIFT_MAX`=0.5 · `CBF_DRIFT_RESID_GATE`=0.45 · `CBF_DRIFT_LPF_ALPHA`=0.12 ·
 `CBF_DRIFT_LOOM_STRIP`=0 · `CBF_DESCENT_EASE`=1 · `CBF_GMIN`=0.2 · `CBF_TREACT`=1.5 ·
 `CBF_DRIFT_PULLBACK_FRAC`=0.4
@@ -501,15 +503,15 @@ Moving-target machinery: built, conditioned, offline-validated, frame-verified,
 regression-free in SITL. One implementation serves both.
 
 ### What's OPEN (not CBF-blocking)
-1. **`CBF_DRIFT_TAU` default FLIPPED 0 → 0.15 (2026-09-09, user direction).** The
-   moving-target lead is ON by default; it's regression-free vs `τ=0` (conditioned
-   rover re-sweep) and near-inert on stationary. Two follow-ups:
-   (a) **IC2-5 stationary confirm gate at `τ=0.15`** — the `VisProjQPGate` ran at
-   `τ=0`; deferred at flip time (peer had the SITL lane). Run it when free.
-   (b) Whether the lead *improves* moving-target visibility is still unmeasured —
-   needs the rover approach survivable → **perception thread**
+1. **`CBF_DRIFT_TAU` — flip to 0.15 tried 2026-09-09, REVERTED. Default stays 0.**
+   The IC2-5 stationary confirm gate (`DriftTauConfirm/20260909-200537`) failed
+   (3× hard touchdowns / IC4 4P→1P / P+S 11 vs 14 — tail regression from `d` being
+   self-motion `h_xy` on a stationary target). Rover re-sweep at 0.15 was
+   regression-free but that's not enough. To use the lead: `CBF_DRIFT_TAU>0`
+   per-run, rover only. Whether the lead *improves* moving-target visibility is
+   still unmeasured — needs the rover approach survivable → **perception thread**
    ([[project_20260901_moving_rover_landing]]): oblique-view detector collapse
-   (~5 m) + terminal-overfill loom collapse (~1.1 m). `CBF_DRIFT_TAU=0` reverts.
+   (~5 m) + terminal-overfill loom collapse (~1.1 m).
 2. Idea-4 descent-ease knob sweep (`t_react`/`buffer_frac`) — designed
    (`docs/DESCENT_EASE_KNOB_SWEEP.md`), not run. Low priority (governor is
    frequent but gentle, outcomes clean).
@@ -528,3 +530,39 @@ Backups: `Obsolete/{src,tools}/*_v1_pre_qp_slack.py`,
 `28e4417b` h_xy identity-map fix + `vis_c(t)` · `e1b094e8` `condition_drift` ·
 `16eb5d2d` all-docs · `9f08c799` re-sweep memory. (Peer `032e79ea` ported the
 two-tier design to MATLAB + manuscript.)
+
+---
+
+## UPDATE 2026-09-09 (cont.): CBF_DRIFT_TAU flip → confirm gate FAILED → reverted
+
+The `0 → 0.15` default flip (commit `b71a9505`, user direction) was checked by an
+IC2-5 stationary A/B confirm gate: `scripts/run_drifttau_confirm_gate.sh`,
+`test_data/DriftTauConfirm/20260909-200537`, `CBF_DRIFT_TAU` 0 vs 0.15, n=5
+interleaved, cross-marker stationary, HEADLESS.
+
+| metric | τ=0 | τ=0.15 |
+|---|---|---|
+| landed / TL | 20/20 / 0 | 20/20 / 0 |
+| **P+S** | **14/20** | **11/20** |
+| mean xy | 0.094 | 0.121 |
+| median xy | 0.056 | 0.052 (≈) |
+| mean / max rel_vel | 0.49 / 1.55 | **0.68 / 2.80** |
+| hard touchdowns (>1 m/s) | 1 | **3** |
+| per-IC P+S | IC2 4 · IC3 3 · IC4 4 · IC5 3 | IC2 3 · IC3 **5** · **IC4 1** · IC5 2 |
+
+**REJECT.** No TL, but `τ=0.15`: 3× the hard touchdowns incl. a 0.53 m / 2.80 m/s
+IC4 impact (effectively a failed landing `τ=0` lacks); P+S −3; **IC4 collapses
+4P→1P**. Median xy unchanged → a terminal-noise TAIL regression: on a stationary
+target `d` is self-motion `h_xy`, and even the conditioned `τ·|d|`~0.02 tangent
+perturbs the terminal command on the marginal reps (IC4 = the 7 m-start IC, also
+has the known >6 m cal gap). No moving-target benefit to offset (unmeasurable —
+rover perception-blocked).
+
+**Reverted** (`controller.py` 3 reads back to `"0.0"` + comment; docs
+CBF_visibility.tex/.pdf / PLASMC_TUNING_GUIDE / PARAMETER_ANALYSIS /
+CONTROL_FRAMEWORK_REVIEW / CLAUDE.md; this memory). `condition_drift` + all other
+knobs KEPT (gated on `τ>0`, unaffected). `run_drifttau_confirm_gate.sh` kept for
+any future re-test (e.g. a smaller `τ` like 0.05, or after the rover approach is
+fixed). **Lesson: "regression-free on the rover re-sweep" ≠ safe to default — the
+rover reps die in 2-20 s and can't show a terminal-tail regression; the stationary
+IC2-5 gate can and did.**

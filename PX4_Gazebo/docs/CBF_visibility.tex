@@ -51,7 +51,7 @@ $P=R_z(90^\circ)R_z(-\psi_\text{b})$ & inertial $x$-$y$ $\to$ image axes ($\psi_
 $\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust} (thrust/mass), NED. Hover $=-g\boldsymbol{e}_3$, so $\|\,^\Iframe\boldsymbol{a}_\text{d}\|$ \emph{is} the thrust magnitude per unit mass \\
 $a_z=|\,^\Iframe a_{\text{d},z}|$ & vertical component magnitude --- an \textbf{input}, never a decision variable \\
 $\boldsymbol{y}=P\,(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/a_z)$ & commanded lean, image axes; $\boldsymbol{y}_\text{d}$ from the unconstrained $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$; $\boldsymbol{y}_\text{curr}=P(-R_{[{:}2,3]}/R_{33})$ from the realized attitude $R$ \\
-$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $\tau=$ \texttt{CBF\_DRIFT\_TAU}, default $0.15$\,s ($\tau=0$ removes the term $\to$ reactive-only). Source: the front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$ (identity map to the $\tilde{\boldsymbol r}$ frame), conditioned by \texttt{condition\_drift} --- residual gate / median-3 / low-pass / radial clamp \\
+$\boldsymbol{d},\ \tau$ & measured translational drift rate of the centre not due to our lean (tangent$/$s); look-ahead horizon $\tau=$ \texttt{CBF\_DRIFT\_TAU}, \textbf{default $0$} (reactive-only; a flip to $0.15$ was tried and reverted, \S\ref{sec:tier1}). Set $\tau>0$ per-run for a moving target. Source: the front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$ (identity map to the $\tilde{\boldsymbol r}$ frame), conditioned by \texttt{condition\_drift} --- residual gate / median-3 / low-pass / radial clamp \\
 $A_\text{cap},\ g$ & vehicle maximum thrust-to-mass ratio; gravitational acceleration \\
 $y_\text{max},\ \boldsymbol{s},\ \rho$ & deliverability radius $\sqrt{A_\text{cap}^2/a_z^2-1}$; per-axis visibility slack $\boldsymbol{s}\ge\boldsymbol{0}$ and its penalty weight $\rho=$ \texttt{CBF\_VIS\_RHO} $=2000$ \\
 $g_z\in[g_\text{min},1]$ & descent-governor scale (\S\ref{sec:tier2}); $g_\text{min}=$ \texttt{CBF\_GMIN} $=0.2$, $T_\text{react}=$ \texttt{CBF\_TREACT} $=1.5$\,s \\
@@ -94,12 +94,14 @@ ray; \eqref{eq:lin} is its first-order term about the current lean, and the sign
 against an independent pinhole-plus-attitude camera model (\texttt{tools/validate\_visibility\_projection.py}
 check~1). $\boldsymbol{y}_\text{curr}$ is read from the realized attitude, so it needs no rotation from
 acceleration units. The $\tau\boldsymbol{d}$ term extrapolates measured \emph{target} motion over the
-horizon $\tau$ (\texttt{CBF\_DRIFT\_TAU}, default $0.15$\,s). Setting $\tau=0$ removes it and the QP is
+horizon $\tau$ (\texttt{CBF\_DRIFT\_TAU}). At the default $\tau=0$ the term is absent and the QP is
 purely reactive --- sufficient for a stationary marker (whose centre does not drift on its own),
-incomplete for a moving one. At the default $\tau$ a stationary marker still sees a small lead
-($\boldsymbol{d}$ carries the vehicle's own approach flow; conditioned $|\boldsymbol{d}|\!\sim\!0.1$,
-so $\tau|\boldsymbol{d}|\!\sim\!0.02$ tangent) --- verified regression-free against $\tau=0$ on all
-seven rover motion profiles, though the IC2--5 stationary gate itself was run at $\tau=0$.
+incomplete for a moving one, so $\tau>0$ is set per-run for a moving target. A flip of the default to
+$0.15$ was attempted (2026-09-09): benign on seven rover motion profiles but the IC2--5 stationary
+confirm gate regressed the touchdown tail ($3\times$ the $>\!1$\,m/s impacts, IC4 $4\!\to\!1$ precise)
+--- on a stationary target $\boldsymbol{d}$ is self-motion flow, and even the conditioned
+$\tau|\boldsymbol{d}|\!\sim\!0.02$ tangent is enough to perturb the terminal command --- so the default
+was reverted to $0$.
 
 \paragraph{The drift source $\boldsymbol{d}$.} $\boldsymbol{d}$ is taken from the perception front-end's
 translational optic flow $\boldsymbol{h}_{xy}$ --- the de-rotated ($L_\omega\boldsymbol\omega$ already
@@ -266,10 +268,10 @@ buffer $b$. \end{assumption}
 \begin{assumption} $\boldsymbol{d}$ is the translation part of the observed centre velocity (from the
 front-end's de-rotated optic flow $\boldsymbol{h}_{xy}$, identity-mapped), \emph{after}
 \texttt{condition\_drift}: residual-gated to $\boldsymbol{0}$ on a low-confidence solve, median- and
-low-pass-filtered, and radially clamped. The default $\tau=0.15$\,s enables the lead (regression-free vs
-$\tau=0$ across seven rover profiles); $\tau=0$ restores reactive-only. Whether the lead \emph{improves}
-moving-target visibility is not yet established --- it needs a rover approach dynamically stable enough
-to observe. \end{assumption}
+low-pass-filtered, and radially clamped. The default is $\tau=0$ (the lead off): a flip to $0.15$ failed
+the IC2--5 stationary confirm gate (touchdown-tail regression) and was reverted; $\tau>0$ is set per-run
+for a moving target. Whether the lead \emph{improves} moving-target visibility is not yet established ---
+it needs a rover approach dynamically stable enough to observe. \end{assumption}
 \begin{assumption} The per-cycle lean change stays within the first-order regime of \S\ref{sec:lin}
 ($\lesssim15^\circ$), which the $50$\,Hz rate and a smooth outer loop provide. \end{assumption}
 \begin{assumption} $A_\text{cap}$ and $g$ are fixed vehicle/physical constants, used directly. \end{assumption}
