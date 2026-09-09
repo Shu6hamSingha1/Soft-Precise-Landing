@@ -11,14 +11,16 @@ function [psi_d, u_a, cs] = yaw_asmc(alpha, alpha_d, w_z, P, cs)
 %   tex eq. `alpha_e_dot`); consumed only by the P.yaw_rate_law=1 branch.
 %
 %   P.yaw_rate_law selects the law:
-%     0 (default) -- leakage kappa_a ASMC of tex eq. `yaw control law`.
-%     1           -- PLASMC_YAW_RATE_LAW port (PX4 87cf020 / baked ON 63aa258):
-%                    drop the sliding-mode switching term, drive u_a as a PI on
-%                    alpha_e that uses the MEASURED derivative w_z in place of a
-%                    finite difference --
+%     1 (DEFAULT) -- direct-w_z rate law (tex eq. `yaw control law`; PX4
+%                    PLASMC_YAW_RATE_LAW, baked ON 63aa258): drop the sliding-mode
+%                    switching term, drive u_a as a PI on alpha_e that uses the
+%                    MEASURED derivative w_z in place of a finite difference --
 %                       d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z - yrl_ki*int(alpha_e)
 %                       u_a       = clip(w_rl, +-yaw_rate_max)
-%                    UNVALIDATED in MATLAB: run the IC gate before setting =1.
+%                    Validated: IC1-5 25/25 SP; |e_a| ~1 deg to 0.7 rad/s spin.
+%     0           -- leakage kappa_a ASMC (documented alternative / fallback):
+%                    lags a rotating target by ~12-23 deg (the SO(3) e_R[2]=sin(dpsi)
+%                    ceiling), collapses past ~0.9 rad/s.
 
     e_raw = alpha - alpha_d;
     e_a   = atan2(sin(e_raw), cos(e_raw));           % full +-pi (alpha is 2pi-disambiguated)
@@ -34,7 +36,7 @@ function [psi_d, u_a, cs] = yaw_asmc(alpha, alpha_d, w_z, P, cs)
             end
             rl_new = cs.yrl_cmd + P.dt*( P.yrl_kp*e_a ...
                                          + P.yrl_wz_sign*w_z ...
-                                         - P.yrl_ki*cs.yrl_ie );
+                                         + P.yrl_ki*cs.yrl_ie );   % +k_i = stabilising sign (0<=k_i<k_p); tex `yaw control law`
             cs.yrl_cmd = max(min(rl_new, P.yaw_rate_max), -P.yaw_rate_max);
         end
         u_a = cs.yrl_cmd;

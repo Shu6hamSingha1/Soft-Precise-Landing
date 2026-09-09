@@ -181,15 +181,20 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % finite difference:
 %     d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z - yrl_ki*int(alpha_e)
 %     u_a       = clip(w_rl, +-yaw_rate_max)     (anti-windup freezes yrl_ie)
-% Default OFF -- the kappa_a leakage ASMC stays the manuscript reference and the
-% P.yaw_rate_law=0 fallback. UNVALIDATED in MATLAB: run the IC gate before =1.
+% DEFAULT (2026-09-09): validated clean win on the cross-marker stack -- IC1-5
+% noiseless + realistic seed=1 both 25/25 soft-precise, 75/75 noisy multi-seed,
+% mean|e_a| 0.5 deg vs the ASMC's 2.5 (max 2 vs 21); on CircularYaw it holds
+% |e_a| ~1 deg to 0.7 rad/s target spin where the ASMC lags 12-23 deg. Matches
+% PX4's cross-marker default (63aa258). P.yaw_rate_law=0 restores the kappa_a
+% leakage ASMC (kept as the documented alternative / fallback).
 % PX4's PLASMC_YAW_RL_WZ_SCALE (2.5) is a PERCEPTION magnitude-deficit factor and
 % does NOT port -- MATLAB's V_w(3) is the analytic pseudo-inverse recovery, scale 1.
-% Sign derived for MATLAB's (non-inverted) plant: V_w(3) ~= +alpha_e_dot, and the
-% closed loop psi_b'' + psi_b' + yrl_kp*psi_b ~ d is Hurwitz for yrl_kp>0.
-P.yaw_rate_law = 0;
-P.yrl_kp       = 0.3;   % PLASMC_YAW_RL_KP
-P.yrl_ki       = 0.0;   % PLASMC_YAW_RL_KI  (optional light robustness term; off by default)
+% Sign derived for MATLAB's (non-inverted) plant: V_w(3) ~= +alpha_e_dot, closed
+% loop  alpha_e'' + alpha_e' + yrl_kp*alpha_e ~ d(d_alpha)/dt  Hurwitz for yrl_kp>0.
+P.yaw_rate_law = 1;
+P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP)
+P.yrl_ki       = 0.0;   % k_i, STABILISING sign +k_i*int(e_a), needs 0<=k_i<k_p; default 0
+                        % (rejects a constant d_alpha bias; PX4's -k_i was a dead-end sign)
 P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
 P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
 
