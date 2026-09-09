@@ -1,11 +1,48 @@
 ---
 name: project_20260908_line_width_loom_investigation
-description: "Deep investigation into terminal-overfill h_z corruption and a line-width-based replacement for the loom estimate -- root causes found, two real bugs in the existing width machinery fixed, a simpler direct mask-scan method designed and validated at 0.89-0.99 corr with GT on fresh real-perception IC1 data."
+description: "⛔ THREAD CLOSED 2026-09-09. Line-width / extent / size-derived loom RATE for h_z: dead end, fully chased. Static line-width VALUE is good (0.89-1.00 vs GT alt) but its DERIVATIVE never tracks loom usably (best ~0.3 in the .5-2m band, unrecoverable <0.35m). Extent-fused 'Scale Loom Rate' tracks loom 0.84-0.98 mid-band but 3 h_z-fusion forms ALL regressed the IC gate. Everything stays SHADOW-MODE; CROSS_SCALE_RATE_FUSE default-OFF is permanent. Geometry-width (CROSS_WIDTH_GEOM=1) + tools/overlay_width_loom_rate.py landed."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-09T05:15:05.001Z
+  modified: 2026-09-09T05:19:46.911Z
+---
+
+## ⛔⛔ THREAD CLOSED — 2026-09-09 (read this, skip the 700-line chronology below unless digging)
+
+**Goal was:** replace / backstop the corrupted terminal-overfill `h_z` (LK image-Jacobian Tz
+spikes to +5.6 when tracked points lose spread) with a loom estimate derived from the marker's
+apparent SIZE (line-width, then extent). **Outcome: dead end, exhaustively verified.**
+
+**Final state of each piece:**
+| piece | verdict |
+|---|---|
+| Static line-width VALUE (mask-scan → now geometry-width) | **Good** (0.89-1.00 corr w/ GT altitude). `width_loom_from_detection` DEFAULTS to the geometry method (`CROSS_WIDTH_GEOM=1`, `bf812f1f`): `2√3·std(transverse residual of arm inliers)`, gated on arm-perpendicularity + junction-in-frame, `None` on gate-fail. Bounded terminally (12-35 px vs mask-scan's 14-201). SHADOW-ONLY, consumed by nothing. |
+| Pure line-width RATE (`-d/dt ln width`, `"Width Loom Rate"`) | **Dead.** ~0.22 corr w/ GT loom in the .5-2m band (per-rep -0.09..+0.68), noise elsewhere. The VALUE fits position at R²>0.95 but its residual is a low-freq drift `ε` whose derivative `ε̇` (std 0.7-1.3) swamps the loom signal (std 0.1-0.5). Not lag, not binarisation, not tuning, not direction-wobble — all ruled out. |
+| Extent-fused RATE (`0.3·ln width + 0.7·ln extent`, `"Scale Loom Rate"`) | **Tracks loom** 0.84-0.98 in the .5-2m band (extent is the workhorse; width adds ~nothing), live-parity confirmed. **But cannot be fed into `h_z`:** naive / +overfill-gate / +affine-debias+band+loose-r — **all 3 fusion forms REGRESSED the IC1-5 gate** (hard landings, then blown lateral xy). `h_z` couples into the middle-loop SMC c-term + sliding surface, and pinv `h_z` is already good enough that any perturbation only costs accuracy. `CROSS_SCALE_RATE_FUSE` default-OFF is **PERMANENT**. |
+| Terminal window (<~0.35 m) | **Unrecoverable for ANY size-derived loom.** ~70-80% of the logged `<0.5m` band is post-touchdown (parked drone, GT loom≈0). The genuine last ~0.3 m has a real SIGN INVERSION (width shrinks during the fastest drop) because the marker fragments / exits the FOV and the arm fits latch onto background — `corr(width, inlier_count)=+0.65` there. V-frame leveling: no effect. Extent saturates (318 px = frame). Moment-loom dies here too, same reason. |
+
+**The line-width loom's only usable altitude range is ~2 m → ~0.35 m.** Below that the touchdown
+detector (`_touchdownDetectV2`: n_corners / extent / flow-freeze — **none use `h_z`**) already
+owns the regime; every landing in every gate latched via `[overfill]`/`[flow-freeze]`.
+
+**Do not re-open** without a fundamentally different observable (not apparent size, not its
+derivative) OR a fundamentally different consumer (not a KF measurement of the live `h_z`).
+
+**Artifacts kept (all shadow / diagnostic, nothing control-facing):**
+- `cross_marker_perception.py`: `"Width Loom Px/Rate"`, `"Scale Loom Rate"`, `"Scale Fuse Z"`
+  logs; `_wgeom_arm` + geometry `width_loom_from_detection` (default); `_wloom_*` mask-scan
+  (`CROSS_WIDTH_GEOM=0` fallback); `_scale_rate_*` KF; the whole `_scale_fuse_*` fusion machinery
+  behind `CROSS_SCALE_RATE_FUSE` (default 0, marked DEAD-END in-file).
+- `tools/overlay_width_loom_rate.py` — width/extent/scale loom-RATE overlay on raw IMG_RECORD
+  frames vs GT loom (companion to `overlay_image_features.py`).
+- `tools/gt_optical_flow.py` — the 3-bug fix (stale Z_REG, missing mount offset, stale alt gate)
+  from this thread is a real correctness fix that OUTLIVES it; keep.
+- Backups: `Obsolete/src/cross_marker_perception_pre_{scalerate,geomwidth}_20260909.py`.
+
+Related: [[feedback_cross_detector_contrast_not_darkness]] (the terminal-overfill blocker this
+was trying to help), [[reference_gt_optical_flow]], [[project_20260831_perception_mode_landing]].
+
 ---
 
 ## Context / goal
