@@ -62,7 +62,7 @@ from ahrs import Quaternion
 # cbf_visibility_aruco.py + the joint-QP / deliverability-sphere / descent-relief
 # / two-phase-delta / rho_fov-cone machinery (removed 2026-09-09). See
 # src/visibility_projection.py.
-from visibility_projection import condition_for_visibility
+from visibility_projection import condition_for_visibility, condition_drift
 
 # MARKER_TYPE=cross: use the standalone cross_marker_perception pipeline (no
 # ArUco decode, no PlanarFeatureMap rescue, no marker handover -- see
@@ -2132,6 +2132,8 @@ class Controller(Thread):
         self._vis_slack_log = []           # max per-axis Tier-1 visibility slack (tangent; >0 = FoV vs thrust-ball conflict, degraded)
         self._vis_drift_log = []           # |d| fed to Tier-1 tau*d moving-target lead (tangent/s; 0 unless CBF_DRIFT_TAU>0)
         self._vis_c_log = []               # measured marker-centre tangent c (module frame, post-_SWAP) -- for h-sign / rover diagnosis
+        self._vis_hxy_med = []             # condition_drift median-of-3 ring (raw gated h_xy)
+        self._vis_drift_filt = np.zeros(2) # condition_drift 1-pole LPF carry
         self._theta_safe = None            # Tier-1 safe lean vector (image axes) -> Fix B direct rd3
         self._vis_prev_c = None            # image-tangent marker centre from the previous step (for c_rate)
         self._vis_state = {}               # descent_ease g_z low-pass carry
@@ -3817,9 +3819,11 @@ class Controller(Thread):
         # c (post marker_tangent _SWAP) and h_xy share a frame -> no swap here.
         # CBF_DRIFT_LOOM_STRIP=1 removes the descent-scale term c*h_z so Tier 1
         # sees only lateral translation (no overlap with Tier 2's loom reasoning).
-        # Flow-validity gated -> d=0 (== stationary behaviour) when the solve is
-        # not trustworthy near touchdown. CBF_DRIFT_TAU=0 (default) disables the
-        # whole path -> stationary behaviour byte-identical.
+        # condition_drift() then gates on the flow solve's rel_resid (untrusted h
+        # -> 0), median-of-3 (kills the 4-16 tangent/s single-frame spikes the
+        # 7-profile rover sweep found), 1-pole LPF, and a radial clamp to
+        # CBF_DRIFT_MAX. CBF_DRIFT_TAU=0 (default) disables the whole path ->
+        # stationary behaviour byte-identical.
         _tau = float(os.environ.get("CBF_DRIFT_TAU", "0.0"))
         _drift = None
         if _tau > 0.0 and len(self._h) > 0 and marker_center_px is not None:
@@ -3831,7 +3835,13 @@ class Controller(Thread):
                 if (os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1"
                         and self._vis_prev_c is not None):
                     _h_xy = _h_xy - np.asarray(self._vis_prev_c, float) * float(_h[2])
-                _drift = _h_xy                         # identity map (verified)
+                _rr = float(getattr(self._img_node, "_bgflow_health", (0.0, 0))[0])
+                _drift, self._vis_hxy_med, self._vis_drift_filt = condition_drift(
+                    _h_xy, resid=_rr,
+                    resid_gate=float(os.environ.get("CBF_DRIFT_RESID_GATE", "0.45")),
+                    d_max=float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
+                    med_buf=self._vis_hxy_med, filt=self._vis_drift_filt,
+                    lpf_alpha=float(os.environ.get("CBF_DRIFT_LPF_ALPHA", "0.12")))
         self._vis_drift_log.append(0.0 if _drift is None else float(np.linalg.norm(_drift)))
 
         I_a, y_star, _vis = condition_for_visibility(
@@ -4175,6 +4185,9 @@ class Controller(Thread):
             "CBF_VIS_RHO": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
             "CBF_DRIFT_TAU": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
             "CBF_DRIFT_LOOM_STRIP": os.environ.get("CBF_DRIFT_LOOM_STRIP", "0") == "1",
+            "CBF_DRIFT_MAX": float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
+            "CBF_DRIFT_RESID_GATE": float(os.environ.get("CBF_DRIFT_RESID_GATE", "0.45")),
+            "CBF_DRIFT_LPF_ALPHA": float(os.environ.get("CBF_DRIFT_LPF_ALPHA", "0.12")),
             "CBF_DESCENT_EASE": os.environ.get("CBF_DESCENT_EASE", "1") == "1",
             "CBF_GMIN": float(os.environ.get("CBF_GMIN", "0.2")),
             "CBF_TREACT": float(os.environ.get("CBF_TREACT", "1.5")),
@@ -4217,6 +4230,7 @@ class Controller(Thread):
             "cbf_buffer_frac": float(os.environ.get("CBF_BUFFER_FRAC", "0.15")),
             "cbf_vis_rho": float(os.environ.get("CBF_VIS_RHO", "2000.0")),
             "cbf_drift_tau": float(os.environ.get("CBF_DRIFT_TAU", "0.0")),
+            "cbf_drift_max": float(os.environ.get("CBF_DRIFT_MAX", "0.5")),
             "cbf_g_min": float(os.environ.get("CBF_GMIN", "0.2")),
             "cbf_t_react": float(os.environ.get("CBF_TREACT", "1.5")),
             "cbf_descent_ease": os.environ.get("CBF_DESCENT_EASE", "1") == "1",

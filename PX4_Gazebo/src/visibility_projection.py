@@ -84,6 +84,50 @@ def marker_tangent(marker_center_px, center_px, focal_px):
                      - np.asarray(center_px, float)) / np.asarray(focal_px, float))
 
 
+def condition_drift(h_xy, *, resid=None, resid_gate=0.45, d_max=0.5,
+                    med_buf=None, filt=None, lpf_alpha=0.12):
+    """Condition the raw translational optic flow ``h_xy`` before it is used as
+    the Tier-1 moving-target lead ``d``.
+
+    The 7-profile rover sweep (2026-09-09) showed raw ``h_xy`` is unusable as a
+    lead: single-frame spikes to |d| 4-16 tangent/s on aggressive trajectories,
+    and |d| ~ 0.1-2.5 of pure noise on a *static* target (there is no drift to
+    lead). Real target drift at the tested speeds is |d|_p50 ~ 0.1.
+
+    Pipeline:  validity gate -> median-of-3 (kills isolated spikes) -> 1-pole LPF
+               -> radial magnitude clamp to ``d_max``.
+
+    ``h_xy``      : (2,) raw translational flow this frame (image-tangent frame).
+    ``resid``     : the flow solve's own ``rel_resid`` (||A@sol-b||/||b||), or None
+                    to skip the confidence gate. ``> resid_gate`` (or non-finite)
+                    -> the whole ``h`` vector is untrusted this frame -> feed 0.
+    ``d_max``     : hard cap on |d| (tangent/s). Direction preserved.
+    ``med_buf``   : list of up to 3 recent *gated* h_xy (caller-held); updated and
+                    returned.
+    ``filt``      : (2,) LPF carry (caller-held); updated and returned.
+    ``lpf_alpha`` : 1-pole coefficient (~dt / (tau_lpf + dt)); smaller = smoother.
+
+    Returns ``(d, med_buf, filt)``.
+    """
+    h_xy = np.asarray(h_xy, float).reshape(2)
+    med_buf = [] if med_buf is None else list(med_buf)
+    filt = np.zeros(2) if filt is None else np.asarray(filt, float).reshape(2).copy()
+
+    gated = (np.zeros(2) if (resid is not None
+                             and (not np.isfinite(resid) or resid > resid_gate))
+             else h_xy)
+
+    med_buf.append(gated)
+    med_buf = med_buf[-3:]
+    m = np.median(np.stack(med_buf, axis=0), axis=0)
+
+    filt = filt + float(lpf_alpha) * (m - filt)
+
+    n = float(np.linalg.norm(filt))
+    d = filt * (d_max / n) if n > d_max > 0.0 else filt.copy()
+    return d, med_buf, filt
+
+
 def fov_limit(center_px, focal_px, buffer_frac=0.15):
     """Per-axis FoV-edge tangent half-extent minus the buffer -> phi.
     ``buffer_frac`` may be a scalar or a per-axis (2,) array."""

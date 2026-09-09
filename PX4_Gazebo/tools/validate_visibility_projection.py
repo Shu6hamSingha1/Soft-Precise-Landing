@@ -32,7 +32,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from visibility_projection import (visibility_project, descent_ease,  # noqa: E402
-                                   marker_tangent, fov_limit)
+                                   marker_tangent, fov_limit, condition_drift)
 
 RNG = np.random.default_rng(int(os.environ.get("VVP_SEED", "0")))
 CENTER = np.array([160.0, 120.0])
@@ -398,13 +398,59 @@ def test_descent_selfrelease():
          f"g_z during closing={gz_mid:.2f} -> after re-centring={gz:.2f}")
 
 
+# ---- condition_drift -------------------------------------------------------
+def test_condition_drift():
+    rng = np.random.default_rng(3)
+    DMAX = 0.5
+
+    # (a) resid gate: untrusted solve -> output decays toward 0
+    mb, ft = None, None
+    for _ in range(30):
+        d, mb, ft = condition_drift(np.array([9.0, -7.0]), resid=0.9, resid_gate=0.45,
+                                    d_max=DMAX, med_buf=mb, filt=ft)
+    gate_ok = np.linalg.norm(d) < 1e-3
+
+    # (b) magnitude clamp: sustained huge input -> |d| <= d_max
+    mb, ft = None, None
+    for _ in range(60):
+        d, mb, ft = condition_drift(np.array([12.0, 16.0]), resid=0.1, d_max=DMAX,
+                                    med_buf=mb, filt=ft)
+    clamp_ok = np.linalg.norm(d) <= DMAX + 1e-9
+
+    # (c) single-frame spike rejection: steady small drift + one 20x spike ->
+    #     the spike must not move |d| by more than a small fraction of itself
+    mb, ft = None, None
+    base = np.array([0.10, -0.05])
+    hist = []
+    for k in range(40):
+        h = base + rng.normal(0, 0.01, 2)
+        if k == 25:
+            h = base + np.array([15.0, -12.0])          # the spike
+        d, mb, ft = condition_drift(h, resid=0.1, d_max=DMAX, med_buf=mb, filt=ft)
+        hist.append(np.linalg.norm(d))
+    jump = abs(hist[25] - hist[24])
+    spike_ok = jump < 0.05          # median-of-3 kills an isolated spike
+
+    # (d) tracks a real slow drift (no gate, in-range): converges near it
+    mb, ft = None, None
+    tgt = np.array([0.18, 0.12])
+    for _ in range(120):
+        d, mb, ft = condition_drift(tgt, resid=0.1, d_max=DMAX, med_buf=mb, filt=ft)
+    track_ok = np.linalg.norm(d - tgt) < 0.02
+
+    ok = gate_ok and clamp_ok and spike_ok and track_ok
+    _rec("14. condition_drift: gate / clamp / spike-reject / tracks slow drift", ok,
+         f"gate={gate_ok} clamp={clamp_ok}(|d|={np.linalg.norm(d):.2f}) "
+         f"spike_jump={jump:.3f} track_err={np.linalg.norm(d-tgt):.3f}")
+
+
 def main():
     print("=" * 70)
     print("visibility_projection.py -- independent validation")
     print("=" * 70)
     for t in (test_barrier, test_min_intervention, test_inward_free, test_conventions,
               test_passthrough, test_idempotent, test_deliverable, test_graceful,
-              test_moving_target,
+              test_moving_target, test_condition_drift,
               test_descent_oneway, test_descent_triggered, test_descent_selfrelease):
         t()
     nf = _R.count(False)
