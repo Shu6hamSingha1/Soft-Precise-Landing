@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Overlay the LINE-WIDTH LOOM-RATE measurement onto a recorded down-cam video,
 in the same spirit as tools/overlay_image_features.py (which draws s / alpha /
-h / w). This one visualises the pipeline behind `"Width Loom Rate"`:
+h / w). Also overlays the EXTENT loom-rate and the extent+width SCALE-blend
+loom-rate on the same panel, for direct comparison. This one visualises the
+pipeline behind `"Width Loom Rate"` / `"Scale Loom Rate"`:
 
   cross_marker_detector.detect()  ->  det.line_points_i / _j  (the pruned arm
       inlier points)  +  det.isolated_mask
@@ -67,6 +69,8 @@ GREEN = (60, 220, 60)
 GREY = (150, 150, 150)
 RED = (60, 60, 235)
 WHITE = (255, 255, 255)
+MAG = (235, 80, 235)
+ORANGE = (30, 150, 255)
 
 
 def _scan_split(mask, p0, nrm):
@@ -160,13 +164,29 @@ def main():
     off = max(0, len(it) - nf)
     tfr = it[off:off + nf]            # align-from-the-end (overlay_image_features.py convention)
 
-    # ---- pass 1: detector + width + KF ----
+    # extent: use the pipeline's OWN logged MARKER_EXTENT_PX (exact match to what
+    # "Scale Loom Rate" was built from); draw det.mask_bbox as the rectangle.
+    ext_log = np.asarray(img.get("MARKER_EXTENT_PX", np.full(len(it), np.nan)), float)[off:off + nf]
+    QE = float(os.environ.get("CROSS_SCALE_RATE_KF_Q", "1.5"))
+    RE = float(os.environ.get("CROSS_SCALE_RATE_KF_R", "0.03"))
+    A_BLEND = float(os.environ.get("CROSS_SCALE_RATE_A", "0.3"))
+
+    # ---- pass 1: detector + width + 3 KFs (width / extent / scale-blend) ----
     ts = {"last_bbox": None, "miss_count": 0}
-    kf_x = np.zeros((1, 2)); kf_P = np.tile(np.eye(2), (1, 1, 1))
-    kf_pt = None; kf_i = False
+    kf_w = [np.zeros((1, 2)), np.tile(np.eye(2), (1, 1, 1)), None, False]      # width KF (Q=10/R=0.005)
+    kf_e = [np.zeros((1, 2)), np.tile(np.eye(2), (1, 1, 1)), None, False]      # extent KF (Q=1.5/R=0.03)
+    kf_s = [np.zeros((1, 2)), np.tile(np.eye(2), (1, 1, 1)), None, False]      # scale-blend KF
     per = []
-    W_arr = np.full(nf, np.nan); lnW = np.full(nf, np.nan); rate = np.full(nf, np.nan)
-    last_w = np.nan
+    W_arr = np.full(nf, np.nan); lnW = np.full(nf, np.nan)
+    rate = np.full(nf, np.nan)          # -d/dt ln(width)   -> "Width Loom Rate"
+    rate_e = np.full(nf, np.nan)        # -d/dt ln(extent)
+    rate_s = np.full(nf, np.nan)        # -d/dt [0.3 ln w + 0.7 ln ext] -> "Scale Loom Rate"
+
+    def _step(kf, z, t):
+        kf[0], kf[1], kf[2], kf[3] = _kf_step(kf[0], kf[1], kf[2], kf[3], z, t, kf[4], kf[5], dt_unc_max=DT_UNC_MAX)
+        return float(-kf[0][0, 1]) if kf[3] else np.nan
+    kf_w += [Q, R]; kf_e += [QE, RE]; kf_s += [QE, RE]
+
     for k, fp in enumerate(frames):
         fr = cv2.imread(fp)
         det = cmd.detect(fr, track_state=ts) if fr is not None else None
@@ -179,16 +199,23 @@ def main():
                 wv = width_loom_from_detection(det)
             except Exception:
                 wv = None
-        per.append((det, armA, armB, wv))
-        if wv is not None and wv > 0:
-            last_w = wv
+        bbox = det.mask_bbox if (det is not None and getattr(det, "mask_bbox", None) is not None) else None
+        per.append((det, armA, armB, wv, bbox))
         W_arr[k] = wv if (wv is not None and wv > 0) else np.nan
-        t = float(tfr[k])
-        z = np.array([np.log(wv)]) if (wv is not None and wv > 0 and np.isfinite(t)) else None
-        if z is not None or kf_i:
-            kf_x, kf_P, kf_pt, kf_i = _kf_step(kf_x, kf_P, kf_pt, kf_i, z, t, Q, R, dt_unc_max=DT_UNC_MAX)
-        rate[k] = float(-kf_x[0, 1]) if kf_i else np.nan
         lnW[k] = np.log(wv) if (wv is not None and wv > 0) else np.nan
+        t = float(tfr[k])
+        ev = float(ext_log[k]) if k < len(ext_log) and np.isfinite(ext_log[k]) and ext_log[k] > 0 else None
+
+        zw = np.array([np.log(wv)]) if (wv and wv > 0 and np.isfinite(t)) else None
+        if zw is not None or kf_w[3]:
+            rate[k] = _step(kf_w, zw, t)
+        ze = np.array([np.log(ev)]) if (ev and np.isfinite(t)) else None
+        if ze is not None or kf_e[3]:
+            rate_e[k] = _step(kf_e, ze, t)
+        zs = (np.array([A_BLEND * np.log(wv) + (1 - A_BLEND) * np.log(ev)])
+              if (wv and wv > 0 and ev and np.isfinite(t)) else None)
+        if zs is not None or kf_s[3]:
+            rate_s[k] = _step(kf_s, zs, t)
 
     # ---- GT loom aligned to frames ----
     gt_loom = np.full(nf, np.nan); gt_alt = np.full(nf, np.nan)
@@ -209,13 +236,12 @@ def main():
         lo, hi = np.percentile(a, 2), np.percentile(a, 98)
         d = (hi - lo) * pad + 1e-6
         return (lo - d, hi + d)
-    r_lnW = rng(lnW)
-    _rr = np.concatenate([rate[np.isfinite(rate)], gt_loom[np.isfinite(gt_loom)]])
+    _rr = np.concatenate([a[np.isfinite(a)] for a in (rate, rate_e, rate_s, gt_loom)])
     r_rate = rng(_rr if _rr.size else np.array([0.0, 0.0]))
 
     # ---- pass 2: render ----
     H, W = cv2.imread(frames[0]).shape[:2]
-    Hp = 150
+    Hp = 170
     vw = cv2.VideoWriter(args.out, cv2.VideoWriter_fourcc(*"mp4v"), args.fps, (W, H + Hp))
     for k, fp in enumerate(frames):
         fr = cv2.imread(fp)
@@ -223,7 +249,7 @@ def main():
             continue
         if fr.ndim == 2:
             fr = cv2.cvtColor(fr, cv2.COLOR_GRAY2BGR)
-        det, armA, armB, wv = per[k]
+        det, armA, armB, wv, bbox = per[k]
 
         # faint mask tint
         if det is not None and det.ok and det.isolated_mask is not None:
@@ -231,6 +257,11 @@ def main():
             if m.shape[:2] == fr.shape[:2]:
                 tint = fr.copy(); tint[m > 0] = (60, 40, 40)
                 fr = cv2.addWeighted(fr, 0.75, tint, 0.25, 0)
+
+        # EXTENT: draw the mask bbox (magenta); MARKER_EXTENT_PX = max(w,h) of it
+        if bbox is not None:
+            bx, by, bw_, bh_ = [int(round(v)) for v in bbox]
+            cv2.rectangle(fr, (bx, by), (bx + bw_, by + bh_), MAG, 1, cv2.LINE_AA)
 
         for arm, col, pts in ((armA, CYAN, getattr(det, "line_points_i", None) if det else None),
                               (armB, YELL, getattr(det, "line_points_j", None) if det else None)):
@@ -255,34 +286,41 @@ def main():
         wa = armA["width"] if armA else None
         wb = armB["width"] if armB else None
         ratio = (max(wa, wb) / min(wa, wb)) if (wa and wb) else float("nan")
+        ev = float(ext_log[k]) if (k < len(ext_log) and np.isfinite(ext_log[k])) else float("nan")
         hud = [
             (f"f{k}/{nf}  t{tfr[k]-tfr[0]:.1f}s  alt {gt_alt[k]:+.2f}m", WHITE),
-            (f"armA {wa:.1f}px   armB {wb:.1f}px" if (wa and wb)
+            (f"armA {wa:.1f}  armB {wb:.1f} px" if (wa and wb)
              else f"armA {wa if wa else '--'}  armB {wb if wb else '--'}", WHITE),
-            (f"ratio {ratio:.2f}  (reject if >{_WLOOM_ARM_AGREE_RATIO:.0f})"
-             if np.isfinite(ratio) else "ratio --", RED if (np.isfinite(ratio) and ratio > _WLOOM_ARM_AGREE_RATIO) else WHITE),
-            (f"width = {wv:.1f} px" if wv else "width = HOLD (None)", GREEN if wv else GREY),
-            (f"KF loom-rate {rate[k]:+.3f}", GREEN),
-            (f"GT loom      {gt_loom[k]:+.3f}", RED),
+            (f"ratio {ratio:.2f} (rej>{_WLOOM_ARM_AGREE_RATIO:.0f})" if np.isfinite(ratio) else "ratio --",
+             RED if (np.isfinite(ratio) and ratio > _WLOOM_ARM_AGREE_RATIO) else WHITE),
+            (f"width  {wv:.1f}px   extent {ev:.0f}px" if wv else f"width HOLD  extent {ev:.0f}px",
+             GREEN if wv else GREY),
+            (f"rate: W {rate[k]:+.2f}", GREEN),
+            (f"      E {rate_e[k]:+.2f}   S {rate_s[k]:+.2f}", MAG),
+            (f"GT loom {gt_loom[k]:+.3f}", RED),
         ]
-        y = 15
+        y = 14
         for line, col in hud:
-            cv2.putText(fr, line, (5, y), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 0, 0), 3, cv2.LINE_AA)
-            cv2.putText(fr, line, (5, y), cv2.FONT_HERSHEY_SIMPLEX, 0.40, col, 1, cv2.LINE_AA)
-            y += 14
+            cv2.putText(fr, line, (5, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 0), 3, cv2.LINE_AA)
+            cv2.putText(fr, line, (5, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, col, 1, cv2.LINE_AA)
+            y += 13
 
         panel = _panel({
-            "ln(width)": (lnW, WHITE, *r_lnW),
-            "KF loom-rate  (-d/dt ln w)": (rate, GREEN, *r_rate),
             "GT loom": (gt_loom, RED, *r_rate),
+            "W  -d/dt ln(width)": (rate, GREEN, *r_rate),
+            "E  -d/dt ln(extent)": (rate_e, MAG, *r_rate),
+            "S  0.3W+0.7E blend": (rate_s, ORANGE, *r_rate),
         }, k, W, Hp)
         vw.write(np.vstack([fr, panel]))
     vw.release()
     print(f"[overlay] wrote {args.out}  ({nf} frames)")
-    fin = np.isfinite(rate) & np.isfinite(gt_loom)
-    if fin.sum() > 8:
-        print(f"[overlay] corr(KF loom-rate, GT loom) over whole clip = "
-              f"{np.corrcoef(rate[fin], gt_loom[fin])[0,1]:+.2f}")
+    for nm, r in (("W(width)", rate), ("E(extent)", rate_e), ("S(blend)", rate_s)):
+        fin = np.isfinite(r) & np.isfinite(gt_loom)
+        if fin.sum() > 8:
+            alt = gt_alt; mid = fin & (alt > 0.5) & (alt <= 2)
+            c_all = np.corrcoef(r[fin], gt_loom[fin])[0, 1]
+            c_mid = np.corrcoef(r[mid], gt_loom[mid])[0, 1] if mid.sum() > 8 else float("nan")
+            print(f"[overlay] corr({nm:9s}, GT loom)  whole={c_all:+.2f}  .5-2m={c_mid:+.2f}")
 
 
 if __name__ == "__main__":
