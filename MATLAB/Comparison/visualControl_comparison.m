@@ -424,7 +424,7 @@ for idx = 1:N_steps
     % to run_simulation/simulate_landing. Baselines 2-5 keep the inline V_s/V_h.
     if CTRL_SEL == 1
         cs.k = idx;
-        [V_s, V_h, ~, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
     end
 
 % *************************************************************************
@@ -609,7 +609,7 @@ for idx = 1:N_steps
         % Virtual-compass yaw ASMC + geometric SO(3) tracker (verified blocks).
         % R_d uses Fix-B (body-z from the cbf2 safe lean th_safe); thrust uses the
         % measured tilt cosine R33. Identical to run_simulation/simulate_landing.
-        [psi_d, u_a, cs]     = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
+        [psi_d, u_a, cs]     = blocks.yaw_asmc(V_s(4), V_s_d(4), V_w(3), P, cs);
         [B_tau_cd, T_cd, cs] = blocks.so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
 
         % Ground effect on thrust

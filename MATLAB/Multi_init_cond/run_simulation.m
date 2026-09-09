@@ -44,6 +44,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         if isfield(K_override, 'h_rd'),          P.h_rd      = K_override.h_rd;          end
         if isfield(K_override, 'FILTER_WINDOW'), P.fw        = K_override.FILTER_WINDOW;  end
         if isfield(K_override, 'theta_cap'),     P.theta_cap = K_override.theta_cap;     end
+        if isfield(K_override, 'yaw_rate_law'),  P.yaw_rate_law = K_override.yaw_rate_law; end
+        if isfield(K_override, 'yrl_kp'),        P.yrl_kp    = K_override.yrl_kp;        end
+        if isfield(K_override, 'yrl_ki'),        P.yrl_ki    = K_override.yrl_ki;        end
     end
 
     % --- state init ---
@@ -188,7 +191,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
 
         % --- visibility CBF + inner loop ---
         [I_a_filt, th_safe, theta_cone, ~, R33, cs] = blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
-        [psi_d, u_a, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
+        [psi_d, u_a, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), V_w(3), P, cs);
         [B_tau_cd, T_cd, cs] = blocks.so3_tracker(I_a_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
 
         % --- ground effect + saturation + 1-step actuator delay ---

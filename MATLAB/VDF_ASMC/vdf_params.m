@@ -174,6 +174,25 @@ P.p_a     = 2.0;   % rho_alpha
 P.kappa_a0 = 2.0;  % kappa_alpha(0)
 P.E_a     = 3.0;   % eps_alpha boundary layer
 
+% ---- Yaw-rate law  (PLASMC_YAW_RATE_LAW port; PX4 87cf020, baked ON @ 63aa258) -
+% Opt-in ALTERNATIVE to the kappa_a ASMC above. Drops the sliding-mode switching
+% term and drives u_a (the psi_d rate) as a PI on alpha_e that substitutes the
+% MEASURED derivative w_z = V_w(3) (~= alpha_e_dot, tex eq. `alpha_e_dot`) for a
+% finite difference:
+%     d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z - yrl_ki*int(alpha_e)
+%     u_a       = clip(w_rl, +-yaw_rate_max)     (anti-windup freezes yrl_ie)
+% Default OFF -- the kappa_a leakage ASMC stays the manuscript reference and the
+% P.yaw_rate_law=0 fallback. UNVALIDATED in MATLAB: run the IC gate before =1.
+% PX4's PLASMC_YAW_RL_WZ_SCALE (2.5) is a PERCEPTION magnitude-deficit factor and
+% does NOT port -- MATLAB's V_w(3) is the analytic pseudo-inverse recovery, scale 1.
+% Sign derived for MATLAB's (non-inverted) plant: V_w(3) ~= +alpha_e_dot, and the
+% closed loop psi_b'' + psi_b' + yrl_kp*psi_b ~ d is Hurwitz for yrl_kp>0.
+P.yaw_rate_law = 0;
+P.yrl_kp       = 0.3;   % PLASMC_YAW_RL_KP
+P.yrl_ki       = 0.0;   % PLASMC_YAW_RL_KI  (optional light robustness term; off by default)
+P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
+P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
+
 % ---- Target-visibility CBF  (tex eq. cbf qp) ----------------------------------
 P.theta_cap = deg2rad(43.94);           % post-QP deliverable-tilt cap. PORTED FROM PX4 2026-09-03
                                         % (was 60 deg). PX4 derives it as arccos(g/A_CAP) =
