@@ -38,11 +38,16 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % Computing Desired Image Features Parameters
 % *************************************************************************
 % Defining Desired Feature Points wrt to Target Origin in Target Reference Frame
-% T_nP3 = [-30, 15, 15, -15; 30, 15, -15, -15; 0, 0, 0, 0]/150; 
-% T_nP3 = [-15, 15, 15, -15; 15, 15, -15, -15; 0, 0, 0, 0]/2; 
-T_nP3 = [-20, 15, 15, -15; 20, 15, -15, -15; 0, 0, 0, 0]/250; 
+% 5-point CROSS marker (matches Multi_init_cond/InitVar.m and the PX4 SITL cross):
+% cols 1-4 = symmetric plus-arm tips, col 5 = STUB extending the +x arm (the sole
+% asymmetry -> full 2pi image orientation). Column order (stub LAST) is a contract
+% with image_feature.m's N==5 branch; do not permute.
+% Legacy 4-point trapezoid (pre-2026-09-10): [-20 15 15 -15; 20 15 -15 -15; 0 0 0 0]/250
+T_nP3 = [ 15, -15,   0,   0,  22 ;
+           0,   0,  15, -15,   0 ;
+           0,   0,   0,   0,   0 ] / 250;
 
-% Removing offset due to unsymmetry
+% Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame

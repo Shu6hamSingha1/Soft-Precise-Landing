@@ -104,6 +104,7 @@ if ~isempty(CMP_OVERRIDE)
 end
 
 N_steps = numel(tRange);
+Npts    = size(T_nP3, 2);   % feature-point count (4 = legacy quad, 5 = cross marker)
 
 %% =========================================================================
 %  PRE-ALLOCATE SHARED LOGGING / BUFFER ARRAYS
@@ -112,7 +113,7 @@ U_DS      = zeros(4,  N_steps);
 X_DS      = zeros(13, N_steps + 1);   X_DS(:,1) = x_c;
 V_X_DS    = zeros(24, N_steps);
 D_DS      = zeros(17, N_steps);
-P_DS      = zeros(2,  12, N_steps);   % [V_nP_i(2x4), V_nP_a(2x4), C_nP(2x4)]
+P_DS      = zeros(2,  3*Npts, N_steps);   % [V_nP_i, V_nP_a, C_nP], each 2 x Npts
 
 x_t       = zeros(7,  N_steps);
 dx_t      = zeros(6,  N_steps);
@@ -138,7 +139,7 @@ V_dw_raw  = zeros(3,  N_steps);
 raw_dw_a  = zeros(3,  N_steps + 3);
 
 % _prev variables (replace buffer+smooth4 in _temp.m)
-V_2nP_i_prev = zeros(8, 1);
+V_2nP_i_prev = zeros(2*Npts, 1);
 V_w_i_prev   = zeros(3, 1);
 V_w_a_prev   = zeros(3, 1);
 
@@ -153,10 +154,10 @@ alpha_ia    = tau_ia / (tau_ia + dt);
 I_a_cd_filt = -g;
 
 % Initialise image-block variables so they persist across ZOH steps
-V_nP_i  = zeros(2, 4);
-V_nP_a  = zeros(2, 4);
-C_nP    = zeros(2, 4);
-L_s     = zeros(8, 6);
+V_nP_i  = zeros(2, Npts);
+V_nP_a  = zeros(2, Npts);
+C_nP    = zeros(2, Npts);
+L_s     = zeros(2*Npts, 6);
 V_s_i   = zeros(4, 1);
 V_s_a   = zeros(4, 1);
 V_h_i   = zeros(3, 1);
@@ -214,7 +215,7 @@ if CTRL_SEL == 1
     cs.kappa = P.kappa0;  cs.kappa_a = P.kappa_a0;  cs.psi_d = yaw_init;
     cs.izeta3 = 0; cs.zeta3_prev = 0; cs.ie_a = 0; cs.e_a_prev = 0;
     cs.ie_R = zeros(3,1); cs.thetahat = zeros(2,1);
-    cs.V_2nP_i_prev = zeros(8,1); cs.V_w_i_prev = zeros(3,1);
+    cs.V_2nP_i_prev = zeros(2*Npts,1); cs.V_w_i_prev = zeros(3,1);
     cs.V_s_prev = zeros(2,1); cs.h_d_noS_prev = zeros(3,1);
     cs.raw_ds = zeros(2,4); cs.raw_dh = zeros(3,4);
     cs.V_s_raw = zeros(4,N_steps); cs.V_h_raw = zeros(3,N_steps);
@@ -223,7 +224,7 @@ if CTRL_SEL == 1
     cs.cbf_state = struct('delta_prev',[],'ddelta_ref',zeros(2,1),'decode_fail_n',0, ...
                           'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
     cs.V_s_i = zeros(4,1); cs.V_h_i = zeros(3,1); cs.V_w_i = zeros(3,1);
-    cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,4);
+    cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,Npts);
 end
 
 %% =========================================================================
@@ -557,8 +558,14 @@ for idx = 1:N_steps
         % +k1 virtual-velocity sign in ctrl_Lin2023 (no reciprocal needed).
         xg     = mean(V_nP_i(1,:)) / f;
         yg     = mean(V_nP_i(2,:)) / f;
-        a_img  = polyarea(V_nP_i(1,:), V_nP_i(2,:));
-        a_des  = polyarea(V_nP_d(1,:), V_nP_d(2,:));
+        % polar-sort the feature points about their centroid before polyarea:
+        % the stored cross column order is self-intersecting, which collapses
+        % the raw polyarea (the legacy 4-pt quad was already convex-ordered,
+        % so the sort is a no-op there).
+        [~, oi] = sort(atan2(V_nP_i(2,:)-mean(V_nP_i(2,:)), V_nP_i(1,:)-mean(V_nP_i(1,:))));
+        [~, od] = sort(atan2(V_nP_d(2,:)-mean(V_nP_d(2,:)), V_nP_d(1,:)-mean(V_nP_d(1,:))));
+        a_img  = polyarea(V_nP_i(1,oi), V_nP_i(2,oi));
+        a_des  = polyarea(V_nP_d(1,od), V_nP_d(2,od));
         an     = sqrt(max(a_des,1e-9) / max(a_img,1e-9));
         s_t_lin   = [an*xg; an*yg; an];
         s_t_d_lin = [mean(V_nP_d(1,:))/f; mean(V_nP_d(2,:))/f; 1];   % an_d = 1

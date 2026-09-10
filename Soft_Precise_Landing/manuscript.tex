@@ -708,35 +708,35 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
     & [s] & [m] & [m] \\
 \midrule
 \textbf{Proposed}
-    & $\mathbf{10.57}$           & $\mathbf{0.003}$ & $0.200$
-    & $\mathbf{10.33}$           & $\mathbf{0.004}$ & $0.199$
-    & $\mathbf{10.48}$           & $\mathbf{0.018}$ & $0.200$
-    & $\mathbf{10.51}$           & $\mathbf{0.021}$ & $0.199$
-    & $\mathbf{10.41}$           & $\mathbf{0.009}$ & $0.200$ \\
+    & $\mathbf{11.62}$           & $\mathbf{0.008}$ & $0.200$
+    & $\mathbf{11.06}$           & $\mathbf{0.040}$ & $0.201$
+    & $\mathbf{11.42}$           & $\mathbf{0.025}$ & $0.200$
+    & $\mathbf{11.65}$           & $\mathbf{0.010}$ & $0.200$
+    & $\mathbf{11.29}$           & $\mathbf{0.011}$ & $0.201$ \\
 \cite{lin2022}
-    & $\phantom{0}6.86^\dagger$  & $2.451$ & $1.540$
-    & $\phantom{0}4.79^\dagger$  & $1.766$ & $1.988$
-    & $\phantom{0}8.96^\dagger$  & $1.486$ & $1.063$
-    & $\phantom{0}3.74^\dagger$  & $3.081$ & $2.577$
-    & $\phantom{0}5.21^\dagger$  & $2.575$ & $1.885$ \\
+    & $\phantom{0}6.86^\dagger$  & $2.455$ & $1.538$
+    & $\phantom{0}4.82^\dagger$  & $1.785$ & $1.972$
+    & $\phantom{0}8.90^\dagger$  & $1.483$ & $1.074$
+    & $\phantom{0}3.74^\dagger$  & $3.084$ & $2.577$
+    & $\phantom{0}5.27^\dagger$  & $2.585$ & $1.859$ \\
 \cite{zhang2026}
-    & $\phantom{0}7.60$          & $0.263$ & $0.192$
-    & $\phantom{0}7.46$          & $0.252$ & $0.200$
-    & $\phantom{0}7.46^\dagger$  & $0.503$ & $0.294$
-    & $\phantom{0}7.28^\dagger$  & $0.552$ & $0.427$
-    & $\phantom{0}7.38$          & $0.194$ & $0.196$ \\
+    & $\phantom{0}7.79$          & $0.351$ & $0.208$
+    & $\phantom{0}7.49$          & $0.320$ & $0.203$
+    & $\phantom{0}7.67$          & $0.498$ & $0.220$
+    & $\phantom{0}6.77^\dagger$  & $0.680$ & $0.749$
+    & $\phantom{0}7.41$          & $0.284$ & $0.205$ \\
 \cite{lin2023}
-    & $\phantom{0}4.79^\dagger$  & $2.187$ & $2.901$
-    & $\phantom{0}7.94^\dagger$  & $1.391$ & $1.570$
-    & $\phantom{0}2.33^\dagger$  & $2.100$ & $4.142$
-    & $\phantom{0}0.89^\dagger$  & $2.522$ & $4.871$
-    & $\phantom{0}7.34^\dagger$  & $1.923$ & $1.869$ \\
+    & $\phantom{0}4.79^\dagger$  & $2.191$ & $2.889$
+    & $\phantom{0}8.00^\dagger$  & $1.405$ & $1.561$
+    & $\phantom{0}2.33^\dagger$  & $2.104$ & $4.138$
+    & $\phantom{0}0.86^\dagger$  & $2.544$ & $4.866$
+    & $\phantom{0}8.72^\dagger$  & $1.771$ & $1.472$ \\
 \cite{cho2022}
-    & $\phantom{0}5.42^\dagger$  & $2.818$ & $2.099$
-    & $\phantom{0}6.38^\dagger$  & $1.980$ & $1.385$
-    & $\phantom{0}5.39^\dagger$  & $2.889$ & $2.116$
-    & $\phantom{0}5.63^\dagger$  & $2.800$ & $1.980$
-    & $\phantom{0}5.45^\dagger$  & $2.730$ & $2.039$ \\
+    & $\phantom{0}5.42^\dagger$  & $2.818$ & $2.105$
+    & $\phantom{0}6.20^\dagger$  & $1.960$ & $1.469$
+    & $\phantom{0}5.36^\dagger$  & $2.874$ & $2.145$
+    & $\phantom{0}5.63^\dagger$  & $2.800$ & $1.986$
+    & $\phantom{0}3.95^\dagger$  & $4.029$ & $3.558$ \\
 \bottomrule
 \end{tabular}
 \begin{tablenotes}[flushleft]
@@ -755,10 +755,10 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
 
 The comparison establishes the following observations.
 \begin{enumerate}
-    \item The proposed VDF-ASMC is the \emph{only} controller that reaches the target surface on every trajectory (Table~\ref{comparison: table}, Figs.~\ref{comparison combined: figure} and~\ref{comparison_traj3d_combined: figure}). Every VDF-ASMC cell simultaneously satisfies the altitude, horizontal-error, and time-limit thresholds, with the worst-case horizontal error ($0.021~\text{m}$ on Case~4) well inside the $0.08~\text{m}$ \emph{precise} threshold.
-    \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close. \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.7$--$9.0~\text{s}$ on every trajectory, $1.1$--$2.6~\text{m}$ above the surface. \cite{zhang2026} reaches the target surface on Cases~1, 2, and~5 but produces terminal lateral errors of $0.19$--$0.26~\text{m}$, $2$--$3\times$ the $0.08~\text{m}$ precise bound, with terminal speeds of $0.81$--$0.90~\text{m/s}$ that breach the $0.20~\text{m/s}$ soft bound by $4\times$; on Cases~3 and~4 its fixed-timescale descent breaks feature visibility $0.29$--$0.43~\text{m}$ above the surface. \cite{lin2023} carries no disturbance-rejection integrator, so under wind it holds a steady lateral image offset that no within-framework gain choice removes, and the off-center target leaves the camera FoV on every trajectory, $0.9$--$7.9~\text{s}$ after launch and $1.6$--$4.9~\text{m}$ above the surface. \cite{cho2022} ties its pseudo-inverse lateral velocity command to a sigmoid altitude gate with no integral action, so the lateral error grows through the descent and the features leave the FoV $5.4$--$6.4~\text{s}$ after launch, $1.4$--$2.1~\text{m}$ above the surface, on every trajectory. The per-baseline mechanism contrast against VDF-ASMC is summarized in Table~\ref{mechanism contrast: table}, with the per-baseline failure analyses detailed in Appendix~\ref{baseline analyses appendix: section}.
+    \item The proposed VDF-ASMC is the \emph{only} controller that reaches the target surface on every trajectory (Table~\ref{comparison: table}, Figs.~\ref{comparison combined: figure} and~\ref{comparison_traj3d_combined: figure}). Every VDF-ASMC cell simultaneously satisfies the altitude, horizontal-error, and time-limit thresholds, with the worst-case horizontal error ($0.040~\text{m}$ on Case~2) well inside the $0.08~\text{m}$ \emph{precise} threshold.
+    \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close. \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.7$--$8.9~\text{s}$ on every trajectory, $1.1$--$2.6~\text{m}$ above the surface. \cite{zhang2026} reaches the target surface on Cases~1, 2, 3, and~5 but produces terminal lateral errors of $0.28$--$0.50~\text{m}$, $3$--$6\times$ the $0.08~\text{m}$ precise bound, with terminal speeds of $0.45$--$0.61~\text{m/s}$ that breach the $0.20~\text{m/s}$ soft bound by $2$--$3\times$; on Case~4 its fixed-timescale descent breaks feature visibility $0.75~\text{m}$ above the surface. \cite{lin2023} carries no disturbance-rejection integrator, so under wind it holds a steady lateral image offset that no within-framework gain choice removes, and the off-center target leaves the camera FoV on every trajectory, $0.9$--$8.7~\text{s}$ after launch and $1.5$--$4.9~\text{m}$ above the surface. \cite{cho2022} ties its pseudo-inverse lateral velocity command to a sigmoid altitude gate with no integral action, so the lateral error grows through the descent and the features leave the FoV $4.0$--$6.2~\text{s}$ after launch, $1.5$--$3.6~\text{m}$ above the surface, on every trajectory. The per-baseline mechanism contrast against VDF-ASMC is summarized in Table~\ref{mechanism contrast: table}, with the per-baseline failure analyses detailed in Appendix~\ref{baseline analyses appendix: section}.
 
-    \item These pathologies persist across the same $\lambda$-sweep from IC$_1$ (Appendix~\ref{baseline analyses appendix: section}, Fig.~\ref{comparison_multi_speed: figure}). Across the $80$ baseline runs the soft-precise count is $0/80$. \cite{zhang2026} reaches the target surface on $11$ of $20$ $(\text{traj},\lambda)$ pairs but with terminal lateral errors of $0.12$--$0.39~\text{m}$ and terminal speeds up to $1.8~\text{m/s}$, soft-precise on $0/20$ runs; on the remaining pairs it breaks feature visibility $0.21$--$0.49~\text{m}$ above the surface. \cite{lin2022,lin2023,cho2022} break feature visibility on every run, $0.3$--$5.0$~m above the surface; for \cite{lin2022,lin2023} the break time shortens monotonically as $\lambda$ grows (faster targets break earlier), while \cite{cho2022} breaks within a narrow $5.8$--$9.4~\text{s}$ window at every $\lambda$. VDF-ASMC, by contrast, delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~\ref{speed envelope: figure}), confirming that the velocity-robustness gap is structural. The dual-funnel architecture supplies a unified visibility-and-depth-aware mechanism that no single baseline matches.
+    \item These pathologies persist across the same $\lambda$-sweep from IC$_1$ (Appendix~\ref{baseline analyses appendix: section}, Fig.~\ref{comparison_multi_speed: figure}). Across the $80$ baseline runs the soft-precise count is $0/80$. \cite{zhang2026} reaches the target surface on $14$ of $20$ $(\text{traj},\lambda)$ pairs but with terminal lateral errors of $0.20$--$0.51~\text{m}$ and terminal speeds of $0.36$--$0.67~\text{m/s}$, soft-precise on $0/20$ runs; on the remaining six pairs it breaks feature visibility $0.25$--$0.77~\text{m}$ above the surface. \cite{lin2022,lin2023,cho2022} break feature visibility on every run, $0.3$--$7.6~\text{m}$ above the surface and $0.3$--$15.3~\text{s}$ after launch, faster targets breaking earlier and higher. VDF-ASMC, by contrast, delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~\ref{speed envelope: figure}), confirming that the velocity-robustness gap is structural. The dual-funnel architecture supplies a unified visibility-and-depth-aware mechanism that no single baseline matches.
 \end{enumerate}
 
 \section{CONCLUSION}
@@ -953,7 +953,7 @@ This appendix collects the multi-initial-condition results for Cases~1--4 of Sec
     \label{adaptive gain: figure}
 \end{figure}
 
-Fig.~\ref{adaptive gain: figure} shows the three optical-flow adaptive gains and the yaw channel. (i)~\emph{Lateral $\kappa_x$, $\kappa_y$}: both rise from the small initial value $0.05$ as the adaptive law identifies the realized wind plus $x$/$y$-chase disturbance, peaking at $0.10$ and $0.15$ and settling at $0.09$ and $0.11$ near the growth--leakage equilibrium. (ii)~\emph{Vertical $\kappa_z$}: rises monotonically from $0.05$ to $0.11$ and holds, tracking the persistent vertical disturbance from gravity-scaled depth coupling, ground effect, and the descent-rate transient. Both are signatures of the Remark~\ref{rem:leakage} mechanism, the gain rising only as far as the realized disturbance demands and leaking away when the disturbance is absent. (iii)~\emph{Yaw $(\alpha_\text{e},\omega_r)$}: Case~3 has stationary heading, so $\dot d_\alpha\equiv0$; the error $\alpha_\text{e}$ settles to within $1^\circ$ and the rate command $\omega_r$ to near zero, consistent with the asymptotic-convergence branch of Theorem~\ref{thm:yaw}.
+Fig.~\ref{adaptive gain: figure} shows the three optical-flow adaptive gains and the yaw channel. (i)~\emph{Lateral $\kappa_x$, $\kappa_y$}: both start at the initial value $0.5$ and leak downward to $\approx 0.05$ and $0.04$, the realized wind-plus-chase disturbance on this run never demanding growth above the initial gain. (ii)~\emph{Vertical $\kappa_z$}: likewise leaks from $0.25$ toward $\approx 0.03$, the persistent vertical disturbance from gravity-scaled depth coupling, ground effect, and the descent-rate transient staying within what the initial gain already covers. Both are signatures of the Remark~\ref{rem:leakage} mechanism, the gain rising only as far as the realized disturbance demands and leaking away otherwise. (iii)~\emph{Yaw $(\alpha_\text{e},\omega_r)$}: Case~3 has stationary heading, so $\dot d_\alpha\equiv0$; the error $\alpha_\text{e}$ settles to within $0.1^\circ$ and the rate command $\omega_r$ to near zero, consistent with the asymptotic-convergence branch of Theorem~\ref{thm:yaw}.
 
 \begin{figure}[!t]
 \centering
@@ -962,7 +962,7 @@ Fig.~\ref{adaptive gain: figure} shows the three optical-flow adaptive gains and
     \label{fig:sup-sliding}
 \end{figure}
 
-The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface behaviors per axis. (i)~\emph{$\sigma_x$, $\sigma_y$ (lateral)}: both start at their largest values ($-1.13$ and $-1.53$), where the IC$_2$ image-plane offset enters the surface through the position barrier $\chi_{r_k}\zeta_{r_k}(0)$, then decay through the reaching phase and enter the boundary layer $\mathcal{E}=0.5$ for good within $1.7$ and $1.9$~s. (ii)~\emph{$\sigma_z$ (vertical)}: peaks at $0.43$ during the descent-rate adaptation toward $h_\text{rd}$ and never leaves the boundary layer. The switching term therefore operates in the linear regime for all but the first two seconds of the descent, suppressing chattering as predicted by Theorem~\ref{thm:precision}.
+The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface behaviors per axis. (i)~\emph{$\sigma_x$, $\sigma_y$ (lateral)}: both start small ($-0.19$ and $-0.23$), the IC$_2$ image-plane offset entering the surface through the contracting position barrier $\chi_{r_k}\zeta_{r_k}$ rather than as a large initial excursion, and neither leaves the boundary layer $\mathcal{E}=0.5$. (ii)~\emph{$\sigma_z$ (vertical)}: peaks at $0.29$ during the descent-rate adaptation toward $h_\text{rd}$ and likewise stays inside. The switching term therefore operates in the linear regime throughout the descent, suppressing chattering as predicted by Theorem~\ref{thm:precision}.
 
 \begin{figure}[!t]
 \centering
@@ -971,7 +971,7 @@ The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface b
     \label{fig:sup-thrust}
 \end{figure}
 
-The two panels of Fig.~\ref{fig:sup-thrust} show distinct command behaviors. (i)~\emph{Total thrust $\,^\mathcal{B}T_u(t)$}: stays in $[19.9, 20.9]$~N around the hover thrust $mg\approx 20.6$~N, with the SO(3) tracker realizing the commanded acceleration without over-actuation; small variations near touchdown reflect ground-effect compensation. (ii)~\emph{Lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$}: peaks at $5.02$~m/s$^2$ during the initial 1--2~s of IC$_2$ chase from the $2.83$-m diagonal offset, then settles to $\sim 0.3$~m/s$^2$ as features re-center, staying strictly below the deliverable-tilt-induced limit $|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cap}$ throughout.
+The two panels of Fig.~\ref{fig:sup-thrust} show distinct command behaviors. (i)~\emph{Total thrust $\,^\mathcal{B}T_u(t)$}: stays in $[19.8, 20.8]$~N around the hover thrust $mg\approx 20.7$~N, with the SO(3) tracker realizing the commanded acceleration without over-actuation; small variations near touchdown reflect ground-effect compensation. (ii)~\emph{Lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$}: peaks at $1.27$~m/s$^2$ during the initial 1--2~s of IC$_2$ chase from the $2.83$-m diagonal offset, then settles to $\sim 0.1$~m/s$^2$ as features re-center, staying strictly below the deliverable-tilt-induced limit $|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cap}$ throughout.
 
 
 \section{Baseline Controller Analyses} \label{baseline analyses appendix: section}
@@ -995,16 +995,16 @@ This appendix provides the full baseline gain comparison (Table~\ref{baseline ga
 \end{table*}
 
 \subsection{Performance-Constrained PBVS \cite{lin2022}}
-The scheme of~\cite{lin2022} feeds the transformed velocity error $\xi_{v_k}=e_{v_k}/\rho_{v_k}(t)\in(-1,1)$ into a barrier function over the prescribed-performance envelope $\rho_{p_k}(t)=(\rho_{p_k}(0)-\rho_{p_k}^\infty)e^{-l_{p_k}t}+\rho_{p_k}^\infty$. Widening the $z$-axis to $\rho_{v_\infty}(3)=0.15~\text{m/s}$ accommodates the heave on Cases~2 and~5. The horizontal axes, however, are structurally incompatible with the shared disturbance model: the steady-state velocity error from the $\pm 0.2~\text{m/s}$ wind plus OU turbulence already occupies a substantial fraction of any $\rho_{v_\infty}^{xy}$ compatible with $z$-descent authority, and the moving-target tracking error pushes $\|\xi_v^{xy}\|$ to the barrier $|\xi_v|=1$ on a subset of noise realizations. Since the barrier is a hard constraint, no gain setting simultaneously admits the worst-case velocity error and preserves descent authority. The commanded position excursion forces image features outside the FoV well before touchdown, triggering the visibility break at $t_\text{f}=3.74$--$8.96~\text{s}$ with lateral separations $1.49$--$3.08~\text{m}$ (worst on Case~4), $1.1$--$2.6~\text{m}$ above the surface.
+The scheme of~\cite{lin2022} feeds the transformed velocity error $\xi_{v_k}=e_{v_k}/\rho_{v_k}(t)\in(-1,1)$ into a barrier function over the prescribed-performance envelope $\rho_{p_k}(t)=(\rho_{p_k}(0)-\rho_{p_k}^\infty)e^{-l_{p_k}t}+\rho_{p_k}^\infty$. Widening the $z$-axis to $\rho_{v_\infty}(3)=0.15~\text{m/s}$ accommodates the heave on Cases~2 and~5. The horizontal axes, however, are structurally incompatible with the shared disturbance model: the steady-state velocity error from the $\pm 0.2~\text{m/s}$ wind plus OU turbulence already occupies a substantial fraction of any $\rho_{v_\infty}^{xy}$ compatible with $z$-descent authority, and the moving-target tracking error pushes $\|\xi_v^{xy}\|$ to the barrier $|\xi_v|=1$ on a subset of noise realizations. Since the barrier is a hard constraint, no gain setting simultaneously admits the worst-case velocity error and preserves descent authority. The commanded position excursion forces image features outside the FoV well before touchdown, triggering the visibility break at $t_\text{f}=3.74$--$8.90~\text{s}$ with lateral separations $1.48$--$3.08~\text{m}$ (worst on Case~4), $1.1$--$2.6~\text{m}$ above the surface.
 
 \subsection{PBVS with Adaptive Extended Disturbance Observer \cite{zhang2026}}
-The backstepping law of~\cite{zhang2026} gives a per-axis second-order closed loop with $\omega_n=\sqrt{(K_{c_1}K_{c_3}+K_{c_2})/m}$ and $\zeta=(mK_{c_1}+K_{c_3})/(2m\omega_n)$. This is the strongest baseline, reaching the target surface on Cases~1, 2, and~5 in $t_\text{f}=7.38$--$7.60~\text{s}$ with $r_{xy,\text{f}}=0.19$--$0.26~\text{m}$; on Cases~3 and~4 the lateral error near the ground grows enough that feature visibility breaks $0.29$--$0.43~\text{m}$ above the surface. The structural limitation is the decoupling of horizontal and vertical time scales: even after gentling the $z$ axis ($\omega_n^z\approx 0.4$~rad/s), the $z$-loop drives the UAV through the descent on a fixed timescale $t_\text{f}\approx 7.4~\text{s}$ before the horizontal loop closes the lateral error. The resulting $r_{xy,\text{f}}=0.19$--$0.26~\text{m}$ exceeds $0.08~\text{m}$ on every reached case, and the terminal relative speed of $0.81$--$0.90~\text{m/s}$ also breaks the $0.20~\text{m/s}$ soft bound. With no mechanism coupling descent rate to image-plane error closure, the trade-off cannot be removed by gain tuning.
+The backstepping law of~\cite{zhang2026} gives a per-axis second-order closed loop with $\omega_n=\sqrt{(K_{c_1}K_{c_3}+K_{c_2})/m}$ and $\zeta=(mK_{c_1}+K_{c_3})/(2m\omega_n)$. This is the strongest baseline, reaching the target surface on Cases~1, 2, 3, and~5 in $t_\text{f}=7.41$--$7.79~\text{s}$ with $r_{xy,\text{f}}=0.28$--$0.50~\text{m}$; on Case~4 the lateral error near the ground grows enough that feature visibility breaks $0.75~\text{m}$ above the surface. The structural limitation is the decoupling of horizontal and vertical time scales: even after gentling the $z$ axis ($\omega_n^z\approx 0.4$~rad/s), the $z$-loop drives the UAV through the descent on a fixed timescale $t_\text{f}\approx 7.6~\text{s}$ before the horizontal loop closes the lateral error. The resulting $r_{xy,\text{f}}=0.28$--$0.50~\text{m}$ exceeds $0.08~\text{m}$ on every reached case, and the terminal relative speed of $0.45$--$0.61~\text{m/s}$ also breaks the $0.20~\text{m/s}$ soft bound. With no mechanism coupling descent rate to image-plane error closure, the trade-off cannot be removed by gain tuning.
 
 \subsection{Robust Prescribed-Performance IBVS \cite{lin2023}}
-The controller of~\cite{lin2023} drives circle-feature image moments to their desired values through a prescribed-performance funnel on the transformed feature error, with a geometric SO(3) attitude tracker on the inner loop. The funnel bounds the feature error, but the control law contains no disturbance-rejection integrator, and the funnel constrains the feature \emph{error} rather than retaining a growing, off-center target inside the FoV. These two omissions are structural. Under the constant-mean wind of the shared disturbance model, the proportional funnel law settles at a non-zero steady lateral image offset that no within-framework gain choice removes, and the off-center target leaves the camera FoV on every trajectory, $0.89$--$7.94~\text{s}$ after launch and $1.6$--$4.9~\text{m}$ above the surface (earliest on Case~4). Across the target-velocity sweep the break time shortens monotonically with $\lambda$ on every trajectory ($0/20$ soft-precise). The limitation follows from the missing integrator and the missing visibility-retention mechanism, not from gain selection.
+The controller of~\cite{lin2023} drives circle-feature image moments to their desired values through a prescribed-performance funnel on the transformed feature error, with a geometric SO(3) attitude tracker on the inner loop. The funnel bounds the feature error, but the control law contains no disturbance-rejection integrator, and the funnel constrains the feature \emph{error} rather than retaining a growing, off-center target inside the FoV. These two omissions are structural. Under the constant-mean wind of the shared disturbance model, the proportional funnel law settles at a non-zero steady lateral image offset that no within-framework gain choice removes, and the off-center target leaves the camera FoV on every trajectory, $0.86$--$8.72~\text{s}$ after launch and $1.5$--$4.9~\text{m}$ above the surface (earliest on Case~4). Across the target-velocity sweep the break time shortens monotonically with $\lambda$ on every trajectory ($0/20$ soft-precise). The limitation follows from the missing integrator and the missing visibility-retention mechanism, not from gain selection.
 
 \subsection{Feed-Forward IBVS \cite{cho2022}}
-The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\boldsymbol{e}+\boldsymbol{v}_{\text{ff}}$ and gates the $z$ axis by the sigmoid altitude gain on the image-centroid displacement norm. Under the shared disturbance model the sigmoid gate admits the descent while the pseudo-inverse lateral loop, lacking integral action, cannot hold the moving target centered against the wind. The lateral error grows through the descent and the features leave the FoV $5.4$--$6.4~\text{s}$ after launch, $1.4$--$2.1~\text{m}$ above the surface, on every case. Because the law contains neither integral action against the constant-mean wind nor any visibility mechanism, no choice of $\lambda$, $k_\sigma$ closes the gap: lowering the gate throttles descent, raising it adds sigmoid chatter from centroid jitter under pixel noise.
+The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\boldsymbol{e}+\boldsymbol{v}_{\text{ff}}$ and gates the $z$ axis by the sigmoid altitude gain on the image-centroid displacement norm. Under the shared disturbance model the sigmoid gate admits the descent while the pseudo-inverse lateral loop, lacking integral action, cannot hold the moving target centered against the wind. The lateral error grows through the descent and the features leave the FoV $4.0$--$6.2~\text{s}$ after launch, $1.5$--$3.6~\text{m}$ above the surface, on every case. Because the law contains neither integral action against the constant-mean wind nor any visibility mechanism, no choice of $\lambda$, $k_\sigma$ closes the gap: lowering the gate throttles descent, raising it adds sigmoid chatter from centroid jitter under pixel noise.
 
 
 \begin{table*}[!t]
