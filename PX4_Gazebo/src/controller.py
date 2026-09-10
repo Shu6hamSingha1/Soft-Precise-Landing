@@ -600,7 +600,14 @@ class Controller(Thread):
         if os.environ.get("PLASMC_YAW_RATE_LAW") == "1" and MARKER_TYPE != "cross":
             print("[Controller] ⚠ PLASMC_YAW_RATE_LAW=1 ignored — validated for MARKER_TYPE=cross only")
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
-        self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
+        # Integral term REMOVED 2026-09-10: SWEPT {0,0.1,0.3,0.6}, IC1+IC2 n=3
+        # (test_data/YawRLKiSweep/, 2026-09-09) -- MONOTONICALLY WORSE, |e_a| tail
+        # 12.7deg->13.9->17.8->29.4 (k_i=0.6 has a +91deg windup outlier); xy
+        # unaffected. Cause: the w_z confidence gate freezes the integral in exactly
+        # the terminal window where the residual forms, so k_i only adds lag to the
+        # 287ms yaw loop pre-gate -> larger e_a at gate-fire -> larger residual.
+        # A tested-and-rejected dead end, not an untried option -- do not re-add
+        # without first fixing the gate-freeze-vs-ramp issue this diagnosed.
         # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-09: unified on manuscript) ──
         # Law increment is now `k_p*e_a + w_z_eff`, w_z_eff = WZ_SIGN*WZ_SCALE*w_z,
         # with w_z = MANUSCRIPT rotational optic flow from BOTH sources:
@@ -2075,10 +2082,9 @@ class Controller(Thread):
         self._u_a = []        # commanded yaw rate (rad/s)
 
         # New yaw-rate law state (PLASMC_YAW_RATE_LAW) -- own integrator + own (light,
-        # optional) integral term, deliberately SEPARATE from _ie_a/_sigma_a/_kappa_a above
-        # so the ASMC path can keep running unmodified alongside it for comparison.
+        # deliberately SEPARATE from _ie_a/_sigma_a/_kappa_a above so the ASMC path
+        # can keep running unmodified alongside it for comparison.
         self._yaw_rl_cmd = []   # this law's own w_u[2] integrator state (rad/s)
-        self._yaw_rl_ie = []    # its own e_a integral, for the optional k_i robustness term
         self._yaw_rl_gated = [] # 1.0 while the w_z confidence gate is holding the integrator, else 0.0
 
         # Attitude reference / SO(3) diagnostics
@@ -3284,8 +3290,7 @@ class Controller(Thread):
         # ── NEW YAW-RATE LAW computation (see __init__ for the full derivation) ──
         # Unconditional: runs alongside the ASMC above for offline comparison regardless
         # of whether it's driving the output (gated in _attCtrl). Own integrator
-        # (self._yaw_rl_cmd), own light-optional integral (self._yaw_rl_ie, k_i=0 default),
-        # own anti-windup -- entirely independent of ie_a/sigma_a/kappa_a/u_a above.
+        # (self._yaw_rl_cmd), entirely independent of ie_a/sigma_a/kappa_a/u_a above.
         #
         # ⚠ SIGN HISTORY:
         #  - 2026-09-04: increment is `k_p*e_a - w_z`, NOT `w_z - k_p*e_a` (first-written
@@ -3321,24 +3326,15 @@ class Controller(Thread):
 
         if len(self._yaw_rl_cmd) == 0:
             self._yaw_rl_cmd.append(0.0)
-            self._yaw_rl_ie.append(0.0)
         elif len(self._dt) > 0 and self._dt[-1] > 1e-6:
             _rl_prev = self._yaw_rl_cmd[-1]
-            _rl_sat = abs(_rl_prev) >= _psid_rate - 1e-9
-            if _rl_sat or _wz_untrusted:
-                self._yaw_rl_ie.append(self._yaw_rl_ie[-1])            # freeze — anti-windup / low w_z confidence
-            else:
-                self._yaw_rl_ie.append(self._yaw_rl_ie[-1]
-                                        + self._dt[-1] * 0.5 * (self._e_a[-1] + self._e_a[-2]))
             if self._yaw_hold or _wz_untrusted:
                 self._yaw_rl_cmd.append(_rl_prev)                      # frozen (yaw-hold, or w_z untrusted)
             else:
-                _rl_new = _rl_prev + self._dt[-1] * (
-                    self._yaw_rl_kp * e_a + _wz_eff - self._yaw_rl_ki * self._yaw_rl_ie[-1])
+                _rl_new = _rl_prev + self._dt[-1] * (self._yaw_rl_kp * e_a + _wz_eff)
                 self._yaw_rl_cmd.append(float(np.clip(_rl_new, -_psid_rate, _psid_rate)))
         else:
             self._yaw_rl_cmd.append(self._yaw_rl_cmd[-1])
-            self._yaw_rl_ie.append(self._yaw_rl_ie[-1])
 
         # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
         #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]   (u_a rate-limited, see above)
@@ -4182,7 +4178,6 @@ class Controller(Thread):
             "HD_KR": float(self._hd_kr),
             "YAW_RATE_LAW": self._yaw_rate_law,
             "YAW_RL_KP": float(self._yaw_rl_kp),
-            "YAW_RL_KI": float(self._yaw_rl_ki),
             "YAW_RL_WZ_SIGN": float(self._yaw_rl_wz_sign),
             "YAW_RL_WZ_SCALE": float(self._yaw_rl_wz_scale),
             "YAW_RL_GATE": bool(self._yaw_rl_gate),
@@ -4324,7 +4319,6 @@ class Controller(Thread):
             "sigma_a(t)": self._sigma_a,
             "kappa_a(t)": self._kappa_a,
             "yaw_rl_cmd(t)": self._yaw_rl_cmd,   # new yaw-rate law's own w_u[2] integrator (rad/s)
-            "yaw_rl_ie(t)": self._yaw_rl_ie,     # its (optional, default-0-gain) e_a integral
             "yaw_rl_gated(t)": self._yaw_rl_gated,  # 1.0 while the w_z confidence gate is holding the integrator
             "u_a(t)": self._u_a,
             # Attitude / output
