@@ -143,13 +143,22 @@ def draw_landing_corridor(ax, xt, yt, zt, half_xy=PRECISE_XY_M,
     ax.plot(xR, yR, zB, color=edge_color, lw=edge_lw, ls=edge_ls)
 
 
+def _cnp_cols(P_DS):
+    """Column slice of the physical camera corners C_nP inside P_DS.
+    Layout is [V_nP_i | V_nP_a | C_nP], each Np wide, so C_nP = the last
+    third.  Np-agnostic: 4 for the legacy quad marker, 5 for the cross."""
+    Np = P_DS.shape[1] // 3
+    return slice(2 * Np, 3 * Np)
+
+
 def _last_valid_p(P_DS, n_max):
-    """Return the largest j < n_max such that P_DS[:, 8:12, j] has any
-    non-zero entry. Some runs zero-pad P_DS earlier than the saved `idx`,
-    making P_DS[:, 8:12, idx-1] vanish — back-search guarantees we
-    snapshot the actual last touchdown sample."""
+    """Return the largest j < n_max such that the C_nP block at sample j has
+    any non-zero entry. Some runs zero-pad P_DS earlier than the saved `idx`,
+    making the idx-1 sample vanish — back-search guarantees we snapshot the
+    actual last touchdown sample."""
+    cs = _cnp_cols(P_DS)
     j = min(n_max, P_DS.shape[2]) - 1
-    while j >= 0 and not np.any(P_DS[:, 8:12, j] != 0):
+    while j >= 0 and not np.any(P_DS[:, cs, j] != 0):
         j -= 1
     return max(j, 0)
 
@@ -289,8 +298,9 @@ def plot_image_plane(traj):
         ics.append(d.X_DS[:3, 0])
         j_end = _last_valid_p(d.P_DS, n)
         end_idx.append(j_end)
-        end_corners.append((d.P_DS[0, 8:12, j_end].copy(),
-                            d.P_DS[1, 8:12, j_end].copy()))
+        _cs = _cnp_cols(d.P_DS)
+        end_corners.append((d.P_DS[0, _cs, j_end].copy(),
+                            d.P_DS[1, _cs, j_end].copy()))
         if desired_quad is None and hasattr(d, "V_nP_d"):
             Pd = d.V_nP_d
             desired_quad = (np.asarray(Pd[0, :]).copy(),
@@ -308,14 +318,14 @@ def plot_image_plane(traj):
     for k, run in enumerate(results):
         d = run.data
         n_valid = end_idx[k] + 1     # trim past the zero-padded tail
-        P = d.P_DS[:, 8:12, :n_valid]
+        P = d.P_DS[:, _cnp_cols(d.P_DS), :n_valid]
         c = ic_colors[k]
         ic = ics[k]
 
         # Corner trajectories — color by IC, linestyle by corner
-        for i in range(4):
+        for i in range(P.shape[1]):
             ax.plot(P[0, i, :], P[1, i, :], color=c, lw=0.7, alpha=0.5,
-                    ls=corner_styles[i])
+                    ls=corner_styles[i % len(corner_styles)])
 
         # Start quad (solid, faded)
         sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
@@ -486,8 +496,9 @@ def plot_combined(traj):
         n = _land_idx(d) or _idx_of(d)
         j_end = _last_valid_p(d.P_DS, n)
         end_idx.append(j_end)
-        end_corners.append((d.P_DS[0, 8:12, j_end].copy(),
-                            d.P_DS[1, 8:12, j_end].copy()))
+        _cs = _cnp_cols(d.P_DS)
+        end_corners.append((d.P_DS[0, _cs, j_end].copy(),
+                            d.P_DS[1, _cs, j_end].copy()))
         if desired_quad is None and hasattr(d, "V_nP_d"):
             Pd = d.V_nP_d
             desired_quad = (np.asarray(Pd[0, :]).copy(),
@@ -504,12 +515,12 @@ def plot_combined(traj):
     for k, run in enumerate(results):
         d = run.data
         n_valid = end_idx[k] + 1
-        P = d.P_DS[:, 8:12, :n_valid]
+        P = d.P_DS[:, _cnp_cols(d.P_DS), :n_valid]
         c = ic_colors[k]
         ic = run.data.X_DS[:3, 0]
-        for i in range(4):
+        for i in range(P.shape[1]):
             axI.plot(P[0, i, :], P[1, i, :], color=c, lw=0.7, alpha=0.5,
-                     ls=corner_styles[i])
+                     ls=corner_styles[i % len(corner_styles)])
         sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
         axI.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
         ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])

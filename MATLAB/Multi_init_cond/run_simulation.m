@@ -342,7 +342,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     result.soft        = result.success && (result.final_rel_vel <= 0.2);
     result.fov_fail    = fov_fail;
     result.fov_fail_t  = fov_fail_t;
-    result.lag         = LAG;   % PX4-SITL lag model state (LAG.on false => bit-exact legacy path)
+    % (PX4 lag-model state LAG is captured in result.data via the workspace save
+    %  below; not a top-level result field -- the sweep harnesses preallocate a
+    %  fixed struct template and an extra field breaks `results(k) = tmp`.)
 
     if ~landed, idx = idx - 1; end
 
