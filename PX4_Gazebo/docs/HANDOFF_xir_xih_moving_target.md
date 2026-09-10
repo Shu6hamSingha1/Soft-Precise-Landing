@@ -9,6 +9,36 @@ a moving-target run (rover, and/or the ArUco/cross world with a scripted target 
 MATLAB (realistic plant: pixel noise + ground effect + 1-step delay) says this pair is clean on
 **both** regimes; `XIR` alone is not enough and `XI2=1.0` is the reason.
 
+## ⛔ SITL RESULT (2026-09-11) — REFUTED, do NOT bake
+
+Ran the exact experiment above: GT-FB, **rover world only** (per user), 2 arms
+{base XIR0.10/XI2 1.0, cand XIR0.20/XI2 0.20} × 2 motion {moving Circular @ nominal,
+static ROVER_MOTION=0} × 2 IC {IC2 = discriminator, IC1 = kappa-leakage canary}, n=3.
+Harness + data: `test_data/XirXi2_RoverGTFB/`.
+
+| cell | base (XIR0.10/XI2 1.0) | cand (XIR0.20/XI2 0.20) |
+|---|---|---|
+| moving IC2 | **3/3 precise**, xy 0.03–0.05, terminal s_e_n ~0.1, **converged, no growth-back** | 2/4 precise, xy →0.107, p_r collapses ~1.9, larger terminal s_e_n |
+| moving IC1 | 2/3 precise, bounded (kappa_xy ≤1.22) | **1/3 DETONATION** — kappa_xy 0.5→30 (=cap), a_u_xy 1.3e5, xy 12 m |
+| static IC2/IC1 | 3/3 soft+precise | 3/3 soft+precise, marginally worse xy |
+
+**The MATLAB failure does not reproduce.** Baseline XIR=0.10 already lands 3/3 precise on
+moving IC2 with `s_e_n` converged and *staying* converged through the terminal phase — the
+predicted "terminal |s_e_xy| grows to 0.79 → FoV loss" is a noiseless-MATLAB artifact; SITL
+flow lag / plant dynamics regulate the moving residual fine at the wide funnel.
+
+**The candidate fails success-criterion #3.** Moving IC1 rep0 is exactly the
+`project_ic1_kappa_leakage_drift` fly-away this doc warned about: XI2→0.20 drops terminal
+G-exposure → `P_XY=2.5` over-leaky → κ drains → error grows inside the wide funnel → ratchet.
+
+**Conclusion:** keep `PLASMC_XIR_{X,Y}=0.10`, `PLASMC_XI2_{X,Y}=1.0`. This is a
+`feedback_gain_values_not_portable_either_direction` case — the funnel-deficit *mechanism*
+has no SITL correlate. The moving-rover precision lever is not XIR/XI2. Any future XI2 drop
+must walk `P_XY` down from 2.5 first with an IC1 re-check — but there is no SITL evidence of
+the problem this was meant to solve. (Caveats on the refutation: n=3, GT-FB only — perception-ON
+rover is independently blocked on detector collapse — single trajectory.)
+Memory: `px4/feedback_xir_xi2_handoff_refuted_sitl`.
+
 ## Why — the mechanism (MATLAB-traced)
 
 `p_r(t) = p_r_inf + (p_r0 − p_r_inf)·e^(−XIR·t)`, and **the position-funnel width *is* the barrier
