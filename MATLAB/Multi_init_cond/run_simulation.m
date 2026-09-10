@@ -245,9 +245,12 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         T_cd          = max(min(T_cd, T_max), T_min);
 
         u_2_buf(:,idx) = [B_tau_cd; T_cd];
-        if idx > delay, u_2 = u_2_buf(:, idx - delay);
-        else,           u_2 = [zeros(3,1); m*norm(g)]; end
-        % PX4 actuation lag: first-order hold on the delayed command -- ~38 ms on
+        % When the lag model is on, the first-order hold below IS the actuation
+        % lag -- the separate 1-step pure delay would double-count, so bypass it.
+        eff_delay = delay; if LAG.on, eff_delay = 0; end
+        if idx > eff_delay, u_2 = u_2_buf(:, idx - eff_delay);
+        else,               u_2 = [zeros(3,1); m*norm(g)]; end
+        % PX4 actuation lag: first-order hold on the command -- ~38 ms on
         % roll/pitch torque + thrust, ~287 ms on yaw torque (measured, memory
         % feedback_impulse_response). Bypassed when LAG.on is false.
         if LAG.on
