@@ -30,12 +30,34 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     init_robustness;          % robustness params (only active when NOISE=1)
     Npts = size(T_nP3, 2);    % feature-point count (4 = legacy quad, 5 = cross marker)
 
-    % Optional environment override (NOISE / GE / delay) for the sweep harnesses.
+    % Optional environment override (NOISE / GE / delay / lag) for the sweep harnesses.
     if ~isempty(cfg_override)
         if isfield(cfg_override, 'NOISE'), NOISE = cfg_override.NOISE; end
         if isfield(cfg_override, 'GE'),    GE    = cfg_override.GE;    end
         if isfield(cfg_override, 'delay'), delay = cfg_override.delay; end
     end
+
+    % --- PX4-SITL lag model (default OFF -> the pure delay=1 path is bit-exact) ---
+    %   PX4 has three lag stages MATLAB's RK5/ZOH plant lacks (CONTROLLER_PARITY.md A4,
+    %   memory feedback_impulse_response): a ~38 ms body-rate + thrust actuation lag,
+    %   a ~287 ms yaw-rate lag, and a perception/pipeline transport lag (capture + bridge
+    %   + causal savgol group delay) that stretches the *effective* outer-loop servo lag
+    %   to ~0.9-1.0 s (MOVING_TARGET_PREP.md). Modeled here as two first-order holds on
+    %   the actuation channel + one transport delay on the measured corners feeding
+    %   image_features. Enable with cfg_override.lag = 1 (defaults) or a struct to tune.
+    LAG = struct('on',false,'tau_act',0.038,'tau_yaw',0.287,'meas_delay',0.16);
+    if ~isempty(cfg_override) && isfield(cfg_override,'lag') && ~isempty(cfg_override.lag)
+        lg = cfg_override.lag;
+        if isstruct(lg)
+            LAG.on = true;
+            for fn = fieldnames(lg)', LAG.(fn{1}) = lg.(fn{1}); end
+        elseif lg   % scalar truthy -> defaults
+            LAG.on = true;
+        end
+    end
+    a_act = LAG.tau_act / (LAG.tau_act + dt);      % first-order hold coeff, roll/pitch/thrust
+    a_yaw = LAG.tau_yaw / (LAG.tau_yaw + dt);      % first-order hold coeff, yaw torque
+    md_n  = max(0, round(LAG.meas_delay / dt));    % measurement transport delay [steps]
 
     % Controller gains live in vdf_params (single source of truth). multi_Init_Var
     % passes K_override = []; keep h_rd / FILTER_WINDOW overrides for sweep harnesses.
@@ -114,6 +136,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     u_2_buf      = zeros(4, N_steps);
     raw_dw_a     = zeros(3, N_steps + 3);
     V_w_a_prev   = zeros(3,1);
+    u_2_lag      = [zeros(3,1); m*norm(g)];   % first-order actuation-lag state (LAG.on)
+    C_nP_buf     = cell(1, N_steps);          % measured-corner history for the transport delay
     V_nP_i = zeros(2,Npts); V_nP_a = zeros(2,Npts); C_nP = zeros(2,Npts);
     V_s_a = zeros(4,1); V_h_a = zeros(3,1); V_w_a = zeros(3,1); V_dw_a = zeros(3,1);
     V_s = zeros(4,1); V_h = zeros(3,1); V_w = zeros(3,1);
@@ -169,7 +193,16 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         V_w_a_prev = V_w_a;
 
         % --- VERIFIED controller: image features (single source = the blocks) ---
-        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
+        % Perception/pipeline transport lag: feed the controller the corners as
+        % measured md_n control steps ago (physical FoV check above still uses the
+        % true current C_nP). No-op when LAG.on is false (md_n unused).
+        C_nP_buf{idx} = C_nP;
+        if LAG.on && md_n > 0 && idx > md_n
+            C_nP_meas = C_nP_buf{idx - md_n};
+        else
+            C_nP_meas = C_nP;
+        end
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP_meas, I_R_V, I_R_C, P, cs);
 
         % --- early landing check ---
         alt_above = abs(I_p_c(3) - x_t(3,idx));
@@ -207,6 +240,14 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         u_2_buf(:,idx) = [B_tau_cd; T_cd];
         if idx > delay, u_2 = u_2_buf(:, idx - delay);
         else,           u_2 = [zeros(3,1); m*norm(g)]; end
+        % PX4 actuation lag: first-order hold on the delayed command -- ~38 ms on
+        % roll/pitch torque + thrust, ~287 ms on yaw torque (measured, memory
+        % feedback_impulse_response). Bypassed when LAG.on is false.
+        if LAG.on
+            aa = [a_act; a_act; a_yaw; a_act];
+            u_2_lag = aa.*u_2_lag + (1-aa).*u_2;
+            u_2 = u_2_lag;
+        end
         if any(isnan(u_2)) || norm(u_2) > 1e4
             fprintf('  BREAK: u_2 invalid at idx=%d (t=%.2f)\n', idx, tRange(idx)); break;
         end
@@ -292,6 +333,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     result.soft        = result.success && (result.final_rel_vel <= 0.2);
     result.fov_fail    = fov_fail;
     result.fov_fail_t  = fov_fail_t;
+    result.lag         = LAG;   % PX4-SITL lag model state (LAG.on false => bit-exact legacy path)
 
     if ~landed, idx = idx - 1; end
 
