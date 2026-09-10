@@ -180,11 +180,11 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 
 % ---- Yaw-rate law  (PLASMC_YAW_RATE_LAW port; PX4 87cf020, baked ON @ 63aa258) -
 % Opt-in ALTERNATIVE to the kappa_a ASMC above. Drops the sliding-mode switching
-% term and drives u_a (the psi_d rate) as a PI on alpha_e that substitutes the
+% term and drives u_a (the psi_d rate) as a PD on alpha_e that substitutes the
 % MEASURED derivative w_z = V_w(3) (~= alpha_e_dot, tex eq. `alpha_e_dot`) for a
 % finite difference:
-%     d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z - yrl_ki*int(alpha_e)
-%     u_a       = clip(w_rl, +-yaw_rate_max)     (anti-windup freezes yrl_ie)
+%     d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z
+%     u_a       = clip(w_rl, +-yaw_rate_max)
 % DEFAULT (2026-09-09): validated clean win on the cross-marker stack -- IC1-5
 % noiseless + realistic seed=1 both 25/25 soft-precise, 75/75 noisy multi-seed,
 % mean|e_a| 0.5 deg vs the ASMC's 2.5 (max 2 vs 21); on CircularYaw it holds
@@ -194,11 +194,13 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % PX4's PLASMC_YAW_RL_WZ_SCALE (2.5) is a PERCEPTION magnitude-deficit factor and
 % does NOT port -- MATLAB's V_w(3) is the analytic pseudo-inverse recovery, scale 1.
 % Sign derived for MATLAB's (non-inverted) plant: V_w(3) ~= +alpha_e_dot, closed
-% loop  alpha_e'' + alpha_e' + yrl_kp*alpha_e ~ d(d_alpha)/dt  Hurwitz for yrl_kp>0.
+% loop  alpha_e' + yrl_kp*alpha_e ~ d_alpha  Hurwitz for yrl_kp>0.
+% Integral term REMOVED 2026-09-10: k_i was 0.0 in every validated config above
+% (PX4's one k_i<0 attempt was itself a dead-end sign) -- dead code, not a
+% validated omission. Re-add (with its anti-windup) if a real bias-rejection
+% need is demonstrated; do not re-add speculatively.
 P.yaw_rate_law = 1;
 P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP)
-P.yrl_ki       = 0.0;   % k_i, STABILISING sign +k_i*int(e_a), needs 0<=k_i<k_p; default 0
-                        % (rejects a constant d_alpha bias; PX4's -k_i was a dead-end sign)
 P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
 P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
 

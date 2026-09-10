@@ -13,11 +13,14 @@ function [psi_d, u_a, cs] = yaw_asmc(alpha, alpha_d, w_z, P, cs)
 %   P.yaw_rate_law selects the law:
 %     1 (DEFAULT) -- direct-w_z rate law (tex eq. `yaw control law`; PX4
 %                    PLASMC_YAW_RATE_LAW, baked ON 63aa258): drop the sliding-mode
-%                    switching term, drive u_a as a PI on alpha_e that uses the
+%                    switching term, drive u_a as a PD on alpha_e that uses the
 %                    MEASURED derivative w_z in place of a finite difference --
-%                       d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z - yrl_ki*int(alpha_e)
+%                       d/dt w_rl = yrl_kp*alpha_e + yrl_wz_sign*w_z
 %                       u_a       = clip(w_rl, +-yaw_rate_max)
 %                    Validated: IC1-5 25/25 SP; |e_a| ~1 deg to 0.7 rad/s spin.
+%                    (Integral term REMOVED 2026-09-10: k_i was 0.0 in every tested
+%                    config, untested at k_i>0 -- dead code, not a validated omission.
+%                    Re-add if a future robustness need is demonstrated.)
 %     0           -- leakage kappa_a ASMC (documented alternative / fallback):
 %                    lags a rotating target by ~12-23 deg (the SO(3) e_R[2]=sin(dpsi)
 %                    ceiling), collapses past ~0.9 rad/s.
@@ -26,17 +29,12 @@ function [psi_d, u_a, cs] = yaw_asmc(alpha, alpha_d, w_z, P, cs)
     e_a   = atan2(sin(e_raw), cos(e_raw));           % full +-pi (alpha is 2pi-disambiguated)
 
     if isfield(P, 'yaw_rate_law') && P.yaw_rate_law
-        % ---- PLASMC_YAW_RATE_LAW: direct-w_z PI, no kappa_a ASMC ----------------
+        % ---- PLASMC_YAW_RATE_LAW: direct-w_z PD, no kappa_a ASMC ----------------
         if ~isfield(cs, 'yrl_cmd')
-            cs.yrl_cmd = 0;  cs.yrl_ie = 0;                     % first step: u_a = 0
+            cs.yrl_cmd = 0;                                     % first step: u_a = 0
         else
-            rl_sat = abs(cs.yrl_cmd) >= P.yaw_rate_max - 1e-9;
-            if ~rl_sat                                          % anti-windup: hold int while saturated
-                cs.yrl_ie = cs.yrl_ie + P.dt*(cs.e_a_prev + e_a)/2;
-            end
             rl_new = cs.yrl_cmd + P.dt*( P.yrl_kp*e_a ...
-                                         + P.yrl_wz_sign*w_z ...
-                                         + P.yrl_ki*cs.yrl_ie );   % +k_i = stabilising sign (0<=k_i<k_p); tex `yaw control law`
+                                         + P.yrl_wz_sign*w_z );  % tex `yaw control law`
             cs.yrl_cmd = max(min(rl_new, P.yaw_rate_max), -P.yaw_rate_max);
         end
         u_a = cs.yrl_cmd;
