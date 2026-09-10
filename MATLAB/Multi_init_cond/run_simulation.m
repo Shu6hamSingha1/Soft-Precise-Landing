@@ -38,13 +38,20 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     end
 
     % --- PX4-SITL lag model (default OFF -> the pure delay=1 path is bit-exact) ---
-    %   PX4 has three lag stages MATLAB's RK5/ZOH plant lacks (CONTROLLER_PARITY.md A4,
-    %   memory feedback_impulse_response): a ~38 ms body-rate + thrust actuation lag,
-    %   a ~287 ms yaw-rate lag, and a perception/pipeline transport lag (capture + bridge
-    %   + causal savgol group delay) that stretches the *effective* outer-loop servo lag
-    %   to ~0.9-1.0 s (MOVING_TARGET_PREP.md). Modeled here as two first-order holds on
-    %   the actuation channel + one transport delay on the measured corners feeding
-    %   image_features. Enable with cfg_override.lag = 1 (defaults) or a struct to tune.
+    %   Enable with cfg_override.lag = 1 (defaults) or a struct to tune fields:
+    %     tau_act    first-order hold on roll/pitch torque + thrust  [s]
+    %     tau_yaw    first-order hold on yaw torque                  [s]
+    %     meas_delay transport delay on measured corners -> image_features [s]
+    %
+    %   ⚠ CALIBRATED 2026-09-10 (gate_lag_sweep / _md): the TORQUE holds (tau_act/
+    %   tau_yaw) add a pole to the attitude loop, which so3_tracker assumes is
+    %   instantaneous -> they destabilise the INNER loop (validated config 14/25 at
+    %   tau_act=20 ms, 0/25 at 38 ms), NOT the h_rd/chi_r outer loop. PX4's real
+    %   "38 ms rate-loop lag" is cmd-rate -> achieved-rate with a PX4 rate loop
+    %   around it; MATLAB integrates torque directly and has no rate loop, so a
+    %   torque hold is the WRONG surrogate. Use meas_delay (perception latency,
+    %   the lever PX4 docs tie h_rd/chi_r to) and keep it <= ~0.03 s -- MATLAB's
+    %   own tune cliffs hard past that. See project_matlab_px4_lag_model_2026_09_10.
     LAG = struct('on',false,'tau_act',0.038,'tau_yaw',0.287,'meas_delay',0.16);
     if ~isempty(cfg_override) && isfield(cfg_override,'lag') && ~isempty(cfg_override.lag)
         lg = cfg_override.lag;
