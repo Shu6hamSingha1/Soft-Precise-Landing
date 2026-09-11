@@ -108,11 +108,19 @@ axis_lbl = [r"$x$", r"$y$", r"$z$"]
 pos_ratio = r_bar_e / p_r     # 2 x N, in [-1, 1]: image-position error / its envelope
 vel_ratio = h_e / p_h         # 3 x N, in [-1, 1]: optic-flow error / its envelope
 
+# Panel (c): funnel-compatibility ratio C_k = rho_nu,k / (rho_nu,z * |s_k|), k in {x,y}.
+# s_k is the RAW (not error) normalized lateral image position -- V_X_DS rows 1:2 are
+# cs.V_s_i(1:2), the controller-recovered s_x, s_y (matches s_e_log's source, so it's
+# the same internal signal the rest of this figure already uses).
+s_xy   = d.V_X_DS[0:2, :N]                    # 2 x N
+compat = p_h[0:2] / (p_h[2:3] * (np.abs(s_xy) + 1e-9)) # 2 x N: C_x, C_y (eps guards s_k==0)
+
 print("Panel 1 (position) peak |ratio| per axis:", np.max(np.abs(pos_ratio), axis=1))
 print("Panel 2 (velocity) peak |ratio| per axis:", np.max(np.abs(vel_ratio), axis=1))
 print("Panel 2 (velocity) terminal ratio per axis:", vel_ratio[:, -1])
+print("Panel 3 (compatibility) min ratio per axis:", np.nanmin(compat, axis=1))
 
-fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6))
+fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
 
 ax = axes[0]
 ax.axhline(1.0, color="0.35", lw=1.0, ls="--")
@@ -124,7 +132,7 @@ for k, c in zip(range(2), ["C0", "C2"]):
 ax.set_ylim(-1.15, 1.15)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
 ax.set_ylabel("normalized image-position error", fontsize=17, labelpad=4)
-ax.set_title("Position Envelope", fontsize=20)
+ax.set_title("(a) Position Envelope", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="upper right", fontsize=13)
@@ -139,12 +147,32 @@ for k, c in zip(range(3), ["C0", "C2", "C3"]):
 ax.set_ylim(-1.15, 1.15)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
 ax.set_ylabel("normalized optic-flow error", fontsize=17, labelpad=4)
-ax.set_title("Velocity Envelope", fontsize=20)
+ax.set_title("(b) Velocity Envelope", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="upper right", fontsize=13)
 
-fig.suptitle("Prescribed-Performance Envelope Preservation under VISTA", fontsize=22, y=1.0)
+# --- Panel (c): funnel-compatibility ratio C_k(t), sufficient condition C_k > 1 ---
+# Log y-axis: C_k = rho_nu,k/(rho_nu,z*|s_k|) is singular whenever the raw lateral
+# position s_k crosses zero (happens naturally on an oscillatory target -- s_k is a
+# signed position, not an error, so it passes through 0 every half-cycle). Those
+# crossings are not a real margin signal, just 1/|s_k| blowing up; log-scale
+# compresses them to readable peaks while keeping the dimensionless ratio and the
+# C_k>1 threshold (now log C_k>0) intact.
+ax = axes[2]
+ax.axhline(1.0, color="0.35", lw=1.0, ls="--")
+for k, c in zip(range(2), ["C0", "C2"]):
+    ax.plot(t, compat[k], color=c, lw=1.4,
+            label=fr"$\mathcal{{C}}_{axis_lbl[k][1]}(t)$")
+ax.set_yscale("log")
+ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
+ax.set_ylabel(r"$\mathcal{C}_k(t)=\rho_{\nu,k}/(\rho_{\nu,z}\bar s_k)$", fontsize=15, labelpad=4)
+ax.set_title("(c) Funnel Compatibility", fontsize=20)
+ax.tick_params(labelsize=16)
+ax.locator_params(axis="x", nbins=4)
+ax.legend(loc="upper right", fontsize=13)
+
+fig.suptitle("Prescribed-Performance Preservation and Funnel Compatibility under VISTA", fontsize=20, y=1.0)
 fig.tight_layout(pad=0.5)
 safe_savefig(fig, f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
