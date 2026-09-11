@@ -216,116 +216,160 @@ for traj in TRAJS:
         METRICS[(traj, name)] = _run_metrics(run)
         RUNS[(traj, name)] = run
 
-# ============================================================================
-# Figure 1: comparison_combined_circular.pdf (1x3)
-#   Final design settled 2026-09-11: (a) altitude at termination, all 5
-#   controllers; (b) relative touchdown energy E_rel,f/E_soft, controllers
-#   that ever reach the surface only (VISTA, Zhang 2026); (c) FoV margin,
-#   Case 5, all 5 controllers. No 3D trajectory panel and no big suptitle --
-#   panel letters + the LaTeX caption carry the description (IEEE/ICRA style).
-# ============================================================================
-fig, (ax_h, ax_ke, ax_m) = plt.subplots(1, 3, figsize=(15.0, 4.6))
 CASE5 = "Circular"
 REACHED_CTRLS = [n for n in CTRLS if any(METRICS[(tr, n)]["reached"] for tr in TRAJS)]
 
-# --- Panel (a): altitude above target at termination, all 5 controllers ---
-xb = np.arange(len(TRAJS))
-width = 0.16
-for j, name in enumerate(CTRLS):
-    vals = [METRICS[(tr, name)]["h_term"] for tr in TRAJS]
-    ax_h.bar(xb + (j - 2) * width, vals, width, color=CTRL_COLORS[name])
-ax_h.axhline(Z_REACH_M, color="k", lw=0.8, ls=":")
-ax_h.text(xb[-1] + 0.55, Z_REACH_M, r"$h_\mathrm{lg}=0.20$ m", fontsize=11, va="bottom", ha="right")
-ax_h.set_xticks(xb); ax_h.set_xticklabels(LABELS, rotation=20, fontsize=14)
-ax_h.tick_params(axis="y", labelsize=14)
-ax_h.grid(axis="y", alpha=0.3)
-ax_h.set_ylabel("altitude above target\nat termination [m]", fontsize=16, labelpad=4)
-ax_h.set_title("(a) Altitude at Termination", fontsize=17, y=1.03)
-
-# --- Panel (b): relative touchdown energy eta_E = (v_f / v_soft)^2, landed
-#     controllers only (VISTA, Zhang 2026) -- no bar slots wasted on
-#     controllers that never reach the surface on any case. ---
-width_b = 0.30
-xj_off = np.linspace(-0.5, 0.5, len(REACHED_CTRLS) + 2)[1:-1] * width_b * 2
-for j, name in enumerate(REACHED_CTRLS):
-    eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
-                    if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
-    mask = ~np.isnan(eta)
-    xj = xb + xj_off[j]
-    ax_ke.bar(xj[mask], eta[mask], width_b, color=CTRL_COLORS[name], label=CTRL_DISPLAY[name])
-    for xk in xj[~mask]:
-        ax_ke.text(xk, 0.05, "N/A", rotation=90, ha="center", va="bottom",
-                   fontsize=9, color=CTRL_COLORS[name])
-ax_ke.axhline(1.0, color="k", lw=0.8, ls=":")
-ax_ke.text(xb[-1] + 0.55, 1.0, r"$\eta_E=1$", fontsize=11, va="bottom", ha="right")
-ax_ke.set_xticks(xb); ax_ke.set_xticklabels(LABELS, rotation=20, fontsize=14)
-ax_ke.tick_params(axis="y", labelsize=14)
-ax_ke.grid(axis="y", alpha=0.3)
-ax_ke.set_ylim(bottom=0)
-ax_ke.set_ylabel(r"$E_{\mathrm{rel},f}/E_\mathrm{soft}$", fontsize=16, labelpad=4)
-ax_ke.set_title("(b) Relative Touchdown Energy", fontsize=17, y=1.03)
-
-# --- Panel (c): FoV-margin time series, Case 5, all 5 controllers ---
-for name in CTRLS:
-    run = RUNS[(CASE5, name)]
-    N = METRICS[(CASE5, name)]["N"]
-    margin = _fov_margin(run, N)                # may trim further than N -- see docstring
-    t = run.data.tRange[:len(margin)]
-    ax_m.plot(t, margin, color=CTRL_COLORS[name], lw=1.4, label=CTRL_DISPLAY[name])
-ax_m.axhline(0.0, color="k", lw=0.8, ls=":")
-ax_m.text(0.3, 0.02, "FoV edge", fontsize=11, va="bottom")
-ax_m.set_ylim(bottom=min(-0.05, ax_m.get_ylim()[0]))
-ax_m.set_xlabel("$t$ [s]", fontsize=16, labelpad=4)
-ax_m.set_ylabel("normalized FoV margin", fontsize=16, labelpad=4)
-ax_m.set_title("(c) FoV Margin, Case 5", fontsize=17, y=1.03)
-ax_m.tick_params(labelsize=14)
-ax_m.grid(alpha=0.3)
-
-handles, labels = ax_m.get_legend_handles_labels()
-fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0),
-           frameon=False, fontsize=13, handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
-fig.tight_layout(rect=(0, 0.12, 1, 0.98))
-
-safe_savefig(fig, f"{OUT}/comparison_combined_circular.pdf", pad_inches=0.05)
-plt.close(fig)
-
-# ============================================================================
-# Figure 2: comparison_outcome_heatmap.pdf (NEW)
-# ============================================================================
-CAT_CODE = {"soft-precise": 0, "hard-imprecise": 1, "aborted": 2}
+CAT_CODE   = {"soft-precise": 0, "hard-imprecise": 1, "aborted": 2}
 CAT_SYMBOL = {"soft-precise": "S", "hard-imprecise": "H", "aborted": "A"}   # S / H / A --
     # a checkmark glyph is missing from the cmr10 serif font used elsewhere in
     # the figure set (renders as a missing-glyph box); short text is robust
     # everywhere, incl. grayscale print.
 CAT_COLORS = ["#2e7d32", "#f9a825", "#c62828"]   # green / amber / red
 
-grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
 
+def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, legend_fontsize=10):
+    """5 (controller) x 5 (case) outcome grid. Shared by the standalone
+    comparison_outcome_heatmap.pdf and panel (a) of the merged figure."""
+    grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
+    cmap = ListedColormap(CAT_COLORS)
+    norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
+    ax.imshow(grid, cmap=cmap, norm=norm, aspect="auto")
+    for i, name in enumerate(CTRLS):
+        for j, tr in enumerate(TRAJS):
+            cat = METRICS[(tr, name)]["cat"]
+            ax.text(j, i, CAT_SYMBOL[cat], ha="center", va="center", fontsize=cell_fontsize,
+                    fontweight="bold", color="white" if cat != "hard-imprecise" else "black")
+    ax.set_xticks(range(len(TRAJS))); ax.set_xticklabels(LABELS, fontsize=tick_fontsize)
+    ax.set_yticks(range(len(CTRLS))); ax.set_yticklabels([ROW_LABELS[n] for n in CTRLS], fontsize=tick_fontsize)
+    ax.set_xticks(np.arange(-0.5, len(TRAJS), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(CTRLS), 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=2)
+    ax.tick_params(which="minor", length=0)
+    ax.tick_params(which="major", length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=title_fontsize, pad=10)
+    legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
+    ax.legend(legend_handles, ["S soft-precise touchdown", "H hard/imprecise touchdown", "A aborted (did not reach surface)"],
+              loc="upper left", bbox_to_anchor=(0.0, -0.13), ncol=1, frameon=False, fontsize=legend_fontsize)
+
+
+def _draw_3d(ax3d, fontsize=18, ticksize=13):
+    """Circular (Case 5) 3D trajectories, outcome-classified touchdown markers."""
+    target_drawn = False
+    for name in CTRLS:
+        run = RUNS[(CASE5, name)]
+        met = METRICS[(CASE5, name)]
+        d = run.data
+        N = met["N"]
+        X = d.X_DS[:, :N]
+        color = CTRL_COLORS[name]
+        ax3d.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=CTRL_DISPLAY[name])
+        ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
+        marker = {"soft-precise": "^", "hard-imprecise": "o", "aborted": "x"}[met["cat"]]
+        if met["cat"] == "hard-imprecise":
+            ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], facecolors="none", edgecolors=color,
+                         marker=marker, s=34, linewidths=1.2)
+        else:
+            ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color, marker=marker, s=34)
+        if not target_drawn:
+            xt = d.x_t[:3, :N]
+            draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])
+            target_drawn = True
+    ax3d.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=10, fontsize=fontsize)
+    ax3d.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=10, fontsize=fontsize)
+    ax3d.set_zlabel("altitude [m]", labelpad=2, fontsize=fontsize)
+    ax3d.locator_params(axis="x", nbins=4)
+    ax3d.locator_params(axis="y", nbins=4)
+    ax3d.locator_params(axis="z", nbins=4)
+    ax3d.tick_params(pad=1, labelsize=ticksize)
+    ax3d.view_init(elev=22, azim=-58)
+
+
+def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
+    """Relative touchdown energy eta_E = (v_f/v_soft)^2, controllers that
+    ever reach the surface only (VISTA, Zhang 2026) -- no bar slots wasted
+    on controllers that never land."""
+    xb = np.arange(len(TRAJS))
+    width_b = 0.30
+    xj_off = np.linspace(-0.5, 0.5, len(REACHED_CTRLS) + 2)[1:-1] * width_b * 2
+    for j, name in enumerate(REACHED_CTRLS):
+        eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
+                        if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
+        mask = ~np.isnan(eta)
+        xj = xb + xj_off[j]
+        ax.bar(xj[mask], eta[mask], width_b, color=CTRL_COLORS[name], label=CTRL_DISPLAY[name])
+        for xk in xj[~mask]:
+            ax.text(xk, 0.05, "N/A", rotation=90, ha="center", va="bottom",
+                    fontsize=9, color=CTRL_COLORS[name])
+    ax.axhline(1.0, color="k", lw=0.8, ls=":")
+    ax.text(xb[-1] + 0.55, 1.0, r"$\eta_E=1$", fontsize=11, va="bottom", ha="right")
+    ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=20, fontsize=tick_fontsize)
+    ax.tick_params(axis="y", labelsize=tick_fontsize)
+    ax.grid(axis="y", alpha=0.3)
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel(r"$E_{\mathrm{rel},f}/E_\mathrm{soft}$", fontsize=fontsize, labelpad=4)
+
+
+def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
+    """FoV-margin time series, Case 5, all 5 controllers -- the
+    mechanism-explaining panel: why each baseline fails."""
+    for name in CTRLS:
+        run = RUNS[(CASE5, name)]
+        N = METRICS[(CASE5, name)]["N"]
+        margin = _fov_margin(run, N)            # may trim further than N -- see docstring
+        t = run.data.tRange[:len(margin)]
+        ax.plot(t, margin, color=CTRL_COLORS[name], lw=1.4, label=CTRL_DISPLAY[name])
+    ax.axhline(0.0, color="k", lw=0.8, ls=":")
+    ax.text(0.3, 0.02, "FoV edge", fontsize=11, va="bottom")
+    ax.set_ylim(bottom=min(-0.05, ax.get_ylim()[0]))
+    ax.set_xlabel("$t$ [s]", fontsize=fontsize, labelpad=4)
+    ax.set_ylabel("normalized FoV margin", fontsize=fontsize, labelpad=4)
+    ax.tick_params(labelsize=tick_fontsize)
+    ax.grid(alpha=0.3)
+
+
+# ============================================================================
+# Figure 1: comparison_combined_circular.pdf (2x2) -- the main comparison
+#   figure, per the recommended set (2026-09-11): (a) outcome heatmap --
+#   overall comparison, which controller lands/aborts/is hard/soft; (b) the
+#   Circular (Case 5) 3D trajectory -- a representative qualitative case
+#   study, the richest/most demanding case; (c) FoV margin, Case 5 -- WHY
+#   baselines fail, not just that they do; (d) relative touchdown energy --
+#   soft-landing quality as a severity measure, not a binary pass/fail.
+# ============================================================================
+fig = plt.figure(figsize=(11.0, 8.6))
+ax_hm = fig.add_subplot(2, 2, 1)
+ax3d  = fig.add_subplot(2, 2, 2, projection="3d")
+ax_m  = fig.add_subplot(2, 2, 3)
+ax_ke = fig.add_subplot(2, 2, 4)
+
+_draw_heatmap(ax_hm, title_fontsize=15, cell_fontsize=14, tick_fontsize=12, legend_fontsize=10)
+ax_hm.set_title("(a) Closed-Loop Outcome by Controller and Case", fontsize=15, pad=10)
+
+_draw_3d(ax3d)
+ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=17, y=1.0)
+
+_draw_fov_margin(ax_m)
+ax_m.set_title("(c) FoV Margin, Case 5", fontsize=17, y=1.03)
+
+_draw_energy(ax_ke)
+ax_ke.set_title("(d) Relative Touchdown Energy", fontsize=17, y=1.03)
+
+handles, labels = ax3d.get_legend_handles_labels()
+fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0),
+           frameon=False, fontsize=13, handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
+fig.tight_layout(rect=(0, 0.06, 1, 1), h_pad=4.0, w_pad=3.0)
+
+safe_savefig(fig, f"{OUT}/comparison_combined_circular.pdf", pad_inches=0.05)
+plt.close(fig)
+
+# ============================================================================
+# Figure 2: comparison_outcome_heatmap.pdf -- kept as a standalone (panel (a)
+# of the merged figure above, at full size, for use outside the manuscript).
+# ============================================================================
 fig, ax = plt.subplots(figsize=(7.2, 3.6))
-cmap = ListedColormap(CAT_COLORS)
-norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
-ax.imshow(grid, cmap=cmap, norm=norm, aspect="auto")
-# grayscale/accessibility-safe: an in-cell symbol backs up the color, per request.
-for i, name in enumerate(CTRLS):
-    for j, tr in enumerate(TRAJS):
-        cat = METRICS[(tr, name)]["cat"]
-        ax.text(j, i, CAT_SYMBOL[cat], ha="center", va="center", fontsize=13,
-                fontweight="bold", color="white" if cat != "hard-imprecise" else "black")
-ax.set_xticks(range(len(TRAJS))); ax.set_xticklabels(LABELS, fontsize=11)
-ax.set_yticks(range(len(CTRLS))); ax.set_yticklabels([ROW_LABELS[n] for n in CTRLS], fontsize=11)
-ax.set_xticks(np.arange(-0.5, len(TRAJS), 1), minor=True)
-ax.set_yticks(np.arange(-0.5, len(CTRLS), 1), minor=True)
-ax.grid(which="minor", color="white", linewidth=2)
-ax.tick_params(which="minor", length=0)
-ax.tick_params(which="major", length=0)
-for spine in ax.spines.values():
-    spine.set_visible(False)
-ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=14, pad=10)
-
-legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
-ax.legend(legend_handles, ["S soft-precise touchdown", "H hard/imprecise touchdown", "A aborted (did not reach surface)"],
-          loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False, fontsize=10)
-
+_draw_heatmap(ax)
 fig.tight_layout()
 safe_savefig(fig, f"{OUT}/comparison_outcome_heatmap.pdf", bbox_inches="tight", pad_inches=0.05)
 plt.close(fig)
