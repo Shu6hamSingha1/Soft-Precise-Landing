@@ -340,29 +340,32 @@ def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
 #   baselines fail, not just that they do; (d) relative touchdown energy --
 #   soft-landing quality as a severity measure, not a binary pass/fail.
 # ============================================================================
-#   Layout 2026-09-11: the 3D view was cramped to a quarter-panel with a lot
-#   of dead space around the actual cube (3D axes don't fill a small square
-#   slot well). Promoted to its own full-width row, sized clearly larger than
-#   the other three -- (a)/(c)/(d) share a second, shorter row underneath.
-fig = plt.figure(figsize=(13.5, 7.6))
-gs = fig.add_gridspec(2, 3, height_ratios=[1.15, 1.0], hspace=0.42, wspace=0.38,
-                       left=0.075, right=0.99, top=0.93, bottom=0.175)
-ax3d  = fig.add_subplot(gs[0, :], projection="3d")
-ax_hm = fig.add_subplot(gs[1, 0])
-ax_m  = fig.add_subplot(gs[1, 1])
-ax_ke = fig.add_subplot(gs[1, 2])
-
-_draw_3d(ax3d, fontsize=19, ticksize=14)
-ax3d.set_title("(a) Landing Trajectories, Case 5", fontsize=19, y=0.94)
-# 3D axes otherwise pad heavily inside their box; pull it in and widen it to
-# use the extra row height/width just allocated, without colliding with row 2.
-ax3d.set_position([0.20, 0.555, 0.62, 0.365])
+#   Layout 2026-09-11: strict 2x2 quadrant grid -- (a) heatmap top-left,
+#   (b) 3D trajectory top-right, (c) FoV margin bottom-left, (d) relative
+#   touchdown energy bottom-right -- with the top row and right column
+#   enlarged (width/height ratios) so panel (b)'s cell is clearly the
+#   largest of the four without breaking the 2x2 arrangement.
+fig = plt.figure(figsize=(12.5, 9.2))
+gs = fig.add_gridspec(2, 2, height_ratios=[1.2, 1.0], width_ratios=[1.0, 1.25],
+                       hspace=0.34, wspace=0.28,
+                       left=0.085, right=0.98, top=0.95, bottom=0.11)
+ax_hm = fig.add_subplot(gs[0, 0])
+ax3d  = fig.add_subplot(gs[0, 1], projection="3d")
+ax_m  = fig.add_subplot(gs[1, 0])
+ax_ke = fig.add_subplot(gs[1, 1])
 
 # Category legend dropped here (redundant with the caption's S/H/A key and
 # collided with the shared bottom controller-color legend); kept only on the
 # standalone comparison_outcome_heatmap.pdf.
-_draw_heatmap(ax_hm, title_fontsize=13, cell_fontsize=12, tick_fontsize=10, show_legend=False)
-ax_hm.set_title("(b) Closed-Loop Outcome", fontsize=13, pad=8)
+_draw_heatmap(ax_hm, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, show_legend=False)
+ax_hm.set_title("(a) Closed-Loop Outcome", fontsize=14, pad=8)
+
+_draw_3d(ax3d, fontsize=17, ticksize=13)
+ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=17, y=0.96)
+# 3D axes otherwise pad heavily inside their allotted cell; pull the bbox in
+# to actually use the larger width_ratios/height_ratios cell just reserved.
+pos = ax3d.get_position()
+ax3d.set_position([pos.x0 - 0.03, pos.y0 - 0.02, pos.width + 0.05, pos.height + 0.06])
 
 _draw_fov_margin(ax_m)
 ax_m.set_title("(c) FoV Margin, Case 5", fontsize=15, y=1.03)
