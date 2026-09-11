@@ -321,12 +321,16 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
                     fontsize=8, color=CTRL_COLORS[name], clip_on=False,
                     bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
                               edgecolor=CTRL_COLORS[name], linewidth=0.6))
-    ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=20, fontsize=tick_fontsize)
+    # Straight (unrotated) case labels -- the in-panel corner note that used
+    # to occupy this space is now a footnote below the panel instead (it
+    # overlapped the "Only surface-reaching..." text against the topmost
+    # bars), freeing this axis to sit flush.
+    ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=0, fontsize=tick_fontsize)
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
-    ax.set_ylabel(r"$\log_{10}\eta_E$", fontsize=fontsize, labelpad=4)
-    ax.text(0.02, 0.97, "Only surface-reaching controllers shown", transform=ax.transAxes,
-            fontsize=10, ha="left", va="top", style="italic")
+    ax.set_ylabel(r"$\log_{10}(\eta_E)$", fontsize=fontsize, labelpad=4)
+    ax.text(0.5, -0.30, "Only surface-reaching controllers shown", transform=ax.transAxes,
+            fontsize=10, ha="center", va="top", style="italic")
 
 
 def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
