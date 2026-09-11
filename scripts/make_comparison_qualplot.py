@@ -118,7 +118,7 @@ CTRL_DISPLAY = {
     "Cho 2022":          "Baseline D (FF--IBVS)",
 }
 ROW_LABELS = {
-    "PLASMC (Proposed)": "Proposed",
+    "PLASMC (Proposed)": "VISTA",
     "Lin 2022":          "Lin 2022",
     "Zhang 2026":        "Zhang 2026",
     "Lin 2023":          "Lin 2023",
@@ -217,51 +217,55 @@ for traj in TRAJS:
         RUNS[(traj, name)] = run
 
 # ============================================================================
-# Figure 1: comparison_combined_circular.pdf (1x4)
+# Figure 1: comparison_combined_circular.pdf (1x3)
+#   Final design settled 2026-09-11: (a) altitude at termination, all 5
+#   controllers; (b) relative touchdown energy E_rel,f/E_soft, controllers
+#   that ever reach the surface only (VISTA, Zhang 2026); (c) FoV margin,
+#   Case 5, all 5 controllers. No 3D trajectory panel and no big suptitle --
+#   panel letters + the LaTeX caption carry the description (IEEE/ICRA style).
 # ============================================================================
-# No 3D panel (dropped 2026-09-11 at user request -- the 3 diagnostic panels
-# read better enlarged, and the 3D view added little the other three didn't
-# already cover more legibly).
 fig, (ax_h, ax_ke, ax_m) = plt.subplots(1, 3, figsize=(15.0, 4.6))
 CASE5 = "Circular"
+REACHED_CTRLS = [n for n in CTRLS if any(METRICS[(tr, n)]["reached"] for tr in TRAJS)]
 
-M_KG = float(getattr(RUNS[(CASE5, CTRLS[0])].data, "m", 2.114))
-E_SOFT_J = 0.5 * M_KG * SOFT_V_REL_MPS ** 2     # touchdown-softness kinetic-energy reference
-
-# --- Panel 1: altitude above target at termination, all 5 cases ---
+# --- Panel (a): altitude above target at termination, all 5 controllers ---
 xb = np.arange(len(TRAJS))
 width = 0.16
 for j, name in enumerate(CTRLS):
     vals = [METRICS[(tr, name)]["h_term"] for tr in TRAJS]
     ax_h.bar(xb + (j - 2) * width, vals, width, color=CTRL_COLORS[name])
 ax_h.axhline(Z_REACH_M, color="k", lw=0.8, ls=":")
-ax_h.text(xb[-1] + 0.55, Z_REACH_M, "reached", fontsize=11, va="bottom", ha="right")
+ax_h.text(xb[-1] + 0.55, Z_REACH_M, r"$h_\mathrm{lg}=0.20$ m", fontsize=11, va="bottom", ha="right")
 ax_h.set_xticks(xb); ax_h.set_xticklabels(LABELS, rotation=20, fontsize=14)
 ax_h.tick_params(axis="y", labelsize=14)
 ax_h.grid(axis="y", alpha=0.3)
 ax_h.set_ylabel("altitude above target\nat termination [m]", fontsize=16, labelpad=4)
-ax_h.set_title("Descent Reached", fontsize=18, y=1.03)
+ax_h.set_title("(a) Altitude at Termination", fontsize=17, y=1.03)
 
-# --- Panel 2: terminal kinetic energy where reached; x/N/A marker where aborted ---
-for j, name in enumerate(CTRLS):
-    vals = np.array([METRICS[(tr, name)]["ke"] for tr in TRAJS])
-    mask = ~np.isnan(vals)
-    xj = xb + (j - 2) * width
-    ax_ke.bar(xj[mask], vals[mask], width, color=CTRL_COLORS[name])
+# --- Panel (b): relative touchdown energy eta_E = (v_f / v_soft)^2, landed
+#     controllers only (VISTA, Zhang 2026) -- no bar slots wasted on
+#     controllers that never reach the surface on any case. ---
+width_b = 0.30
+xj_off = np.linspace(-0.5, 0.5, len(REACHED_CTRLS) + 2)[1:-1] * width_b * 2
+for j, name in enumerate(REACHED_CTRLS):
+    eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
+                    if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
+    mask = ~np.isnan(eta)
+    xj = xb + xj_off[j]
+    ax_ke.bar(xj[mask], eta[mask], width_b, color=CTRL_COLORS[name], label=CTRL_DISPLAY[name])
     for xk in xj[~mask]:
-        ax_ke.text(xk, 0.003, "N/A", rotation=90, ha="center", va="bottom",
-                   fontsize=8, color=CTRL_COLORS[name])
-ax_ke.axhline(E_SOFT_J, color="k", lw=0.8, ls=":")
-ax_ke.text(xb[-1] + 0.55, E_SOFT_J, fr"$E_\mathrm{{soft}}={E_SOFT_J:.3f}$ J",
-          fontsize=11, va="bottom", ha="right")
+        ax_ke.text(xk, 0.05, "N/A", rotation=90, ha="center", va="bottom",
+                   fontsize=9, color=CTRL_COLORS[name])
+ax_ke.axhline(1.0, color="k", lw=0.8, ls=":")
+ax_ke.text(xb[-1] + 0.55, 1.0, r"$\eta_E=1$", fontsize=11, va="bottom", ha="right")
 ax_ke.set_xticks(xb); ax_ke.set_xticklabels(LABELS, rotation=20, fontsize=14)
 ax_ke.tick_params(axis="y", labelsize=14)
 ax_ke.grid(axis="y", alpha=0.3)
 ax_ke.set_ylim(bottom=0)
-ax_ke.set_ylabel(r"terminal K.E. $\frac{1}{2} m\|v_\mathrm{rel}\|^2$ [J]", fontsize=16, labelpad=4)
-ax_ke.set_title("Touchdown Severity\n(N/A = did not reach the surface)", fontsize=16, y=1.0)
+ax_ke.set_ylabel(r"$E_{\mathrm{rel},f}/E_\mathrm{soft}$", fontsize=16, labelpad=4)
+ax_ke.set_title("(b) Relative Touchdown Energy", fontsize=17, y=1.03)
 
-# --- Panel 3: FoV-margin time series, Case 5, all 5 controllers ---
+# --- Panel (c): FoV-margin time series, Case 5, all 5 controllers ---
 for name in CTRLS:
     run = RUNS[(CASE5, name)]
     N = METRICS[(CASE5, name)]["N"]
@@ -272,17 +276,15 @@ ax_m.axhline(0.0, color="k", lw=0.8, ls=":")
 ax_m.text(0.3, 0.02, "FoV edge", fontsize=11, va="bottom")
 ax_m.set_ylim(bottom=min(-0.05, ax_m.get_ylim()[0]))
 ax_m.set_xlabel("$t$ [s]", fontsize=16, labelpad=4)
-ax_m.set_ylabel("FoV margin [frac. of half-frame]", fontsize=16, labelpad=4)
-ax_m.set_title("Visibility Margin, Case 5", fontsize=18, y=1.03)
+ax_m.set_ylabel("normalized FoV margin", fontsize=16, labelpad=4)
+ax_m.set_title("(c) FoV Margin, Case 5", fontsize=17, y=1.03)
 ax_m.tick_params(labelsize=14)
 ax_m.grid(alpha=0.3)
 
 handles, labels = ax_m.get_legend_handles_labels()
 fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0),
            frameon=False, fontsize=13, handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
-fig.suptitle("Closed-Loop Comparison of Five Controllers across Cases 1--5",
-             fontsize=22, y=0.99)
-fig.tight_layout(rect=(0, 0.12, 1, 0.94))
+fig.tight_layout(rect=(0, 0.12, 1, 0.98))
 
 safe_savefig(fig, f"{OUT}/comparison_combined_circular.pdf", pad_inches=0.05)
 plt.close(fig)
@@ -291,7 +293,10 @@ plt.close(fig)
 # Figure 2: comparison_outcome_heatmap.pdf (NEW)
 # ============================================================================
 CAT_CODE = {"soft-precise": 0, "hard-imprecise": 1, "aborted": 2}
-CAT_TEXT = {"soft-precise": "soft-\nprecise", "hard-imprecise": "hard/\nimprecise", "aborted": "aborted"}
+CAT_SYMBOL = {"soft-precise": "S", "hard-imprecise": "H", "aborted": "A"}   # S / H / A --
+    # a checkmark glyph is missing from the cmr10 serif font used elsewhere in
+    # the figure set (renders as a missing-glyph box); short text is robust
+    # everywhere, incl. grayscale print.
 CAT_COLORS = ["#2e7d32", "#f9a825", "#c62828"]   # green / amber / red
 
 grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
@@ -300,6 +305,12 @@ fig, ax = plt.subplots(figsize=(7.2, 3.6))
 cmap = ListedColormap(CAT_COLORS)
 norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
 ax.imshow(grid, cmap=cmap, norm=norm, aspect="auto")
+# grayscale/accessibility-safe: an in-cell symbol backs up the color, per request.
+for i, name in enumerate(CTRLS):
+    for j, tr in enumerate(TRAJS):
+        cat = METRICS[(tr, name)]["cat"]
+        ax.text(j, i, CAT_SYMBOL[cat], ha="center", va="center", fontsize=13,
+                fontweight="bold", color="white" if cat != "hard-imprecise" else "black")
 ax.set_xticks(range(len(TRAJS))); ax.set_xticklabels(LABELS, fontsize=11)
 ax.set_yticks(range(len(CTRLS))); ax.set_yticklabels([ROW_LABELS[n] for n in CTRLS], fontsize=11)
 ax.set_xticks(np.arange(-0.5, len(TRAJS), 1), minor=True)
@@ -312,7 +323,7 @@ for spine in ax.spines.values():
 ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=14, pad=10)
 
 legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
-ax.legend(legend_handles, ["soft-precise touchdown", "hard/imprecise touchdown", "aborted (did not reach surface)"],
+ax.legend(legend_handles, ["S soft-precise touchdown", "H hard/imprecise touchdown", "A aborted (did not reach surface)"],
           loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False, fontsize=10)
 
 fig.tight_layout()

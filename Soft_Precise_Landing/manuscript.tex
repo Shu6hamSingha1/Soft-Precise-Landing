@@ -678,68 +678,14 @@ The robustness across both ICs and target velocities traces to four design featu
 
 \subsection{Comparison with State-of-the-Art Landing Controllers}
 \label{comparison: subsec}
-VISTA is compared against four representative landing controllers: \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{lin2023} (robust prescribed-performance IBVS), and \cite{cho2022} (feed-forward IBVS). All four share a common geometric SO(3) inner loop and are exercised under the disturbance model of Section~\ref{experimentation: section}-\ref{test conditions: subsec} from IC$_2=[2,2,-5]~\text{m}$ (the diagonal offset that drives the tilt commands hardest, most stressing the baselines' visibility margin) for up to $40~\text{s}$. Each baseline uses best-effort gains \emph{within its own framework}, since the published gains crash on this IC under the noise model of Table~\ref{uav params: table}; the full gain comparison is in Table~\ref{baseline gains: table} of Appendix~\ref{baseline analyses appendix: section}, where each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model, isolating a \emph{structural} limitation of each scheme rather than a tuning shortcoming. Table~\ref{qualitative comparison: table} summarizes the closed-loop outcome of each controller at a glance, and Fig.~\ref{outcome heatmap: figure} breaks that outcome out by case; Table~\ref{comparison: table} reports the underlying landing time, final horizontal error, and final altitude on every case.
+VISTA is compared against four representative landing controllers: \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{lin2023} (robust prescribed-performance IBVS), and \cite{cho2022} (feed-forward IBVS). All four share a common geometric SO(3) inner loop and are exercised under the disturbance model of Section~\ref{experimentation: section}-\ref{test conditions: subsec} from IC$_2=[2,2,-5]~\text{m}$ (the diagonal offset that drives the tilt commands hardest, most stressing the baselines' visibility margin) for up to $40~\text{s}$. Each baseline uses best-effort gains \emph{within its own framework}, since the published gains crash on this IC under the noise model of Table~\ref{uav params: table}; the full gain comparison is in Table~\ref{baseline gains: table} of Appendix~\ref{baseline analyses appendix: section}, where each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model, isolating a \emph{structural} limitation of each scheme rather than a tuning shortcoming. Fig.~\ref{outcome heatmap: figure} summarizes the closed-loop outcome of every controller on every case at a glance, and Fig.~\ref{comparison combined: figure} diagnoses how those outcomes arise; Table~\ref{comparison: table} reports the underlying landing time, final horizontal error, and final altitude on every case.
 
-\begin{table*}[!t]
-\centering
-\caption{Qualitative comparison of landing performance and observed failure mechanisms under the common simulation conditions of Section~\ref{experimentation: section}-\ref{test conditions: subsec}, IC$_2=[2,2,-5]$~m.}
-\label{qualitative comparison: table}
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{threeparttable}
-\begin{tabular}{lccccp{0.30\textwidth}}
-\toprule
-\textbf{Method} & \textbf{Visibility} & \textbf{Precise} & \textbf{Soft} & \textbf{Landing} & \textbf{Observed limitation} \\
-\midrule
 
-\textbf{Proposed}
-& \checkmark
-& \checkmark
-& \checkmark
-& Successful
-& Joint image-position/optical-flow regulation with an explicit visibility barrier and leakage-type adaptive disturbance rejection leaves no observed limitation on this test set. \\
-
-\cite{lin2022}
-& $\times$
-& ---
-& ---
-& Aborted
-& The prescribed-performance velocity barrier does not explicitly enforce camera visibility; under mean wind and target motion, the commanded excursion drives the image features out of the FoV before touchdown on every case. \\
-
-\cite{zhang2026}
-& $\circ$
-& $\times$
-& $\times$
-& Hard/imprecise
-& The fixed-bandwidth pose regulation does not couple lateral-error closure to the descent rate: where visibility holds, a residual lateral offset and an excessive touchdown speed both persist to the surface; on the two most oscillatory cases the residual instead grows enough to break visibility outright. \\
-
-\cite{lin2023}
-& $\times$
-& ---
-& ---
-& Aborted
-& Image-feature regulation carries no disturbance-rejection integrator and no visibility constraint; the prescribed-performance funnel bounds the feature \emph{error} rather than retaining the target in view, so persistent wind disturbance produces a growing lateral bias that the closed loop never reaches the target surface under. \\
-
-\cite{cho2022}
-& $\times$
-& ---
-& ---
-& Aborted
-& The pseudo-inverse image-based velocity law, gated by a sigmoid altitude gain, carries no disturbance-rejection integrator or visibility enforcement, allowing wind and target motion to drive the features outside the FoV. \\
-
-\bottomrule
-\end{tabular}
-\begin{tablenotes}[flushleft]
-\footnotesize
-\item \checkmark: achieved on every case; $\times$: achieved on no case; $\circ$: achieved on a subset (\cite{zhang2026} reaches the target surface, but not soft-precise, on 3 of the 5 cases; it fails to reach on the remaining 2). Precise/Soft are marked --- where the controller aborts before reaching the surface, since touchdown precision and softness are not defined for a landing that did not occur. \textbf{Landing}: Successful = soft \emph{and} precise on every case; Hard/imprecise = reaches the surface but violates the precision and/or softness threshold; Aborted = does not reach the target surface on every case (feature-visibility loss, a command/acceleration safety trip, or a time-out, depending on the baseline). All five controllers are closed-loop numerically stable (bounded state and command signals) under the retuned within-framework gains of Table~\ref{baseline gains: table}; stability alone does not imply visibility, precision, or softness.
-\end{tablenotes}
-\end{threeparttable}
-\end{table*}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/comparison_outcome_heatmap.pdf}
-    \caption{Closed-loop outcome of each controller on every case (Table~\ref{qualitative comparison: table}'s three categories, broken out per case). VISTA is soft-precise on all five; each baseline's outcome is fixed by its structural limitation rather than the case geometry, with \cite{zhang2026} the only baseline to ever reach the surface.}
+    \caption{Closed-loop outcome of every controller on every case: \textbf{S} soft-precise touchdown, \textbf{H} hard/imprecise touchdown, \textbf{A} aborted (did not reach the target surface). VISTA is soft-precise on all five cases; each baseline's outcome is fixed by its structural limitation rather than the case geometry, with \cite{zhang2026} the only baseline to ever reach the surface (hard/imprecise on Cases~1, 2, and~5, aborted on Cases~3 and~4). All five controllers are closed-loop numerically stable (bounded state and command signals) under the retuned within-framework gains of Table~\ref{baseline gains: table}; stability alone does not imply visibility, precision, or softness. Fig.~\ref{comparison combined: figure} diagnoses the severity behind these outcomes.}
     \label{outcome heatmap: figure}
 \end{figure}
 
@@ -812,7 +758,7 @@ VISTA is compared against four representative landing controllers: \cite{lin2022
 \begin{figure*}[!t]
 \centering
     \includegraphics[width=\textwidth]{Figures/generated/comparison_combined_circular.pdf}
-    \caption{Comparison study (5 controllers). Landing time, final horizontal error, and touchdown speed are not comparable across controllers here since three of the four baselines abort before reaching the surface on every case (Table~\ref{qualitative comparison: table}), so the three metrics plotted instead are defined regardless of outcome. \emph{Left}: 3-D trajectories on Case~5 (circular target, IC$_2=[2,2,-5]$~m). The shaded box is the soft-precise allowable landing region around the target trajectory. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Center-left}: altitude above the target at run termination across the five cases, with the reached-surface threshold marked. \emph{Center-right}: terminal kinetic energy $\tfrac{1}{2}m\|\boldsymbol{v}_\mathrm{rel}\|^2$ on the cases each controller reaches the surface (bar absent where it aborts) --- the touchdown-severity analog of impact force, since no ground-contact/compliance model is simulated. \emph{Right}: FoV margin (fraction of half-frame remaining before the farthest tracked feature exits) versus time on Case~5, all five controllers overlaid.}
+    \caption{Diagnosing the severity behind Fig.~\ref{outcome heatmap: figure}'s outcomes. Landing time, final horizontal error, and touchdown speed are not comparable across controllers here since three of the four baselines abort before reaching the surface on every case, so the three metrics plotted instead are defined regardless of outcome, or restricted to the controllers for which they are meaningful. \textbf{(a)} Altitude above the target at run termination, all five controllers, all five cases, with the surface-contact threshold $h_\text{lg}=0.20$~m marked. \textbf{(b)} Relative touchdown energy $E_{\text{rel},f}/E_\text{soft}$, where $E_{\text{rel},f}=\tfrac{1}{2}m\|\boldsymbol{v}_\mathrm{rel}\|^2$ is the kinetic energy at touchdown and $E_\text{soft}=\tfrac{1}{2}m(0.20~\text{m/s})^2$ is the energy at the soft-touchdown speed threshold, so $\eta_E=1$ is the soft/hard boundary; shown only for the controllers that ever reach the surface (VISTA, \cite{zhang2026}), with \cite{zhang2026}'s two aborted cases marked N/A. \textbf{(c)} FoV margin (fraction of half-frame remaining before the farthest tracked feature exits) versus time on Case~5, all five controllers overlaid.}
     \label{comparison combined: figure}
 \end{figure*}
 
