@@ -123,31 +123,34 @@ print("Panel 3 (compatibility) min ratio per axis:", np.nanmin(compat, axis=1))
 fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
 
 ax = axes[0]
-ax.axhline(1.0, color="0.35", lw=1.0, ls="--")
-ax.axhline(-1.0, color="0.35", lw=1.0, ls="--")
-ax.fill_between(t, -1.0, 1.0, color="orange", alpha=0.10)
 for k, c in zip(range(2), ["C0", "C2"]):
     ax.plot(t, pos_ratio[k], color=c, lw=1.4,
             label=fr"$e_{{p,{axis_lbl[k][1]}}}/(\varphi_{{{axis_lbl[k][1]},\max}}\rho_{{p,{axis_lbl[k][1]}}})$")
-ax.set_ylim(-1.15, 1.15)
+# Zoomed to the trajectories themselves (peak |ratio| ~ 0.045, printed above)
+# so the near-origin evolution is visible -- the +/-1 envelope bound and its
+# shading are dropped here since they fall far outside this view and would
+# render as a flat, uninformative background tint; the margin below the
+# envelope is instead reported in the caption/printed diagnostics.
+_pmax = float(np.max(np.abs(pos_ratio)))
+_pmax = _pmax if _pmax > 0 else 1.0
+ax.set_ylim(-1.2 * _pmax, 1.2 * _pmax)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
 ax.set_ylabel("normalized image-position error", fontsize=17, labelpad=4)
-ax.set_title("(a) Position Envelope", fontsize=20)
+ax.set_title("(a) Position Error", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="upper right", fontsize=13)
 
 ax = axes[1]
-ax.axhline(1.0, color="0.35", lw=1.0, ls="--")
-ax.axhline(-1.0, color="0.35", lw=1.0, ls="--")
-ax.fill_between(t, -1.0, 1.0, color="orange", alpha=0.10)
 for k, c in zip(range(3), ["C0", "C2", "C3"]):
     ax.plot(t, vel_ratio[k], color=c, lw=1.4,
             label=fr"$e_{{\nu,{axis_lbl[k][1]}}}/\rho_{{\nu,{axis_lbl[k][1]}}}$")
-ax.set_ylim(-1.15, 1.15)
+_vmax = float(np.max(np.abs(vel_ratio)))
+_vmax = _vmax if _vmax > 0 else 1.0
+ax.set_ylim(-1.2 * _vmax, 1.2 * _vmax)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
 ax.set_ylabel("normalized optic-flow error", fontsize=17, labelpad=4)
-ax.set_title("(b) Velocity Envelope", fontsize=20)
+ax.set_title("(b) Velocity Error", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="upper right", fontsize=13)
@@ -172,7 +175,7 @@ ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="upper right", fontsize=13)
 
-fig.suptitle("Prescribed-Performance Preservation and Funnel Compatibility under VISTA", fontsize=20, y=1.0)
+fig.suptitle("Prescribed-Performance Preservation and Funnel Compatibility", fontsize=20, y=1.0)
 fig.tight_layout(pad=0.5)
 safe_savefig(fig, f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
