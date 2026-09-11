@@ -61,21 +61,21 @@ SOFT_V_REL_MPS  = 0.20
 Z_F_M           = 0.20
 
 CTRL_ORDER  = [2, 3, 4, 5]
-# Two CTRL_TITLE dicts because IEEE citation numbers differ between
-# the main paper and supplement (separate bibliographies).
+# 2026-09-11: no author names, citation numbers, or method acronyms anywhere
+# -- just "Baseline A-D", per explicit user instruction, applied uniformly
+# across all comparison figures. MAIN/SUPP are now identical (the split
+# existed only for citation numbers, which are gone) but both names are
+# kept so call sites elsewhere don't need to change.
 # ctrl_id maps to baseline letter:
-#   2 -> Baseline A (Lin 2022)     main [1]  / supp [9]
-#   3 -> Baseline B (Zhang 2026)   main [2]  / supp [8]
-#   4 -> Baseline C (Lin 2023)     main [10] / supp [10]
-#   5 -> Baseline D (Cho 2022)     main [9]  / supp [11]
-CTRL_TITLE_MAIN = {2: "Baseline A [1] (PBVS--PPC)",
-                   3: "Baseline B [2] (PBVS--AEDO)",
-                   4: "Baseline C [10] (IBVS--PPC)",
-                   5: "Baseline D [9] (FF--IBVS)"}
-CTRL_TITLE_SUPP = {2: "Baseline A [9] (PBVS--PPC)",
-                   3: "Baseline B [8] (PBVS--AEDO)",
-                   4: "Baseline C [10] (IBVS--PPC)",
-                   5: "Baseline D [11] (FF--IBVS)"}
+#   2 -> Baseline A (was Lin 2022)
+#   3 -> Baseline B (was Zhang 2026)
+#   4 -> Baseline C (was Lin 2023)
+#   5 -> Baseline D (was Cho 2022)
+CTRL_TITLE_MAIN = {2: "Baseline A",
+                   3: "Baseline B",
+                   4: "Baseline C",
+                   5: "Baseline D"}
+CTRL_TITLE_SUPP = dict(CTRL_TITLE_MAIN)
 # Circular trajectory PDF goes to main paper; the other three go to supplement.
 TRAJ_IS_MAIN = {"Circular": True, "Linear": False,
                 "Sinusoidal": False, "Lissajous": False}

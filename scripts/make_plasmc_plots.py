@@ -120,12 +120,12 @@ print("Panel 2 (velocity) peak |ratio| per axis:", np.max(np.abs(vel_ratio), axi
 print("Panel 2 (velocity) terminal ratio per axis:", vel_ratio[:, -1])
 print("Panel 3 (compatibility) min ratio per axis:", np.nanmin(compat, axis=1))
 
-fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
+fig, axes = plt.subplots(1, 3, figsize=(15.5, 3.68))
 
 ax = axes[0]
 for k, c in zip(range(2), ["C0", "C2"]):
     ax.plot(t, pos_ratio[k], color=c, lw=1.4,
-            label=fr"$e_{{p,{axis_lbl[k][1]}}}/(\varphi_{{{axis_lbl[k][1]},\max}}\rho_{{p,{axis_lbl[k][1]}}})$")
+            label=fr"$\eta_{{p,{axis_lbl[k][1]}}}$")
 # Zoomed to the trajectories themselves (peak |ratio| ~ 0.045, printed above)
 # so the near-origin evolution is visible -- the +/-1 envelope bound and its
 # shading are dropped here since they fall far outside this view and would
@@ -135,7 +135,7 @@ _pmax = float(np.max(np.abs(pos_ratio)))
 _pmax = _pmax if _pmax > 0 else 1.0
 ax.set_ylim(-1.2 * _pmax, 1.2 * _pmax)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-ax.set_ylabel("normalized image-position error", fontsize=17, labelpad=4)
+ax.set_ylabel(r"$\eta_{p,k}$", fontsize=20, labelpad=4)
 ax.set_title("(a) Image-Position Error", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
@@ -144,12 +144,12 @@ ax.legend(loc="upper left", fontsize=13)
 ax = axes[1]
 for k, c in zip(range(3), ["C0", "C2", "C3"]):
     ax.plot(t, vel_ratio[k], color=c, lw=1.4,
-            label=fr"$e_{{\nu,{axis_lbl[k][1]}}}/\rho_{{\nu,{axis_lbl[k][1]}}}$")
+            label=fr"$\eta_{{\nu,{axis_lbl[k][1]}}}$")
 _vmax = float(np.max(np.abs(vel_ratio)))
 _vmax = _vmax if _vmax > 0 else 1.0
 ax.set_ylim(-1.2 * _vmax, 1.2 * _vmax)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-ax.set_ylabel("normalized image-velocity error", fontsize=17, labelpad=4)
+ax.set_ylabel(r"$\eta_{\nu,k}$", fontsize=20, labelpad=4)
 ax.set_title("(b) Image-Velocity Error", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
@@ -165,10 +165,10 @@ ax.legend(loc="lower right", fontsize=13)
 ax = axes[2]
 for k, c in zip(range(2), ["C0", "C2"]):
     ax.plot(t, compat[k], color=c, lw=1.4,
-            label=fr"$\mathcal{{C}}_{axis_lbl[k][1]}(t)$")
+            label=fr"$C_{axis_lbl[k][1]}(t)$")
 ax.set_yscale("log")
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-ax.set_ylabel(r"$\mathcal{C}_k(t)=\rho_{\nu,k}/(\rho_{\nu,z}\bar s_k)$", fontsize=15, labelpad=4)
+ax.set_ylabel(r"$C_k(t)$", fontsize=20, labelpad=4)
 ax.set_title("(c) Funnel Compatibility", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)

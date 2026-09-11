@@ -1,0 +1,681 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{cite}
+\usepackage{bm}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage[normalem]{ulem}
+\usepackage{mathtools}
+\usepackage{threeparttable}
+
+\usepackage[normalem]{ulem} % For text strikethrough
+
+
+%% ── Theorem environments ──────────────────────────────────────────────────
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+\newtheorem{problem}{Problem}
+
+%% ── Macros ────────────────────────────────────────────────────────────────
+\newcommand{\calR}{\mathcal{R}}
+\newcommand{\calT}{\mathcal{T}}
+\newcommand{\calG}{\mathcal{G}}
+\newcommand{\calN}{\mathcal{N}}
+\newcommand{\calC}{\mathcal{C}}
+\newcommand{\calO}{\mathcal{O}}
+\newcommand{\calE}{\mathcal{E}}
+\newcommand{\bsig}{\bm{\sigma}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bu}{\mathbf{u}}
+\newcommand{\bp}{\mathbf{p}}
+\newcommand{\bv}{\mathbf{v}}
+\newcommand{\ba}{\mathbf{a}}
+\newcommand{\muij}{\mu_{ij}}
+\newcommand{\mutij}{\tilde{\mu}_{ij}}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\eps}{\varepsilon}
+
+\newcommand{\ora}[1]{\textcolor{orange}{#1}}
+\newcommand{\brow}[1]{\textcolor{brown}{#1}}
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+\newcommand{\bl}[1]{\textcolor{blue}{#1}}
+\newcommand{\yel}[1]{\textcolor{yellow}{#1}}
+\newcommand{\shubham}[1]{\textcolor{cyan}{#1}}
+
+%% ══════════════════════════════════════════════════════════════════════════
+\begin{document}
+
+\title{Simultaneous Visual Alignment and Soft Touchdown under Visibility Constraints via Monocular Image-Feature and Optical-Flow Control}
+\title{Simultaneous Visual Alignment and Soft-touchdown under a Visibility Constraint, using only Monocular Image Observables}
+
+\maketitle
+\begin{abstract}
+    This paper addresses the challenge of a soft-precise autonomous landing of a quadrotor on an unpredictably moving platform using visual cues obtained from pure monocular vision. In contrast to the prior approaches, where the lateral convergence and landing are accomplished in a sequential manner, the proposed framework simultaneously achieves lateral alignment and soft landing by exploiting image features for lateral error compensation and optical flow for touchdown velocity regulation. To this end, a combined sliding surface is developed and incorporated into a leakage-type adaptive sliding mode control policy that simultaneously regulates both image-based parameters while effectively rejecting unknown parametric and non-parametric uncertainties, as well as external disturbances. Furthermore, a control barrier function is proposed in the image feature space to certify continuous target visibility throughout the mission, by dynamically modulating the commanded tilt angle. \sout{A Lyapunov-based stability analysis establishes the exponential convergence of parameter errors to prescribed small neighborhoods, thereby ensuring the soft-precise landing.} \shubham{A Lyapunov-based stability analysis establishes exponential convergence of the coupled sliding variable to a uniform ultimate bound and boundedness of the prescribed visual errors under a funnel-compatibility condition.} Extensive simulation studies conducted under diverse initial conditions and motion profiles demonstrate that, with a mean landing time of about 10~s and a landing precision within 4.11~cm, the proposed framework is the only controller to achieve soft-precise landing on every trajectory against four state-of-the-art baselines
+\end{abstract}
+
+\section{INTRODUCTION} \label{intro: section}
+Autonomous landing on a moving platform is a critical capability for size-weight-and-power constrained (SWaP-C) unmanned aerial vehicle (UAV) missions in logistics~\cite{amukele2017}, disaster relief~\cite{chowdhury2017}, and ship-deck operations, yet it remains one of the most demanding phases of autonomous flight~\cite{cho2022,gupta2023,angelis2026}. A successful landing, in these settings, demands that the UAV simultaneously closes the lateral gap to the target and reduces its relative velocity to near zero at touchdown, since any residual separation or hard impact compromises mission success and vehicle integrity. These two requirements, precise lateral convergence and soft touchdown, must be met jointly and in real time under the (SWaP-C) constraints of the UAV platform. When the full state and dynamics of both the UAV and the target are available, designing a controller to meet these requirements is tractable~\cite{kumar2024}.
+
+In practice, however, the target's absolute state is rarely available. A cooperative target may broadcast its state over a communication link~\cite{isilak2025,bouazza2025} or carry sensing infrastructure such as GPS receivers~\cite{cho2022} or LiDAR units~\cite{kim2017}. Yet GPS-based infrastructure is unavailable indoors and in GPS-denied environments~\cite{bautista2023,niu2022}, and none of these arrangements can be assumed when the target is uncooperative or adversarial. The UAV must therefore recover the target's relative state from its own onboard sensing, with no access to the target's absolute state~\cite{wenzel2010,herisse2012}.
+
+The reliability of landing control then hinges on the onboard sensing modality itself. Rangefinders, ultrasonic sensors, and radar altimeters are single-point sensors that yield only a range measurement, with no angular resolution for precise lateral touchdown, and their range returns degrade in the final touchdown phase~\cite{awan2024,veneruso2025}. Mitigating these limitations imposes SWaP-C penalties incompatible with compact, low-power UAV platforms. A single vision sensor, by comparison, is a compact, lightweight multipoint sensor that captures rich spatial information without ground infrastructure, making vision the preferred sensing modality for low-SWaP-C UAVs~\cite{semerikov2025}.
+
+Vision-based landing controllers fall into two classical paradigms. Position-based visual servoing (PBVS) reconstructs the target's metric pose from visual measurements and closes the loop in metric space, which requires known target geometry and accurate depth scale estimation, rendering it sensitive to calibration errors near the landing surface~\cite{lin2022}. Image-based visual servoing (IBVS), by contrast, formulates control directly in image space without requiring full 3D pose reconstruction, reducing its dependence on the depth scale~\cite{lin2023}. Unlike these classical paradigms, learning-based approaches train a policy directly on visual features of the landing surface without an explicit control law~\cite{angelis2026}, but provide no formal stability certificate that bounds the landing error or guarantees target visibility.
+
+Among the classical paradigms, IBVS best suits autonomous landing, but its image kinematics are nonlinear and coupled~\cite{chaumette2006}. The image-based landing kinematics couple the image features to the optical flow, making it difficult to regulate both simultaneously~\cite{lee2012}. This coupling is further shaped by the vehicle's rotation and the unknown depth scale~\cite{xie2016_1,jabbari2014}. It is most pronounced near the landing surface, where the unknown depth scale renders the image-based landing dynamics sensitive to ground effects~\cite{sanchez-cuevas2017}, wind gusts~\cite{nekoo2021b}, and actuator nonlinearities~\cite{liu2023}.
+
+Existing IBVS landing controllers address this coupling in several ways. The optical-flow controllers of~\cite{herisse2012,ho2018} sidestep it by treating the vertical optical-flow axis as a decoupled 1D system, regulating a constant divergence trajectory to soften the vertical descent. But neither bounds the terminal horizontal error, leaving the lateral coupling unaddressed. The image-feature controllers of~\cite{lin2023,cho2022} instead reproject the image features onto a virtual image plane, decoupling their translational motion from the roll and pitch rotations of the underactuated quadrotor. The prescribed-performance design of~\cite{lin2023} further replaces point features with rotation-invariant circle-based features, extending this decoupling to yaw as well. The feed-forward scheme of~\cite{cho2022} additionally descends only after lateral alignment, lengthening the landing time. These image-feature controllers regulate the lateral image error but provide no soft-touchdown guarantee.
+
+For any vision-based approach, the target must remain visible to the sensor throughout the descent. Yet target visibility is left to heuristic field-of-view (FoV) mechanisms~\cite{angelis2026}, without a formal certificate derived from the control law. Both groups of IBVS controllers also require sensing beyond a monocular camera and inertial measurement unit (IMU), whether a known depth scale~\cite{cho2022}, an absolute heading reference~\cite{herisse2012}, or the ego-state~\cite{lin2023,cho2022}. To the best of the authors' knowledge, no image-based landing strategy provides soft touchdown, precise lateral convergence, and target visibility guarantees together from a monocular camera and IMU alone, with provable stability (Table~\ref{tab:comparison}).
+
+To address these limitations, this paper proposes Visual Dual-Funnel Adaptive Sliding-Mode Control (VDF-ASMC), a unified scale-free image-based framework that regulates the image features and the optical flow together. Building on the leakage-type ASMC of~\cite{singhal2025}, it extends that one-dimensional optical-flow regulation to soft-precise landing on an unpredictable moving platform, using only a monocular camera and an IMU. The main contributions of this paper are as follows:
+\begin{enumerate}
+\item Unlike prior designs that regulate either the image features or the optical flow, a combined sliding surface based on both image parameters is proposed, so that a single controller can deliver precise alignment and soft descent together.
+\item A performance-constrained leakage-type adaptive sliding-mode control law is used to drive the combined surface to a small uniform ultimate bound (UUB), rejecting unknown disturbances and keeping the visual errors bounded. \sout{Without any prior bound, the law identifies the magnitude of the lumped disturbance, comprising the unknown wind, ground-effect, and actuator nonlinearities, online.} \shubham{The leakage-type adaptive law provides robust compensation without requiring prior knowledge of the disturbance bound.}
+\item A virtual-compass yaw design derives the heading reference purely from the image orientation\sout{, driven to a UUB by its own leakage-type adaptive law, eliminating the magnetometer or AHRS} \shubham{. A yaw-rate law is formulated that incorporates the optic-flow-recovered relative yaw rate as an implicit target-rate feed-forward, enabling tracking of rotating platforms without an external absolute-heading reference} that prior optical-flow landing controllers require for the inner-loop orientation reference.
+\item \sout{A visibility control barrier function (CBF) is designed in the image space, dynamically modulating the commanded body tilt to keep every feature point within the camera field of view while a deliverable-tilt cap keeps the commanded body force within the thrust and torque limits of the actuators. Its forward invariance is proven under a feasibility condition on the deliverable tilt authority, certifying target visibility independently of the visual errors, and replacing the heuristic FoV mechanisms of prior designs.} \shubham{A visibility control barrier function (CBF) is designed that conditions the commanded body lean to keep the measured marker centre within the camera field of view, while an admissible lean set restricts the visibility-conditioned command to the realizable body-lean directions.}
+\item \sout{A layered Lyapunov stability analysis establishes exponential convergence of the image-parameter errors to prescribed small neighborhoods, a formal soft-touchdown guarantee on the terminal relative velocity, and ultimate boundedness of the yaw error, thereby certifying the soft-precise landing across the full closed loop.} \shubham{A layered Lyapunov analysis establishes exponential convergence of the coupled translational sliding variable to a UUB, boundedness of the prescribed visual errors, and ultimate boundedness of the image-orientation error.}
+\item Numerical simulations under the disturbance model validate the robustness of VDF-ASMC against variations in the initial conditions and motion profiles, demonstrating soft-precise landing on every run with a mean landing time of about 10~s and a landing precision within 4.11~cm. Performance comparison studies against four state-of-the-art baselines show that VDF-ASMC is the only strategy to achieve soft-precise landing on every trajectory.
+\end{enumerate}
+\begin{table}[!t]
+\centering
+\caption{Comparison of key features of related vision-based UAV landing strategies surveyed in this section.}
+\label{tab:comparison}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{threeparttable}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Reference} & \textbf{Soft} & \textbf{Lateral} & \textbf{Target} & \textbf{Scale} & \textbf{Ego-State} & \textbf{Stability} \\
+ & \textbf{Touchdown} & \textbf{Precision} & \textbf{Visibility} & \textbf{Free} & \textbf{Free} & \textbf{Guarantee} \\
+\midrule
+\cite{lin2022}     & $\times$   & \checkmark & $\times$   & $\times$   & $\times$   & \checkmark \\
+\cite{zhao2021}    & $\times$   & \checkmark & $\times$   & $\times$   & $\times$   & \checkmark \\
+\cite{zhang2026}   & $\times$   & \checkmark & $\times$   & $\times$   & $\times$   & \checkmark \\
+\cite{angelis2026} & $\times$   & \checkmark & $\circ$    & $\times$   & $\times$   & $\times$ \\
+\cite{herisse2012} & \checkmark & $\times$   & $\times$   & \checkmark & \checkmark & \checkmark \\
+\cite{ho2018}      & \checkmark & $\times$   & $\times$   & $\times$   & \checkmark & $\times$ \\
+\cite{singhal2025} & \checkmark & $\times$   & $\times$   & \checkmark & \checkmark & \checkmark \\
+\cite{lin2023}     & $\times$   & \checkmark & $\times$   & $\times$   & $\times$   & \checkmark \\
+\cite{cho2022}     & $\times$   & \checkmark & $\circ$    & $\times$   & $\times$   & $\times$ \\
+\textbf{Proposed}  & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \checkmark/$\times$ reflect framework intent as claimed by the original authors; $\circ$ denotes a heuristic mechanism without a closed-loop guarantee.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:problem} formulates the landing problem and states the modeling assumptions. Section~\ref{sec:main} presents the proposed control architecture and the main theoretical results. Section~\ref{sec:experiments} evaluates the method through simulation studies and comparisons with existing approaches. Finally, Section~\ref{sec:conclusion} concludes the paper and discusses future directions.
+
+
+
+
+\section{PROBLEM FORMULATION}
+\label{sec:problem}
+Consider a quadrotor equipped with a downward-facing monocular camera and an inertial measurement unit (IMU), tasked with landing on a moving planar target carrying $N\geq 3$ distinguishable, non-collinear feature points. The controller has access only to the image measurements and the UAV roll, pitch, and body angular rates, while metric target depth, absolute heading, UAV position, and the target state are unavailable.
+
+\subsection{Quadrotor and Visual Model}
+\label{subsec:dynamics_model}
+Let $\mathcal{I}$ denote the inertial frame and $\mathcal{B}=\{O_{\text{b}},X_{\text{b}},Y_{\text{b}},Z_{\text{b}}\}$ denote the body-fixed frame, with linear and angular velocities ${}^\mathcal{B}\boldsymbol{v}_\text{b}$ and ${}^\mathcal{B}\boldsymbol{\omega}_\text{b}$. From the Newton--Euler formulation, the flight dynamics of the quadrotor are
+\begin{equation}
+\label{quadrotor dynamics: equation}
+    \begin{aligned}
+    {}^\mathcal{B}\dot{\boldsymbol{v}}_\text{b} &= \tfrac{1}{m}\big({}^\mathcal{B} T_u \hat{\boldsymbol{e}}_z + {}^\mathcal{B}\boldsymbol{F}_\text{g} + {}^\mathcal{B}\boldsymbol{F}_\text{d}\big) - {}^\mathcal{B}\boldsymbol{\omega}_\text{b}\times{}^\mathcal{B}\boldsymbol{v}_\text{b},\\
+    J {}^\mathcal{B}\dot{\boldsymbol{\omega}}_\text{b} &= {}^\mathcal{B}\boldsymbol{\tau}_u + {}^\mathcal{B}\boldsymbol{\tau}_\text{d} - {}^\mathcal{B}\boldsymbol{\omega}_\text{b}\times J {}^\mathcal{B}\boldsymbol{\omega}_\text{b},
+    \end{aligned}
+ \end{equation}
+where $m$ and $J$ denote the quadrotor mass and inertia matrix, respectively, $\hat{\boldsymbol{e}}_z$ is the standard unit vector in $z$ direction, $\boldsymbol{u}=[{}^\mathcal{B}T_u,{}^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top\in\mathbb{R}^4$ is the combined thrust-torque input, ${}^\mathcal{B} \boldsymbol{F}_\text{g}$ is the gravitational force, and ${}^\mathcal{B} \boldsymbol{F}_\text{d},{}^\mathcal{B} \boldsymbol{\tau}_\text{d}$ collect unknown bounded disturbances.
+
+Since the quadrotor generates lateral acceleration by tilting its thrust vector, translational and rotational motion are coupled.
+We therefore employ the standard cascaded architecture, where the outer visual loop generates the desired thrust direction, and an exponentially stable geometric attitude controller tracks the resulting desired attitude.
+
+Let $\mathcal C$ denote the downward-facing camera frame. To remove the apparent feature motion induced by the UAV roll and pitch, the measured image feature points are reprojected onto a virtual camera frame $\mathcal V$, constructed by compensating the UAV roll and pitch such that its image plane remains parallel to the inertial horizontal plane, as illustrated in Fig.~\ref{frames planes: figure}.
+
+Let ${}^{\mathcal C}\boldsymbol{r}_i$ denote the feature coordinates on the camera image plane and $\hat{\boldsymbol{r}}_i=[\hat{x}_i,\hat{y}_i]^\top, i\in\{1,\ldots,N\}$ denote their reprojection onto the virtual image plane with $\hat{\boldsymbol{r}} = \frac{1}{N}\sum_{i=1}^N\hat{\boldsymbol{r}}_i$ their centroid.
+We assume that the feature points are rigidly attached to the target and lie on a common plane, with their centroid defining the desired landing reference. The known rigid transformation between the body and camera frames is used in constructing the virtual camera frame.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=0.8\columnwidth]{Figures/frames_planes.pdf}
+    \caption{Coordinate frames, camera image plane, and virtual image plane used in the visual landing formulation.}
+    \label{frames planes: figure}
+\end{figure}
+
+\subsection{Monocular Image Observables}
+The focal-length-normalized centroid defines the homogeneous image-position variable $\boldsymbol{s} = [\hat{\boldsymbol{r}}/f, 1]^\top$, where $f$ is the focal length.
+The target orientation in the virtual image plane is represented by the principal-axis orientation of the feature pattern. Define the principal axis $\alpha =  \frac{1}{2}\operatorname{atan2}\big(2\mu_{11},\mu_{20}-\mu_{02}\big)$, where $\mu_{pq} = \sum_{i=1}^{N}(\hat{x}_i - \hat{x})^p(\hat{y}_i - \hat{y})^q$ are the centered image moments.
+\begin{assumption}[Image-orientation observability]
+\label{asm:orientation_observability}
+During the landing interval, the target second-moment tensor remains anisotropic such that $\left(\mu_{20}-\mu_{02}\right)^2 + 4\mu_{11}^2 \ge c_\alpha, \quad c_\alpha>0 $.
+\end{assumption}
+
+The translational and angular image-velocity components $\boldsymbol{\nu}$ and $\boldsymbol{w}$ are recovered from the optical-flow field as $\begin{bmatrix} \boldsymbol{\nu}^\top~\boldsymbol{w}^\top\end{bmatrix}^\top = L_s^\dagger\begin{bmatrix}\dot{\hat{\boldsymbol{r}}}_1^\top \cdots \dot{\hat{\boldsymbol{r}}}_N^\top\end{bmatrix}^\top$, where $L_s\in\mathbb R^{2N\times6}$ is the stacked standard point-feature interaction matrix, assumed to have full column rank over the considered feature configuration. The angular image velocity is
+\begin{equation}
+    \boldsymbol w \triangleq \boldsymbol\omega_{\mathrm t} - \dot\psi_{\mathrm b}\hat{\boldsymbol e}_z,
+    \label{angular image velocity: equation}
+\end{equation}
+where $\boldsymbol\omega_{\mathrm t}$ denotes the unknown target angular velocity. Thus, $\boldsymbol w$ represents target rotation relative to the yaw rotation of the virtual camera frame and is recovered directly from the measured optical flow.
+
+Using the virtual-camera kinematics, the nominal visual dynamics are:
+\begin{equation} \label{visual dynamics: equation}
+    \begin{aligned}
+    \dot{\boldsymbol{s}} &= \boldsymbol{\nu} - \dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_z\times\boldsymbol{s} - (\boldsymbol{\nu}\cdot\hat{\boldsymbol{e}}_z)\,\boldsymbol{s}, \\
+    \dot{\alpha} &= \boldsymbol l_\alpha^\top\boldsymbol w, \qquad l_{\alpha,3}=1, \\
+    \dot{\boldsymbol{\nu}} &= \lambda(t)\boldsymbol{a} - \dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_z\times\boldsymbol{\nu} - (\boldsymbol{\nu}\cdot\hat{\boldsymbol{e}}_z)\,\boldsymbol{\nu},
+    \end{aligned}
+\end{equation}
+where $\dot{\psi}_\text{b}$ is the UAV yaw rate, $\lambda(t)\triangleq\frac{1}{z(t)}>0$ is an inverse-depth image scale, and $\boldsymbol{a}$ denotes the relative translational acceleration expressed in $\mathcal{V}$.
+
+\begin{assumption}[Visual-signal regularity]
+\label{asm:visual_regularity}
+Over the landing interval, the image observables $\boldsymbol s$, $\alpha$, $\boldsymbol\nu$, and $\boldsymbol w$, together with the time derivatives required by the controller and stability analysis, remain bounded.
+\end{assumption}
+
+\subsection{Problem Statement}
+\label{subsec:problem_statement}
+The visual dynamics in \eqref{visual dynamics: equation} contain unknown depth-dependent and disturbance terms. 
+The relative translational acceleration is modeled as $\boldsymbol{a} = -\beta_{\mathrm{a}}(t)\boldsymbol{a}_{\mathrm{u}} + \boldsymbol{d}_{\mathrm{a}}$, where $\boldsymbol{a}_{\mathrm{u}}\in\mathbb{R}^{3}$ denotes the commanded UAV translational acceleration expressed in $\mathcal{V}$, $\beta_{\mathrm{a}}(t)>0$ represents the uncertain control effectiveness, and $\boldsymbol{d}_{\mathrm{a}}\in\mathbb{R}^{3}$ collects the unknown target acceleration and additive translational disturbances. The negative sign follows from defining the target motion relative to the UAV.
+
+Since the inverse-depth scale $\lambda(t)$ is unknown, define the effective input gain $\beta(t) \triangleq\lambda(t)\beta_{\mathrm{a}}(t)>0$. Then,
+\begin{equation}
+    \dot{\boldsymbol{\nu}} = -\beta(t)\boldsymbol{a}_{\mathrm{u}} -\dot{\psi}_{\mathrm{b}}
+    \hat{\boldsymbol{e}}_{z}\times\boldsymbol{\nu} -(\boldsymbol{\nu}\cdot\hat{\boldsymbol{e}}_{z})\boldsymbol{\nu} + \boldsymbol{d}_{\nu},
+    \label{uncertain image velocity dynamics: equation}
+\end{equation}
+where $\boldsymbol{d}_{\nu} \triangleq \lambda(t)\boldsymbol{d}_{\mathrm{a}}$.
+Since $l_{\alpha,3}=1$, substituting \eqref{angular image velocity: equation} into $\dot\alpha=\boldsymbol l_\alpha^\top\boldsymbol w$ gives
+\begin{equation}
+    \dot{\alpha} = -\omega_{\mathrm{u}} + d_{\alpha}, \qquad
+    d_{\alpha} \triangleq \boldsymbol l_\alpha^\top \boldsymbol\omega_{\mathrm t} - \dot{\psi}_{\mathrm{b}} + \omega_{\mathrm{u}}.
+    \label{uncertain image orientation dynamics: equation}
+\end{equation}
+where $\omega_{\mathrm{u}}$ is the commanded yaw-rate, and $d_{\alpha}$ collects the target-induced image-orientation motion and the residual yaw-realization uncertainty.
+
+\begin{assumption}[Bounded uncertainties]
+\label{asm:uncertainty}
+During the landing interval, the camera-target depth $z(t)$ remains strictly positive, and the effective input gain satisfies $0<\underline{\beta} \leq \beta(t) \leq \overline{\beta}$, where $\underline{\beta}$ and $\overline{\beta}$ are finite but unknown constants. Moreover, the lumped additive uncertainties satisfy $\|\boldsymbol{d}_{\nu}(t)\| \leq \bar{d}_{\nu}, ~ |d_{\alpha}(t)| \leq \bar{d}_{\alpha}$, for finite but unknown constants $\bar{d}_{\nu}>0$. In addition, $d_{\alpha}$ is continuously differentiable with bounded derivative.
+\end{assumption}
+
+Since the third component of $\boldsymbol{s}$ is identically unity, define the lateral image-position error as $\boldsymbol{e}_{p} \triangleq \boldsymbol{s}_{xy} - \boldsymbol{s}_{\mathrm{d},xy} \in\mathbb{R}^{2}$, where $\boldsymbol{s}_{\mathrm{d},xy}$ is the desired normalized image location of the target centroid. The special case $\boldsymbol{s}_{\mathrm{d},xy}=\boldsymbol{0}$ corresponds to alignment with the camera optical axis. 
+Define the image-orientation error as $e_{\alpha} = \frac{1}{2} \operatorname{atan2} \left(\sin\!\left(2(\alpha-\alpha_{\mathrm{d}})\right),\cos\!\left(2(\alpha-\alpha_{\mathrm{d}})\right)\right)\in\left(-\frac{\pi}{2},\frac{\pi}{2}\right]$, where $\alpha_{\mathrm{d}}$ is the desired target orientation in the virtual image plane.
+
+Target visibility imposes an additional constraint independent of centroid alignment. Let ${}^{\mathcal C}\tilde{\boldsymbol r} = [\tilde{x},\tilde{y}]^\top$ denote the measured marker centre on the camera image plane in focal-length-normalized coordinates, and $\boldsymbol{\varphi}_{\max} = [\varphi_{x,\max},\varphi_{y,\max}]^\top$ the corresponding field-of-view half-widths. Then, the visibility set is 
+\begin{equation}
+    \begin{aligned}
+    \mathcal{S}_{\mathrm{vis}} = \big\{{}^{\mathcal C}\tilde{\boldsymbol r} \in\mathbb{R}^{2}:|\tilde r_{k}|\leq\varphi_{k,\max},\quad k\in\{1,2\}\big\}.
+    \end{aligned}
+    \label{visibility set: equation}
+\end{equation}
+
+\begin{problem}
+\label{prob:landing}
+Using only monocular image measurements and the available inertial measurements, design a visual feedback controller such that the lateral visual errors remain within prescribed performance envelopes, the image-orientation error is ultimately bounded, the optical-flow reference enforces soft touchdown, and $\mathcal S_{\rm vis}$ is forward invariant over $t\in[0,t_{\mathrm f}]$, without requiring metric target depth, absolute heading, UAV position, or the translational and rotational states of the target.
+\end{problem}
+
+\section{COUPLED IMAGE-FEATURE AND OPTICAL-FLOW CONTROL}
+\label{sec:control}
+The controller is constructed directly in the visual domain. A prescribed-performance transformation first constrains the lateral image-position error, from which a compatible translational image-velocity reference is generated. The transformed image-position and image-velocity errors are then coupled through a common sliding manifold to simultaneously regulate visual alignment and soft descent.
+
+For any constrained vector $\boldsymbol q\in\mathbb R^n$, consider the following component-wise prescribed-performance transformation: 
+\begin{equation}
+    \begin{aligned}
+    -\rho_{q,k}(t)&<q_k(t)<\rho_{q,k}(t), \qquad k\in\{1,\ldots,n\} \\ 
+    \rho_{q,k}(t) &= (\rho_{q,k,0}-\rho_{q,k,\infty}) e^{-\ell_{q,k}t} + \rho_{q,k,\infty},  \quad \ell_{q,k}>0\\
+    q_k &= \rho_{q,k}(t) S_{q,k}, \qquad
+    S_{q,k} = \tanh\!\left(\frac{\zeta_{q,k}}{2}\right),  
+    \end{aligned}
+    \label{generic PPC transformation: equation}
+\end{equation}
+to get the transformed error dynamics as
+\begin{equation}
+    \begin{aligned}
+    \dot{\boldsymbol\zeta}_q &= \mathcal G_q \left[ \dot{\boldsymbol q} - \mathcal S_q\dot{\boldsymbol\rho}_q \right], \quad \mathcal S_q = \operatorname{diag}(S_{q,1},\ldots,S_{q,n}), \\
+    \mathcal G_q &= \operatorname{diag}(g_{q,1},\ldots,g_{q,n}), \quad
+    g_{q,k} = \frac{(e^{\zeta_{q,k}}+1)^2} {2e^{\zeta_{q,k}}\rho_{q,k}}.
+    \end{aligned}
+    \label{generic transformed error dynamics: equation}
+\end{equation}
+
+\subsection{Coupled Translational Visual Control}
+\label{subsec:translational_control}
+For a constant desired image location $\boldsymbol s_{\mathrm{d},xy}$, the lateral image-position error satisfies
+\begin{equation}
+    \dot{\boldsymbol e}_{p} = \boldsymbol\nu_{xy} - \left(\dot{\psi}_{\mathrm b}\hat{\boldsymbol e}_{z}\times\boldsymbol s\right)_{xy} - \nu_{z}\boldsymbol s_{xy},
+    \label{image position error dynamics: equation}
+\end{equation}
+With $\Phi \triangleq \operatorname{diag} \left( \varphi_{x,\max}, \varphi_{y,\max} \right)$ and the normalized error $\bar{\boldsymbol e}_p=\Phi^{-1}\boldsymbol e_p$, applying \eqref{generic PPC transformation: equation} to $\bar{\boldsymbol e}_p$ gives
+\begin{equation}
+    \dot{\boldsymbol\zeta}_{p} = \mathcal G_{p} \left[ \dot{\bar{\boldsymbol e}}_{p} - \mathcal S_{p}\dot{\boldsymbol\rho}_{p}(t) \right].
+    \label{transformed image error dynamics: equation}
+\end{equation}
+
+Choose the compatible translational image-velocity reference as
+\begin{equation}
+    \boldsymbol\nu_{\mathrm d} = \begin{bmatrix} \Phi\left(\mathcal S_p\dot{\boldsymbol\rho}_p - k_p\mathcal G_p^{-1}\boldsymbol\zeta_p \right)\\[1mm] 0 \end{bmatrix} + \dot{\psi}_{\mathrm b} \hat{\boldsymbol e}_{z}\times\boldsymbol s + \nu_{\mathrm d,z}\boldsymbol s,
+    \label{desired image velocity: equation}
+\end{equation}
+where $\nu_{\mathrm d,z}<0$ is the prescribed image-expansion rate and $k_p>0$.
+Define the image-velocity error as $\boldsymbol e_{\nu} \triangleq \boldsymbol\nu-\boldsymbol\nu_{\mathrm d}$.
+Substitution into \eqref{transformed image error dynamics: equation} yields
+\begin{equation}
+    \dot{\boldsymbol\zeta}_p = - k_p\boldsymbol\zeta_p + \mathcal G_p\Phi^{-1} \left( \boldsymbol e_{\nu,xy} - e_{\nu,z}\boldsymbol s_{xy} \right).
+    \label{coupled transformed position dynamics: equation}
+\end{equation}
+All measured and prescribed signals entering the reference generator are assumed sufficiently smooth such that $\boldsymbol\nu_{\mathrm d}\in C^1$ and $\dot{\boldsymbol\nu}_{\mathrm d}$ remains bounded over the landing interval.
+
+The translational image-velocity error satisfies
+\begin{equation}
+    \dot{\boldsymbol e}_{\nu} = -\beta\boldsymbol a_{\mathrm u} + \boldsymbol c_{\nu} + \boldsymbol d_{\nu},
+    \label{image velocity error dynamics: equation}
+\end{equation}
+where $\boldsymbol c_{\nu} \triangleq -\dot{\psi}_{\mathrm b}\hat{\boldsymbol e}_{z}\times\boldsymbol\nu -\nu_z\boldsymbol\nu -\dot{\boldsymbol\nu}_{\mathrm d}$.
+Applying \eqref{generic PPC transformation: equation} to $\boldsymbol e_{\nu}$ yields
+\begin{equation}
+    \dot{\boldsymbol\zeta}_{\nu} = \mathcal G_{\nu} \left[ -\beta\boldsymbol a_{\mathrm u} + \boldsymbol c_{\nu} + \boldsymbol d_{\nu} - \mathcal S_{\nu}\dot{\boldsymbol\rho}_{\nu} \right],
+    \label{transformed image velocity dynamics: equation}
+\end{equation}
+where
+$\boldsymbol\rho_\nu$, $\mathcal S_\nu$, and $\mathcal G_\nu$ follow \eqref{generic transformed error dynamics: equation} with $n=3$.
+
+\subsection{Adaptive Control for the Coupled Sliding Manifold}
+\label{subsec:coupled_surface}
+Define the augmented transformed error $\boldsymbol\zeta_{\mathrm a} \triangleq \begin{bmatrix} \boldsymbol\zeta_p^\top & \int_0^t \zeta_{\nu,z}(\tau)\,d\tau \end{bmatrix}^\top \in\mathbb R^3$ and the coupled sliding manifold
+\begin{equation}
+    \boldsymbol\sigma = \boldsymbol\zeta_{\nu} + \boldsymbol{\chi} \,\boldsymbol\zeta_{\mathrm a}, \qquad \boldsymbol{\chi}=\operatorname{diag}(\chi_x,\chi_y,\chi_z)\succ0
+    \label{coupled sliding manifold: equation}
+\end{equation}
+Define $\boldsymbol\eta_\nu \triangleq \boldsymbol c_\nu - \mathcal S_\nu\dot{\boldsymbol\rho}_\nu + \mathcal G_\nu^{-1}\boldsymbol{\chi}\dot{\boldsymbol\zeta}_{\mathrm a}$, where 
+\begin{equation*}
+\dot{\boldsymbol\zeta}_{\mathrm a} = \begin{bmatrix} - k_p\boldsymbol\zeta_p + \mathcal G_p\Phi^{-1} \left( \boldsymbol e_{\nu,xy} - e_{\nu,z}\boldsymbol s_{xy} \right) \\ \zeta_{\nu,z}
+\end{bmatrix}.
+\end{equation*}
+Then, the coupled sliding dynamics can be written as
+\begin{equation}
+    \dot{\boldsymbol\sigma} = \mathcal G_\nu \left( -\beta\boldsymbol a_{\mathrm u} + \boldsymbol\eta_\nu + \boldsymbol d_\nu \right).
+    \label{compact sliding dynamics: equation}
+\end{equation}
+
+Define the uncertainty regressor $\mathcal R_\nu \triangleq \begin{bmatrix} - \boldsymbol\eta_\nu & d_{\nu,0} I_3 \end{bmatrix} \in\mathbb R^{3\times4}$ and the lumped uncertainty vector $\boldsymbol\delta_\nu \triangleq \underline{\beta}^{-1} \begin{bmatrix} \left(\frac{\beta}{\beta_0} - 1\right) & d_{\nu,0}^{-1} \boldsymbol d_\nu^\top \end{bmatrix}^\top\in\mathbb R^4$, where $\beta_0 = 1~\mathrm{m}^{-1}$ and $d_{\nu,0}=1~\mathrm{s}^{-2}$ are fixed reference scales introduced to render the corresponding normalized uncertainty components dimensionless.
+Then, the sliding dynamics can be written as
+\begin{equation}
+    \dot{\boldsymbol\sigma} = -\beta\mathcal G_\nu\left(\boldsymbol a_{\mathrm u} - \frac{\boldsymbol\eta_\nu}{\beta_0} \right) + \underline{\beta}\,\mathcal G_\nu\mathcal R_\nu\boldsymbol\delta_\nu,
+    \label{sliding uncertainty dynamics: equation}
+\end{equation}
+By Assumption~\ref{asm:uncertainty}, $\boldsymbol\delta_\nu$ is uniformly bounded; hence, there exists a finite but unknown constant $\tilde d_\nu>0$ such that $\|\boldsymbol\delta_\nu(t)\|_2\leq\tilde d_\nu$.
+For each axis, let $\mathcal R_{\nu,k}$ denote the $k$-th row of $\mathcal R_\nu$ and define $\mathcal W_\nu \triangleq \operatorname{diag} (w_{\nu,1},w_{\nu,2},w_{\nu,3})$, where $w_{\nu,k} \triangleq \left\| \mathcal R_{\nu,k} \right\|_2$.
+Hence, $\left| (\mathcal R_\nu\boldsymbol\delta_\nu)_k \right| \leq w_{\nu,k}\tilde d_\nu, k\in\{1,2,3\}$.
+Since $\mathcal G_\nu$ is positive diagonal, $\left| (\mathcal G_\nu\mathcal R_\nu\boldsymbol\delta_\nu)_k \right| \le g_{\nu,k}w_{\nu,k}\tilde d_\nu$.
+
+The commanded translational acceleration is chosen as
+\begin{equation}
+    \boldsymbol a_{\mathrm u} = \frac{\boldsymbol\eta_\nu}{\beta_0} + \mathcal G_\nu^{-1} \left[ \Gamma\boldsymbol\sigma + \mathcal G_\nu\mathcal W_\nu \left( \boldsymbol\kappa\odot \operatorname{sgn} (\boldsymbol\sigma) \right) \right],
+    \label{adaptive acceleration control: equation}
+\end{equation}
+where $\Gamma\succ0$ is diagonal, $\odot$ denotes the Hadamard product, and $\operatorname{sgn}(\cdot)$ acts component-wise. At the switching surface, the ideal sign function is interpreted in the standard set-valued sliding-mode sense, $\operatorname{sgn}(0)\in[-1,1]$.
+The adaptive switching gains $\boldsymbol\kappa = [\kappa_x,\kappa_y,\kappa_z]^\top$ evolve according to
+\begin{equation}
+    \dot{\boldsymbol\kappa} = \mathcal N \mathcal G_\nu \mathcal W_\nu |\boldsymbol\sigma| - \mathcal N\mathcal P\boldsymbol\kappa, \qquad \boldsymbol\kappa(0)\in\mathbb R_{>0}^{3},
+    \label{adaptive gain law: equation}
+\end{equation}
+where $\mathcal N,\mathcal P\succ0$ are diagonal and $|\boldsymbol\sigma|$ denotes the component-wise absolute value. 
+Substitution into \eqref{sliding uncertainty dynamics: equation} gives
+\begin{equation}
+    \dot{\boldsymbol\sigma} = -\beta \left[ \Gamma\boldsymbol\sigma + \mathcal G_\nu \mathcal W_\nu\left( \boldsymbol\kappa\odot \operatorname{sgn} (\boldsymbol\sigma) \right) \right] + \underline{\beta}\mathcal G_\nu\mathcal R_\nu\boldsymbol\delta_\nu.
+    \label{closed loop sliding dynamics: equation}
+\end{equation}
+
+\subsection{Visibility Control Barrier Function}
+\label{subsec:visibility}
+The prescribed visual-error envelopes do not independently guarantee that the measured landing marker remains inside the physical camera field of view. We therefore impose a separate discrete-time visibility barrier on the measured camera-frame marker centre
+${}^{\mathcal C}\tilde{\boldsymbol r}$.
+For each $k\in\{1,2\}$, define the barrier function
+\begin{equation}
+    h_k({}^{\mathcal C}\tilde{\boldsymbol r}) =  \varphi_{k,\max} - |\tilde r_k|,
+    \label{cbf barrier: equation}
+\end{equation}
+such that the visibility-safe set $\mathcal S_{\mathrm{vis}} = \left\{{}^{\mathcal C}\tilde{\boldsymbol r}\in\mathbb R^2:h_k({}^{\mathcal C}\tilde{\boldsymbol r})\ge0,
+\quad k\in\{1,2\}\right\}$ corresponds to the marker centre lying inside the camera field of view.
+
+Let $\boldsymbol y\in\mathbb R^2$ denote the commanded body lean expressed in the image axes, $\boldsymbol y_{\mathrm{curr}}$ its currently realized value, and $\boldsymbol y_{\mathrm d}$ the nominal desired lean generated by the translational controller. Let $L_e({}^{\mathcal C}\tilde{\boldsymbol r})\in\mathbb R^{2\times2}$ denote the image interaction matrix relating a change in body lean to the local change in the measured marker centre.
+The nominal marker-centre prediction over a horizon $\tau>0$ is
+\begin{equation}
+    \boldsymbol c_{\mathrm{next}}(\boldsymbol y) = {}^{\mathcal C}\tilde{\boldsymbol r} + L_e({}^{\mathcal C}\tilde{\boldsymbol r}) \left(\boldsymbol y-\boldsymbol y_{\mathrm curr}\right) + \tau\boldsymbol d,
+    \label{predicted marker centre: equation}
+\end{equation}
+where $\boldsymbol d\in\mathbb R^2$ denotes the exogenous marker-centre drift.
+
+Let $\mathcal Y_{\mathrm{adm}}\subset\mathbb R^2$ denote the set of body-lean commands realizable by the thrust and attitude-control layer. The visibility-conditioned command is obtained from
+\begin{equation}
+    \begin{aligned}
+    (\boldsymbol y^\star,\boldsymbol\ell^\star) = \arg\min_{\substack{\boldsymbol y\in\mathcal Y_{\mathrm{adm}}\\
+    \boldsymbol\ell\ge\boldsymbol0}} ~ & \frac{1}{2}\|\boldsymbol y-\boldsymbol y_{\mathrm d}\|^2 + \frac{\rho}{2}\|\boldsymbol\ell\|^2 \\
+    \text{s.t.}\quad&|c_{\mathrm{next},k}(\boldsymbol y)|\le\varphi_{k,\max}+\ell_k,
+    ~ k\in\{1,2\},
+    \end{aligned}
+    \label{cbf qp: equation}
+\end{equation}
+Here $\rho>0$ is the slack penalty. The admissible set $\mathcal Y_{\mathrm{adm}}$ ensures that the visibility correction remains compatible with the available control authority.
+
+\subsection{Virtual Compass Geometric Attitude Control}
+\label{subsec:orientation_control}
+The inner loop combines image-orientation regulation with geometric attitude tracking. The image-orientation loop acts as a virtual compass, where it generates the desired heading directly from the image-orientation error, without requiring an external absolute-heading reference. The resulting heading and the translational command $\boldsymbol a_{\mathrm u}$ from \eqref{adaptive acceleration control: equation} jointly determine the desired UAV attitude, which is realized by a geometric $SO(3)$ tracker.
+
+For a constant desired image orientation $\alpha_{\mathrm d}$, the wrapped error satisfies $\dot e_\alpha=\dot\alpha$ away from the wrapping discontinuity. The image-orientation error dynamics are written in the lumped form
+\begin{equation}
+    \dot e_\alpha = -\omega_{\mathrm{u}} + d_\alpha .
+    \label{image orientation error dynamics: equation}
+\end{equation}
+The commanded yaw rate is generated by
+\begin{equation}
+    \dot\omega_{\mathrm{u}} = k_\alpha e_\alpha + k_w w_z,
+    \label{yaw rate control: equation}
+\end{equation}
+where $k_\alpha, k_w>0$ and the measured $w_z$ term acts as an implicit target-yaw-rate feed-forward.
+
+The desired heading is obtained by integrating $\omega_{\mathrm{u}}$ with angular wrapping. Together with $\boldsymbol a_{\mathrm u}$, it defines the desired attitude $R_{\mathrm d}\in SO(3)$ by aligning the desired body-$z$ axis with the commanded force direction and resolving the remaining heading degree of freedom. A standard geometric $SO(3)$ controller~\cite{lee2010} is then used to track $R_{\mathrm d}$ and its associated desired angular velocity. Under the standard geometric tracking conditions, the attitude-tracking error converges almost globally and exponentially, allowing the inner loop to be treated as the attitude-realization layer of the visual controller.
+
+\section{STABILITY AND VISIBILITY GUARANTEES}
+\label{sec:stability}
+We first extend the leakage-type ASMC argument of~\cite{singhal2025} to the diagonal multivariable structure employed by the translational visual loop.
+
+\begin{theorem}[Coupled Translational Visual Stability]
+\label{thm:translational}
+Under Assumption~\ref{asm:uncertainty}, let the initial image-position and image-velocity errors lie strictly inside their prescribed performance envelopes. Then, the closed-loop dynamics \eqref{closed loop sliding dynamics: equation} with \eqref{adaptive gain law: equation} establish exponential convergence of $\boldsymbol\sigma$ to the ultimate set
+\begin{equation}
+    \vartheta_\nu = \sqrt{\frac{3\,\underline\beta\,\lambda_{\max}(\mathcal P)}{\varphi_{1,\nu}-\varphi_{2,\nu}}}\,\tilde d_\nu, \qquad 0<\varphi_{2,\nu}<\varphi_{1,\nu}
+    \label{translational UUB bound: equation}
+\end{equation}
+where $\varphi_{1,\nu} \triangleq \underline\beta\, \frac{\min\{2\lambda_{\min}(\Gamma), \lambda_{\min}(\mathcal P)\}}{\max\{1,\underline\beta\lambda_{\max}(\mathcal N^{-1})\}}>0$.
+Consequently, the coupled sliding variable $\boldsymbol\sigma$ and adaptive switching gains $\boldsymbol\kappa$ are uniformly ultimately bounded.
+
+Moreover, let the funnel-compatibility condition be
+\begin{equation}
+    \rho_{\nu,k}(t) > \rho_{\nu,z}(t)\bar s_k(t), \qquad k\in\{x,y\},
+    \label{funnel compatibility condition: equation}
+\end{equation}
+where $\bar s_k(t) \triangleq |s_{\mathrm d,k}| + \varphi_{k,\max}\rho_{p,k}(t)$. Then $\boldsymbol\zeta_p$ and $\boldsymbol\zeta_\nu$ remain bounded, and the inverse prescribed-performance transformations preserve the prescribed image-position and image-velocity error envelopes.
+\end{theorem}
+
+\begin{proof}
+The adaptive law \eqref{adaptive gain law: equation} preserves $\boldsymbol\kappa(t)\in\mathbb R_{>0}^{3}$. Consider
+\begin{equation}
+    V = \frac{1}{2}\boldsymbol\sigma^\top\boldsymbol\sigma + \frac{\underline\beta}{2}(\boldsymbol\kappa-\tilde d_\nu\boldsymbol 1)^\top \mathcal N^{-1}(\boldsymbol\kappa-\tilde d_\nu\boldsymbol 1).
+    \label{translational Lyapunov: equation}
+\end{equation}
+Using \eqref{closed loop sliding dynamics: equation} and \eqref{adaptive gain law: equation}, and noting that $\sigma_k\operatorname{sgn}(\sigma_k)=|\sigma_k|$, gives
+\begin{align}
+    \dot V ={}& - \beta(t)\boldsymbol\sigma^\top \Gamma\boldsymbol\sigma - \beta(t)\sum_{k=1}^{3}g_{\nu,k}w_{\nu,k}\kappa_k|\sigma_k| \nonumber \\ 
+    &+ \underline\beta\sum_{k=1}^{3}g_{\nu,k} \sigma_k (\mathcal R_\nu\boldsymbol\delta_\nu)_k + \underline\beta\sum_{k=1}^{3} g_{\nu,k}w_{\nu,k}(\kappa_k-\tilde d_\nu)|\sigma_k| \nonumber\\
+    &- \underline\beta (\boldsymbol\kappa-\tilde d_\nu\boldsymbol1)^\top \mathcal P\boldsymbol\kappa.
+    \label{translational Vdot expansion: equation}
+\end{align}
+From the row-wise uncertainty bound $|(\mathcal R_\nu\boldsymbol\delta_\nu)_k| \le w_{\nu,k}\tilde d_\nu$, we have $ \sigma_k (\mathcal R_\nu\boldsymbol\delta_\nu)_k \le w_{\nu,k} \tilde d_\nu|\sigma_k|$. Therefore,
+\begin{align}
+    \dot V \le{}& - \beta(t)\boldsymbol\sigma^\top \Gamma\boldsymbol\sigma - \bigl(\beta(t)-\underline\beta\bigr) \sum_{k=1}^{3}g_{\nu,k}w_{\nu,k}\kappa_k|\sigma_k| \nonumber\\
+    &- \underline\beta (\boldsymbol\kappa-\tilde d_\nu\boldsymbol1)^\top \mathcal P\boldsymbol\kappa.
+    \label{translational matched bound: equation}
+\end{align}
+Because $\beta(t)\ge\underline\beta$, $g_{\nu,k}w_{\nu,k}\ge0$, and $\kappa_k>0$, the second term on the right-hand side is non-positive. Hence,
+\begin{equation}
+    \dot V \le - \underline\beta\,\lambda_{\min}(\Gamma)\|\boldsymbol\sigma\|^2 - \underline\beta (\boldsymbol\kappa-\tilde d_\nu\boldsymbol1)^\top \mathcal P\boldsymbol\kappa.
+\end{equation}
+Using $(\boldsymbol\kappa-\tilde d_\nu\boldsymbol1)^\top \mathcal P\boldsymbol\kappa \ge \frac12 (\boldsymbol\kappa-\tilde d_\nu\boldsymbol1)^\top \mathcal P (\boldsymbol\kappa-\tilde d_\nu\boldsymbol1) - \frac12(\tilde d_\nu)^2\boldsymbol1^\top \mathcal P\boldsymbol1$, we obtain
+\begin{align}
+    \dot V \le{}& - \underline\beta\,\lambda_{\min}(\Gamma)\|\boldsymbol\sigma\|^2 \nonumber\\
+    & - \frac{\underline\beta}{2} (\boldsymbol\kappa-\tilde d_\nu\boldsymbol 1)^\top \mathcal P (\boldsymbol\kappa-\tilde d_\nu\boldsymbol 1) + \frac{\underline\beta}{2} (\tilde d_\nu)^2\boldsymbol 1^\top \mathcal P\boldsymbol 1.
+    \label{translational Vdot: equation}
+\end{align}
+Since $\boldsymbol 1^\top \mathcal P\boldsymbol 1 \le 3\lambda_{\max}(\mathcal P)$, comparison with \eqref{translational Lyapunov: equation} yields
+\begin{equation}
+    \dot V \le - \varphi_{1,\nu}V + \frac{3}{2} \underline\beta\,\lambda_{\max}(\mathcal P)(\tilde d_\nu)^2.
+    \label{translational Vdot bound: equation}
+\end{equation}
+For any $0<\varphi_{2,\nu}<\varphi_{1,\nu}$, $\dot V\le-\varphi_{2,\nu}V$ whenever $$V \ge \frac{\tfrac{3}{2} \underline\beta\lambda_{\max}(\mathcal P)(\tilde d_\nu)^2}{\varphi_{1,\nu}-\varphi_{2,\nu}}.$$ Since $V\ge\frac12\|\boldsymbol\sigma\|^2$, the sliding variable exponentially approaches the UUB, i.e. $\|\boldsymbol\sigma\| \le \vartheta_\nu$. The same Lyapunov bound also establishes uniform ultimate boundedness of $\boldsymbol\kappa$.
+
+The boundedness of the coupled sliding variable can be related to the underlying transformed visual errors as follows. For the vertical channel, define $\xi_z \triangleq \int_0^t \zeta_{\nu,z}(\tau)\,d\tau$. Since $\dot{\xi}_z = -\chi_z\xi_z+\sigma_z$, bounded $\sigma_z$ implies bounded $\xi_z$, and hence $\zeta_{\nu,z}=\sigma_z-\chi_z\xi_z$ is bounded.
+For each lateral axis $k\in\{x,y\}$, $\zeta_{\nu,k}=\sigma_k-\chi_k\zeta_{p,k}$, and \eqref{coupled transformed position dynamics: equation} gives
+\begin{equation}
+    \dot{\zeta}_{p,k} = - k_p\zeta_{p,k} + \frac{g_{p,k}}{\varphi_{k,\max}} \left[\rho_{\nu,k} S_{\nu,k} \!\left( \sigma_k-\chi_k\zeta_{p,k} \right) - e_{\nu,z}s_k \right].
+    \label{reduced position transformed dynamics: equation}
+\end{equation}
+Since the prescribed-position transformation remains well defined, $|s_k| \le \bar s_ks_k(t)$. Indeed, for bounded $\sigma_k$, $S_{\nu,k}(\sigma_k-\chi_k\zeta_{p,k})\to-1$ as $\zeta_{p,k}\to+\infty$ and tends to $+1$ as $\zeta_{p,k}\to-\infty$. Under the funnel-compatibility condition \eqref{funnel compatibility condition: equation}, the bracketed term in \eqref{reduced position transformed dynamics: equation} therefore points inward at both extremes, while $-k_p\zeta_{p,k}$ provides additional restoring action. Hence $\zeta_{p,k}$ remains bounded. Consequently, $\boldsymbol\zeta_p$ and $\boldsymbol\zeta_\nu =\boldsymbol\sigma-\boldsymbol\chi\boldsymbol\zeta_a$ remain bounded, and the inverse prescribed-performance transformations preserve the corresponding visual-error envelopes.
+\end{proof}
+
+\begin{theorem}[Visibility Forward Invariance]
+\label{thm:visibility}
+Consider the nominal one-step marker-centre dynamics \eqref{predicted marker centre: equation}. Suppose that the QP \eqref{cbf qp: equation} admits a zero-slack solution
+$\boldsymbol\ell^\star=\boldsymbol0$ at every control step. If ${}^{\mathcal C}\tilde{\boldsymbol r}_0 \in\mathcal S_{\mathrm{vis}}$, then $\mathcal S_{\mathrm{vis}}$ is forward invariant under the nominal one-step visibility dynamics.
+\end{theorem}
+
+\begin{proof}
+Suppose ${}^{\mathcal C}\tilde{\boldsymbol r}_j \in\mathcal S_{\mathrm{vis}}$. With $\boldsymbol\ell^\star=\boldsymbol0$, the visibility constraints in \eqref{cbf qp: equation} give
+$|c_{\mathrm{next},k}(\boldsymbol y_j^\star)| \le \varphi_{k,\max},~k\in\{1,2\}$.
+Thus $h_k\!\left(\boldsymbol c_{\mathrm{next}}(\boldsymbol y_j^\star) \right)\ge0,~k\in\{1,2\}$. Under the nominal one-step model, ${}^{\mathcal C}\tilde{\boldsymbol r}_{j+1} = \boldsymbol c_{\mathrm{next}}(\boldsymbol y_j^\star)$, and hence ${}^{\mathcal C}\tilde{\boldsymbol r}_{j+1} \in\mathcal S_{\mathrm{vis}}$. Since ${}^{\mathcal C}\tilde{\boldsymbol r}_0 \in\mathcal S_{\mathrm{vis}}$, the result follows by induction.
+\end{proof}
+
+\begin{proposition}[Virtual-Compass Yaw Stability]
+\label{prop:yaw}
+Under Assumptions~\ref{asm:visual_regularity} and \ref{asm:uncertainty}, the yaw controller \eqref{yaw rate control: equation} yields, away from the wrapping discontinuity,
+\begin{equation}
+    \ddot e_\alpha + k_w\dot e_\alpha + k_\alpha e_\alpha = \dot d_\alpha + k_w(\dot e_\alpha-w_z).
+    \label{yaw error dynamics: equation}
+\end{equation}
+For $k_\alpha>0$ and $k_w>0$, the image-orientation error $e_\alpha$ is uniformly ultimately bounded. Moreover, $e_\alpha\to0$ if the right-hand side of \eqref{yaw error dynamics: equation} converges to zero.
+\end{proposition}
+
+\begin{proof}
+Differentiating $\dot e_\alpha=-\omega_{\mathrm{u}}+d_\alpha$ and substituting \eqref{yaw rate control: equation} gives $\ddot e_\alpha = -k_\alpha e_\alpha - k_w w_z + \dot d_\alpha$. Rearranging yields \eqref{yaw error dynamics: equation}. By Assumptions~\ref{asm:visual_regularity} and \ref{asm:uncertainty}, its right-hand side is bounded. Since $s^2+k_ws+k_\alpha$ is Hurwitz for $k_\alpha>0$ and $k_w>0$, $e_\alpha$ is uniformly ultimately bounded. If the right-hand side converges to zero, then $e_\alpha\to0$.
+\end{proof}
+
+\section{SIMULATION RESULTS}
+\label{sec:experiments}
+
+\subsection{Simulation Setup}
+
+VISTA is evaluated in closed-loop simulation using a thirteen-state X500-class quadrotor model with a downward-facing monocular camera tracking four feature points. The dynamics are integrated at $\Delta t=0.01$~s with actuator constraints. The simulations include pixel noise and outliers, wind and turbulence, parametric uncertainty, and centre-of-gravity perturbations. A touchdown is classified as \emph{precise} when the terminal horizontal target-relative error is below $0.08$~m and \emph{soft} when the relative touchdown speed is
+below $0.20$~m/s; satisfying both defines a \emph{soft-precise} landing.
+
+Robustness to initial position is evaluated from five UAV positions in the inertial NED frame,
+$(0,0,-5),\;
+(2,2,-5),\;
+(2,-2,-5),\;
+(2,2,-7),\;
+(2,2,-3)\ {\rm m},$
+covering nominal, laterally displaced, and high- and low-altitude starts.
+Each initial condition is tested against five target-motion profiles whose inertial-frame translational velocities are
+\[
+\begin{aligned}
+{}^{\mathcal I}\boldsymbol v_{\mathrm t}^{(1)}
+    &= [0,\,0,\,0]^\top,\\
+{}^{\mathcal I}\boldsymbol v_{\mathrm t}^{(2)}
+    &= [1.1,\,1.1,\,0.1\cos(0.5t)]^\top,\\
+{}^{\mathcal I}\boldsymbol v_{\mathrm t}^{(3)}
+    &= [0.4\cos(0.8t),\,0.5,\,0]^\top,\\
+{}^{\mathcal I}\boldsymbol v_{\mathrm t}^{(4)}
+    &= [-0.2\cos(0.5t),\,0.68\cos(0.85t),\,0]^\top,\\
+{}^{\mathcal I}\boldsymbol v_{\mathrm t}^{(5)}
+    &= [0.24\sin(0.48t),\,0.24\cos(0.48t),
+        \,0.1\cos(0.5t)]^\top
+    \mathrm{m/s},
+\end{aligned}
+\]
+corresponding respectively to static, linear ship-deck, sinusoidal,
+Lissajous, and circular ship-deck motions. 
+For Cases~2 and~5, the platform additionally undergoes roll and pitch oscillations $\phi_{\mathrm t}=15^\circ\sin(0.9t), ~ \theta_{\mathrm t}=8^\circ\sin(0.6t+\pi/3)$. Case~2 has $\psi_{\mathrm t}=0$, whereas Case~5 rotates at $\dot\psi_{\mathrm t}=0.48$~rad/s.
+
+\subsection{Landing Performance and Robustness}
+\label{subsec:robustness}
+
+The simulations numerically validate the soft-precise landing behavior predicted by the closed-loop analysis across all evaluated initial conditions and target-motion profiles, without controller retuning. Despite substantial variations in initial lateral displacement,
+altitude, target translation, and platform rotation, VISTA maintains the prescribed visual-error bounds while completing the landing maneuver.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]
+{Figures/generated/multi_init/Circular_combined.pdf}
+\caption{Representative circular ship-deck case for the five initial
+conditions. Left: 3-D UAV and target trajectories. Right: image-plane
+feature trajectories.}
+\label{fig:circular_robustness}
+\end{figure}
+
+Across the five initial conditions, the maximum landing time remains
+below $11.1$~s and every case achieves $5/5$ successful
+soft-precise touchdowns.
+
+Figure~\ref{fig:circular_robustness} illustrates the closed-loop behavior for the
+circular ship-deck trajectory (Case~5) from the five initial
+conditions considered in the study. Despite substantial variations in
+initial lateral displacement and altitude, VISTA converges toward the
+moving platform and completes the landing maneuver in all cases. The corresponding image-plane trajectories converge from markedly different initial feature configurations toward the desired
+configuration, with $\Delta_{\max}=4.8$--$6.0$~px across the five initial conditions. These results demonstrate that the landing behavior is not tied to a particular initial target-relative geometry.
+
+Figure~\ref{fig:funnel_results} examines the prescribed-performance
+behavior for a representative moving-target landing. Define the
+normalized image-position and image-velocity errors as
+\[
+    \eta_{p,k}
+    \triangleq
+    \frac{e_{p,k}}
+    {\varphi_{k,\max}\rho_{p,k}},
+    \qquad
+    \eta_{\nu,k}
+    \triangleq
+    \frac{e_{\nu,k}}
+    {\rho_{\nu,k}}.
+\]
+Panels~(a) and~(b) show that the corresponding errors remain strictly
+inside their prescribed performance envelopes throughout the maneuver.
+Panel~(c) additionally evaluates the lateral--vertical
+funnel-compatibility condition through
+\[
+    C_k(t)
+    \triangleq
+    \frac{\rho_{\nu,k}(t)}
+    {\rho_{\nu,z}(t)\bar{s}_k(t)},
+    \qquad k\in\{x,y\}.
+\]
+Since $C_x(t)>1$ and $C_y(t)>1$ throughout the maneuver, the sufficient
+compatibility condition of Theorem~\ref{thm:translational} is
+satisfied while the prescribed image-position and image-velocity
+envelopes are preserved.
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=\textwidth]
+    {Figures/generated/plasmc_funnel_combined.pdf}
+    \caption{Prescribed-performance behavior for a representative VISTA
+    landing. (a) Normalized lateral image-position errors.
+    (b) Normalized image-velocity errors.
+    (c) Funnel-compatibility ratios $C_x$ and $C_y$; $C_k>1$
+    satisfies the sufficient lateral--vertical compatibility condition
+    of Theorem~\ref{thm:translational}.}
+    \label{fig:funnel_results}
+\end{figure*}
+
+Robustness to target-motion speed is further evaluated by scaling the
+four moving trajectories over $\lambda\in[0.6,1.4]$, corresponding to
+a $\pm40\%$ variation about their nominal motion. With the same
+controller parameters, the soft-precise landing conditions remain
+satisfied throughout the tested range, demonstrating that the
+closed-loop behavior does not rely on trajectory-specific or
+velocity-specific retuning.
+
+\subsection{Comparison with Existing Methods}
+\label{subsec:comparison}
+
+The proposed VISTA controller is compared with four representative visual landing controllers. Baseline~A denotes the performance-constrained PBVS method of~\cite{lin2022}; Baseline~B denotes the adaptive-observer PBVS method of~\cite{zhang2026}; Baseline~C denotes the
+prescribed-performance IBVS method of~\cite{lin2023}; and Baseline~D denotes the feed-forward IBVS method of~\cite{cho2022}. All methods are evaluated from the common initial condition
+$(2,2,-5)$~m under the same five target trajectories and disturbance conditions, using a common geometric attitude-control layer.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\columnwidth]
+    {Figures/generated/comparison_qual_combined.pdf}
+    \caption{Closed-loop comparison of the proposed VISTA controller with four baseline controllers. (a) Outcome (soft-precise / hard-imprecise / aborted) for every controller-trajectory pair. (b) Representative 3-D landing trajectories for the circular ship-deck case. (c) Normalized field-of-view margin over time for the circular case. (d) Relative touchdown energy $\log_{10}(\eta_E)$ for runs that reach the surface; $\log_{10}(\eta_E)<0$ indicates touchdown softer than the prescribed threshold.}
+    \label{fig:controller_comparison}
+\end{figure}
+
+Figure~\ref{fig:controller_comparison} shows that VISTA is the only
+controller in the comparison that achieves soft-precise touchdown
+across all evaluated trajectories. The observed baseline failures are
+consistent with limitations in their respective control structures.
+Baselines~A, C, and~D do not explicitly enforce target visibility and
+are therefore susceptible to image-feature drift and FoV loss under
+moving-target motion and persistent disturbances. For
+Baselines~C and~D, the absence of adaptive rejection of persistent
+lateral disturbances further aggravates this behavior. Baseline~B, in
+contrast, does not explicitly coordinate lateral-error closure with the
+descent dynamics; its observed behavior is consistent with this
+limitation, yielding hard or imprecise touchdown when the target remains
+visible and failure to complete the landing under the more demanding
+trajectories.
+
+The diagnostic panels further distinguish these failure modes.
+Figure~\ref{fig:controller_comparison}(c) shows that VISTA maintains a
+positive FoV margin throughout the representative circular case,
+whereas several baselines drive the target toward the camera boundary.
+Maintaining visibility alone, however, does not guarantee a satisfactory
+touchdown: the surface-reaching runs of Baseline~B exhibit
+$\log_{10}(\eta_E)>0$, corresponding to relative touchdown energies
+above the prescribed softness threshold, whereas VISTA maintains
+$\log_{10}(\eta_E)<0$ across all five cases. Thus, the comparison
+highlights the complementary roles of coupled
+image-position/image-velocity regulation, adaptive disturbance
+compensation, and explicit visibility enforcement in achieving
+soft-precise landing on moving targets.
+
+\section{CONCLUSION}
+\label{sec:conclusion}
+
+This paper presented VISTA, a visibility-integrated adaptive
+sliding-mode control framework for monocular soft-precise landing on
+moving platforms. By coupling image-position and image-velocity errors
+within a prescribed-performance sliding manifold, VISTA coordinates
+lateral alignment with soft descent without requiring target depth or
+absolute heading measurements. Image-based orientation regulation is
+provided through a virtual-compass yaw controller, while an image-space
+control barrier function conditions the commanded body lean to preserve
+target visibility.
+
+The analysis establishes uniform ultimate boundedness of the coupled
+translational and image-orientation dynamics, preservation of the
+prescribed visual-error envelopes under the funnel-compatibility
+condition, and forward invariance of the visibility-safe set under the
+stated barrier conditions. Simulations demonstrate soft-precise landing
+across the evaluated initial conditions and target-motion profiles,
+with consistent convergence in both physical and image coordinates.
+The prescribed-performance and funnel-compatibility conditions are
+maintained throughout the representative closed-loop maneuver, while a
+target-speed sweep demonstrates robustness to a $\pm40\%$ variation
+about the nominal motion. Comparisons with four existing visual landing
+controllers further show the advantage of jointly addressing lateral
+precision, soft touchdown, disturbance rejection, and target visibility
+within a unified framework.
+
+Future work will focus on hardware validation of VISTA under
+real-world sensing, actuation, communication delays, and
+moving-platform uncertainties.
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{bibliography}
+
+\end{document}

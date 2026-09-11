@@ -49,25 +49,21 @@ CTRL_COLORS = {
     "Cho 2022":          "C1",
 }
 
-# Display labels for figure legends (no author names; matches manuscript's
-# author-less citation style). The dict keys above still match the MATLAB
-# ctrl_name strings; only the rendered labels change. Two variants because
-# IEEE-style citation numbers differ between the main paper and the
-# supplement (they have separate bibliographies).
+# Display labels for figure legends (2026-09-11: no author names, citation
+# numbers, or method acronyms anywhere -- just "Proposed" / "Baseline A-D",
+# per explicit user instruction, applied uniformly across all comparison
+# figures). The dict keys above still match the MATLAB ctrl_name strings;
+# only the rendered labels change. MAIN/SUPP are now identical (the
+# distinction existed only for citation numbers, which are gone) but both
+# names are kept so call sites elsewhere don't need to change.
 CTRL_DISPLAY_MAIN = {
-    "PLASMC (Proposed)": "VISTA (Proposed)",
-    "Lin 2022":          "Baseline A [1] (PBVS--PPC)",
-    "Zhang 2026":        "Baseline B [2] (PBVS--AEDO)",
-    "Lin 2023":          "Baseline C [10] (IBVS--PPC)",
-    "Cho 2022":          "Baseline D [9] (FF--IBVS)",
+    "PLASMC (Proposed)": "Proposed",
+    "Lin 2022":          "Baseline A",
+    "Zhang 2026":        "Baseline B",
+    "Lin 2023":          "Baseline C",
+    "Cho 2022":          "Baseline D",
 }
-CTRL_DISPLAY_SUPP = {
-    "PLASMC (Proposed)": "VISTA (Proposed)",
-    "Lin 2022":          "Baseline A [9] (PBVS--PPC)",
-    "Zhang 2026":        "Baseline B [8] (PBVS--AEDO)",
-    "Lin 2023":          "Baseline C [10] (IBVS--PPC)",
-    "Cho 2022":          "Baseline D [11] (FF--IBVS)",
-}
+CTRL_DISPLAY_SUPP = dict(CTRL_DISPLAY_MAIN)
 # Default (for any code path that doesn't specify): main-paper variant.
 CTRL_DISPLAY = CTRL_DISPLAY_MAIN
 
