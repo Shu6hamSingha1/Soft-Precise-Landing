@@ -2148,6 +2148,24 @@ class Controller(Thread):
         self._au_lead_qgate    = os.environ.get("PLASMC_AU_LEAD_QGATE", "1") == "1"
         self._au_lead_qgate_lo = float(os.environ.get("PLASMC_AU_LEAD_QGATE_LO", "0.55"))
         self._au_lead_qgate_hi = float(os.environ.get("PLASMC_AU_LEAD_QGATE_HI", "0.85"))
+        # SECOND gate term (2026-09-12, IC5 fix): the extent gate alone left IC5 (3 m start,
+        # steepest/shortest descent -> largest offset-to-altitude angle of any IC) still
+        # failing -- its FIRST ~30% of flight (before extent even reaches QGATE_LO) already
+        # runs a raw command ~1.8-2x hotter than IC2-4 (measured |I_a_raw_xy| early-phase:
+        # IC1 0.08, IC2 0.49, IC3 0.50, IC4 0.35, IC5 0.89 mean; IC5 p90=1.66 vs IC2-4's
+        # 0.7-1.0). The lead's x3.9 HF gain over-amplifies THAT already-large command before
+        # extent ever gets a chance to gate it. Second, independent ramp on |I_a_raw_xy|
+        # itself (reuses the same quantity PLASMC_AU_LEAD_RATIO already reads -- not a new
+        # depth/altitude signal): full lead below MAG_LO, zero by MAG_HI. Combined gate =
+        # product of both (either one degrading is enough to kill the lead).
+        # ⚠ CAVEAT: the curved-target use case this lead was BUILT for (project_rover_
+        # turning_open) runs on a SUSTAINED |I_a_raw|~1.0-1.5 (the standing centripetal
+        # demand) -- the same range this magnitude gate suppresses. Re-validate the curved-
+        # target benefit WITH this gate on before any bake; if it's neutered there, this
+        # needs to distinguish TRANSIENT (IC5, decays by frac~0.3-0.4) from SUSTAINED
+        # (curve) large-|I_a_raw| instead of gating on instantaneous magnitude alone.
+        self._au_lead_qgate_mag_lo = float(os.environ.get("PLASMC_AU_LEAD_QGATE_MAG_LO", "0.5"))
+        self._au_lead_qgate_mag_hi = float(os.environ.get("PLASMC_AU_LEAD_QGATE_MAG_HI", "1.2"))
         if self._au_lead:
             if not 0.0 < self._au_lead_wz < self._au_lead_wp:
                 raise ValueError("PLASMC_AU_LEAD needs 0 < AU_LEAD_WZ < AU_LEAD_WP")
@@ -2157,6 +2175,7 @@ class Controller(Thread):
                   f"(1+s/{self._au_lead_wp:g}) on I_a xy "
                   f"(+{_ph14:.0f} deg @1.4 rad/s, HF x{self._au_lead_wp/self._au_lead_wz:.1f})"
                   + (f" QGATE fill[{self._au_lead_qgate_lo:g},{self._au_lead_qgate_hi:g}]"
+                     f" x mag[{self._au_lead_qgate_mag_lo:g},{self._au_lead_qgate_mag_hi:g}]"
                      if self._au_lead_qgate else " QGATE=0 (unconditional lead)"))
         self._marker_extent = []   # MARKER_EXTENT_PX per step (proximity / terminal-hold trigger)
         # Visibility diagnostics (visibility_projection.py)
@@ -3586,7 +3605,14 @@ class Controller(Thread):
             if self._au_lead_qgate:
                 _fill = float(self.MARKER_EXTENT_PX) / self._tdv2_frame_min
                 _lo, _hi = self._au_lead_qgate_lo, self._au_lead_qgate_hi
-                _qg = 1.0 if _fill <= _lo else (0.0 if _fill >= _hi else 1.0 - (_fill - _lo) / (_hi - _lo))
+                _qg_ext = 1.0 if _fill <= _lo else (0.0 if _fill >= _hi else 1.0 - (_fill - _lo) / (_hi - _lo))
+                # Command-magnitude gate (IC5 fix, see __init__ caveat): the raw command
+                # itself, not a perception signal -- attenuates the lead when |I_a_raw| is
+                # already large (steep/off-center approach), independent of extent.
+                _mag = float(np.linalg.norm(I_a_raw[:2]))
+                _mlo, _mhi = self._au_lead_qgate_mag_lo, self._au_lead_qgate_mag_hi
+                _qg_mag = 1.0 if _mag <= _mlo else (0.0 if _mag >= _mhi else 1.0 - (_mag - _mlo) / (_mhi - _mlo))
+                _qg = _qg_ext * _qg_mag
                 self._au_lead_qg_log.append(_qg)
                 _lead_delta = _lead_delta * _qg
             I_a[:2] = I_a_raw[:2] + _lead_delta
