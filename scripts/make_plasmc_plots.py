@@ -95,43 +95,56 @@ T_min   = float(d.T_min)
 axis_lbl = [r"$x$", r"$y$", r"$z$"]
 
 # ======================================================================
-# Figure 1: combined funnels (1x4) -- image-feature funnel + optic-flow funnel
+# Figure 1: normalized prescribed-performance envelopes (1x2)
+#   Rebuilt 2026-09-11 at user request: the raw-unit 1x4 (r_bar_e vs +/-p_r,
+#   h_e vs +/-p_h per axis) let the envelope's own shrinking dominate the
+#   vertical scale, burying the actual error near zero -- weak evidence for
+#   a strong result. Dividing error by envelope collapses both funnels to a
+#   fixed +/-1 band: the reviewer sees the prescribed-performance envelope
+#   held directly, with no per-panel unit or scale to reconcile. Paper frames
+#   this as prescribed-performance envelope preservation (Theorem thm:precision),
+#   not a separate "funnel invariance" result -- title updated to match.
 # ======================================================================
-fig, axes = plt.subplots(1, 4, figsize=(18.0, 4.6))
+pos_ratio = r_bar_e / p_r     # 2 x N, in [-1, 1]: image-position error / its envelope
+vel_ratio = h_e / p_h         # 3 x N, in [-1, 1]: optic-flow error / its envelope
 
-# col 1: image-feature funnel -- r_bar_e (2 lateral axes) inside +/-p_r(t)
+print("Panel 1 (position) peak |ratio| per axis:", np.max(np.abs(pos_ratio), axis=1))
+print("Panel 2 (velocity) peak |ratio| per axis:", np.max(np.abs(vel_ratio), axis=1))
+print("Panel 2 (velocity) terminal ratio per axis:", vel_ratio[:, -1])
+
+fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.6))
+
 ax = axes[0]
-ax.fill_between(t, p_r[0], -p_r[0], color="orange", alpha=0.16,
-                label=r"$\pm\boldsymbol{p}_r(t)$")
-ax.plot(t,  p_r[0], color="orange", lw=1.0)
-ax.plot(t, -p_r[0], color="orange", lw=1.0)
+ax.axhline(1.0, color="0.35", lw=1.0, ls="--")
+ax.axhline(-1.0, color="0.35", lw=1.0, ls="--")
+ax.fill_between(t, -1.0, 1.0, color="orange", alpha=0.10)
 for k, c in zip(range(2), ["C0", "C2"]):
-    ax.plot(t, r_bar_e[k], color=c, lw=1.4,
-            label=fr"$\bar r_{{\mathrm{{e}},{axis_lbl[k][1]}}}(t)$")
+    ax.plot(t, pos_ratio[k], color=c, lw=1.4,
+            label=fr"$e_{{p,{axis_lbl[k][1]}}}/(\varphi_{{{axis_lbl[k][1]},\max}}\rho_{{p,{axis_lbl[k][1]}}})$")
+ax.set_ylim(-1.15, 1.15)
 ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-ax.set_ylabel(r"$\bar{\boldsymbol{r}}_{\mathrm{e}}(t)$  [FoV units]", fontsize=20, labelpad=4)
-ax.set_title("Image-Feature Funnel", fontsize=20)
+ax.set_ylabel("normalized image-position error", fontsize=17, labelpad=4)
+ax.set_title("Position Envelope", fontsize=20)
 ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="upper right", fontsize=13)
 
-# cols 2-4: optic-flow funnel -- h_e_k inside +/-p_h_k(t)
-for k in range(3):
-    ax = axes[k + 1]
-    ax.fill_between(t, p_h[k], -p_h[k], color="orange", alpha=0.16,
-                    label=r"$\pm\boldsymbol{p}_h(t)$" if k == 0 else None)
-    ax.plot(t,  p_h[k], color="orange", lw=1.0)
-    ax.plot(t, -p_h[k], color="orange", lw=1.0)
-    ax.plot(t, h_e[k], color="C0", lw=1.4,
-            label=r"$h_{\mathrm{e},k}(t)$" if k == 0 else None)
-    ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-    ax.set_ylabel(fr"$h_{{\mathrm{{e}},{axis_lbl[k][1]}}}$ [1/s]", fontsize=20, labelpad=4)
-    ax.set_title(fr"Optic-Flow Funnel ({axis_lbl[k]})", fontsize=20)
-    ax.tick_params(labelsize=16)
-    ax.locator_params(axis="x", nbins=4)
-axes[1].legend(loc="upper right", fontsize=13)
+ax = axes[1]
+ax.axhline(1.0, color="0.35", lw=1.0, ls="--")
+ax.axhline(-1.0, color="0.35", lw=1.0, ls="--")
+ax.fill_between(t, -1.0, 1.0, color="orange", alpha=0.10)
+for k, c in zip(range(3), ["C0", "C2", "C3"]):
+    ax.plot(t, vel_ratio[k], color=c, lw=1.4,
+            label=fr"$e_{{\nu,{axis_lbl[k][1]}}}/\rho_{{\nu,{axis_lbl[k][1]}}}$")
+ax.set_ylim(-1.15, 1.15)
+ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
+ax.set_ylabel("normalized optic-flow error", fontsize=17, labelpad=4)
+ax.set_title("Velocity Envelope", fontsize=20)
+ax.tick_params(labelsize=16)
+ax.locator_params(axis="x", nbins=4)
+ax.legend(loc="upper right", fontsize=13)
 
-fig.suptitle("Dual-Funnel Invariance under VISTA", fontsize=24, y=1.0)
+fig.suptitle("Prescribed-Performance Envelope Preservation under VISTA", fontsize=22, y=1.0)
 fig.tight_layout(pad=0.5)
 safe_savefig(fig, f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
