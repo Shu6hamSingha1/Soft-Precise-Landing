@@ -2134,6 +2134,20 @@ class Controller(Thread):
         # (Superseded PLASMC_AU_LEAD_MAX, a fixed-m/s^2 clamp = a scale violation; removed.)
         self._au_lead_ratio = float(os.environ.get("PLASMC_AU_LEAD_RATIO", "1.0"))
         self._au_lead_x = np.zeros(2)          # LPF_wp state (world lateral)
+        self._au_lead_qg_log = []              # logged perception-quality gate value (1=full lead, 0=gated off)
+        # PERCEPTION-QUALITY GATE on the lead (2026-09-12, feedback_aulead_stationary_regresses
+        # GT-FB confirm): the stationary regression is NOT a control-side instability (GT-FB
+        # A/B showed no regression, AU_LEAD even rescued the fragile IC5) -- it is the lead's
+        # x3.9 HF gain AMPLIFYING terminal extent-saturation centroid/flow corruption (the
+        # dead-zone on the kappa-ODE, feedback_adaptive_law_noise_behavior, confirmed this is
+        # upstream of kappa -- gating kappa growth alone does not fix it). Fix: attenuate the
+        # lead delta itself as MARKER_EXTENT_PX approaches frame saturation (scale-free fill
+        # fraction ext/frame_min, no depth/altitude -- feedback_scale_free_depth_free), full
+        # lead below QGATE_LO, zero by QGATE_HI, linear ramp between. Default ON whenever
+        # AU_LEAD is on; =0 restores the unconditional (pre-2026-09-12) lead.
+        self._au_lead_qgate    = os.environ.get("PLASMC_AU_LEAD_QGATE", "1") == "1"
+        self._au_lead_qgate_lo = float(os.environ.get("PLASMC_AU_LEAD_QGATE_LO", "0.55"))
+        self._au_lead_qgate_hi = float(os.environ.get("PLASMC_AU_LEAD_QGATE_HI", "0.85"))
         if self._au_lead:
             if not 0.0 < self._au_lead_wz < self._au_lead_wp:
                 raise ValueError("PLASMC_AU_LEAD needs 0 < AU_LEAD_WZ < AU_LEAD_WP")
@@ -2141,7 +2155,9 @@ class Controller(Thread):
                                - np.arctan(1.4 / self._au_lead_wp))
             print(f"[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/{self._au_lead_wz:g})/"
                   f"(1+s/{self._au_lead_wp:g}) on I_a xy "
-                  f"(+{_ph14:.0f} deg @1.4 rad/s, HF x{self._au_lead_wp/self._au_lead_wz:.1f})")
+                  f"(+{_ph14:.0f} deg @1.4 rad/s, HF x{self._au_lead_wp/self._au_lead_wz:.1f})"
+                  + (f" QGATE fill[{self._au_lead_qgate_lo:g},{self._au_lead_qgate_hi:g}]"
+                     if self._au_lead_qgate else " QGATE=0 (unconditional lead)"))
         self._marker_extent = []   # MARKER_EXTENT_PX per step (proximity / terminal-hold trigger)
         # Visibility diagnostics (visibility_projection.py)
         self._theta_cone_log = []          # ||y_star||, the commanded safe-lean magnitude
@@ -3563,6 +3579,16 @@ class Controller(Thread):
                 _nd = float(np.linalg.norm(_lead_delta))
                 if _nd > _cap > 0.0:
                     _lead_delta *= _cap / _nd
+            # Perception-quality gate: attenuate the lead as MARKER_EXTENT_PX approaches
+            # frame saturation (terminal overfill -> corrupted centroid/flow -> the lead
+            # would amplify noise, not signal). fill=1.0 means the marker span equals the
+            # shorter frame dimension; QGATE_LO/HI bracket the ramp-to-zero (see __init__).
+            if self._au_lead_qgate:
+                _fill = float(self.MARKER_EXTENT_PX) / self._tdv2_frame_min
+                _lo, _hi = self._au_lead_qgate_lo, self._au_lead_qgate_hi
+                _qg = 1.0 if _fill <= _lo else (0.0 if _fill >= _hi else 1.0 - (_fill - _lo) / (_hi - _lo))
+                self._au_lead_qg_log.append(_qg)
+                _lead_delta = _lead_delta * _qg
             I_a[:2] = I_a_raw[:2] + _lead_delta
 
         # Current tilt angle from body-z direction (R[2,2] is body-z's inertial-z component)
@@ -4305,6 +4331,7 @@ class Controller(Thread):
             "s_dot_meas(t)": self._s_dot_meas,  # DIAG: measured centroid rate
             "hd_rate(t)": self._hd_rate_log,    # DIAG: the _hd_rate term (funnel-ref or s_dot)
             "MARKER_EXTENT_PX(t)": self._marker_extent,
+            "au_lead_qgate(t)": self._au_lead_qg_log,
             "dh_d(t)": self._dh_d,
             "s(t)": self._s,
             "s_e(t)": self._s_e,
