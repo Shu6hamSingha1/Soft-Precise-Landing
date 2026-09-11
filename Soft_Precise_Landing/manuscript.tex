@@ -678,7 +678,7 @@ The robustness across both ICs and target velocities traces to four design featu
 
 \subsection{Comparison with State-of-the-Art Landing Controllers}
 \label{comparison: subsec}
-VDF-ASMC is compared against four representative landing controllers: \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{lin2023} (robust prescribed-performance IBVS), and \cite{cho2022} (feed-forward IBVS). All four share a common geometric SO(3) inner loop and are exercised under the disturbance model of Section~\ref{experimentation: section}-\ref{test conditions: subsec} from IC$_2=[2,2,-5]~\text{m}$ (the diagonal offset that drives the tilt commands hardest, most stressing the baselines' visibility margin) for up to $40~\text{s}$. Each baseline uses best-effort gains \emph{within its own framework}, since the published gains crash on this IC under the noise model of Table~\ref{uav params: table}; the full gain comparison is in Table~\ref{baseline gains: table} of Appendix~\ref{baseline analyses appendix: section}, where each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model, isolating a \emph{structural} limitation of each scheme rather than a tuning shortcoming. Table~\ref{qualitative comparison: table} summarizes the closed-loop outcome of each controller at a glance; Table~\ref{comparison: table} reports the underlying landing time, final horizontal error, and final altitude on every case.
+VDF-ASMC is compared against four representative landing controllers: \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{lin2023} (robust prescribed-performance IBVS), and \cite{cho2022} (feed-forward IBVS). All four share a common geometric SO(3) inner loop and are exercised under the disturbance model of Section~\ref{experimentation: section}-\ref{test conditions: subsec} from IC$_2=[2,2,-5]~\text{m}$ (the diagonal offset that drives the tilt commands hardest, most stressing the baselines' visibility margin) for up to $40~\text{s}$. Each baseline uses best-effort gains \emph{within its own framework}, since the published gains crash on this IC under the noise model of Table~\ref{uav params: table}; the full gain comparison is in Table~\ref{baseline gains: table} of Appendix~\ref{baseline analyses appendix: section}, where each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model, isolating a \emph{structural} limitation of each scheme rather than a tuning shortcoming. Table~\ref{qualitative comparison: table} summarizes the closed-loop outcome of each controller at a glance, and Fig.~\ref{outcome heatmap: figure} breaks that outcome out by case; Table~\ref{comparison: table} reports the underlying landing time, final horizontal error, and final altitude on every case.
 
 \begin{table*}[!t]
 \centering
@@ -735,6 +735,13 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
 \end{tablenotes}
 \end{threeparttable}
 \end{table*}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/comparison_outcome_heatmap.pdf}
+    \caption{Closed-loop outcome of each controller on every case (Table~\ref{qualitative comparison: table}'s three categories, broken out per case). VDF-ASMC is soft-precise on all five; each baseline's outcome is fixed by its structural limitation rather than the case geometry, with \cite{zhang2026} the only baseline to ever reach the surface.}
+    \label{outcome heatmap: figure}
+\end{figure}
 
 \begin{table*}[!t]
 \centering
@@ -805,7 +812,7 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
 \begin{figure*}[!t]
 \centering
     \includegraphics[width=\textwidth]{Figures/generated/comparison_combined_circular.pdf}
-    \caption{Comparison study (5 controllers). Left: 3-D trajectories on Case~5 (circular target, IC$_2=[2,2,-5]$~m). The shaded box is the soft-precise allowable landing region around the target trajectory. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. Right three: aggregate landing time, final horizontal $xy$ error, and UAV--target relative speed at touchdown across the five cases.}
+    \caption{Comparison study (5 controllers). Landing time, final horizontal error, and touchdown speed are not comparable across controllers here since three of the four baselines abort before reaching the surface on every case (Table~\ref{qualitative comparison: table}), so the three metrics plotted instead are defined regardless of outcome. \emph{Left}: 3-D trajectories on Case~5 (circular target, IC$_2=[2,2,-5]$~m). The shaded box is the soft-precise allowable landing region around the target trajectory. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Center-left}: altitude above the target at run termination across the five cases, with the reached-surface threshold marked. \emph{Center-right}: terminal kinetic energy $\tfrac{1}{2}m\|\boldsymbol{v}_\mathrm{rel}\|^2$ on the cases each controller reaches the surface (bar absent where it aborts) --- the touchdown-severity analog of impact force, since no ground-contact/compliance model is simulated. \emph{Right}: FoV margin (fraction of half-frame remaining before the farthest tracked feature exits) versus time on Case~5, all five controllers overlaid.}
     \label{comparison combined: figure}
 \end{figure*}
 
