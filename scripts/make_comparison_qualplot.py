@@ -305,8 +305,6 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
         for xk in xj[~mask]:
             ax.text(xk, 0.05, "N/A", rotation=90, ha="center", va="bottom",
                     fontsize=9, color=CTRL_COLORS[name])
-    ax.axhline(1.0, color="k", lw=0.8, ls=":")
-    ax.text(xb[-1] + 0.55, 1.0, r"$\eta_E=1$", fontsize=11, va="bottom", ha="right")
     ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=20, fontsize=tick_fontsize)
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
@@ -323,8 +321,6 @@ def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
         margin = _fov_margin(run, N)            # may trim further than N -- see docstring
         t = run.data.tRange[:len(margin)]
         ax.plot(t, margin, color=CTRL_COLORS[name], lw=1.4, label=CTRL_DISPLAY[name])
-    ax.axhline(0.0, color="k", lw=0.8, ls=":")
-    ax.text(0.3, 0.02, "FoV edge", fontsize=11, va="bottom")
     ax.set_ylim(bottom=min(-0.05, ax.get_ylim()[0]))
     ax.set_xlabel("$t$ [s]", fontsize=fontsize, labelpad=4)
     ax.set_ylabel("normalized FoV margin", fontsize=fontsize, labelpad=4)
