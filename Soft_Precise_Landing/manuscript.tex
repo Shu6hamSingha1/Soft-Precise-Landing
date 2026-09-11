@@ -682,25 +682,56 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
 
 \begin{table*}[!t]
 \centering
-\caption{Qualitative closed-loop comparison across the five cases of Section~\ref{experimentation: section}-\ref{test conditions: subsec}, IC$_2=[2,2,-5]$~m.}
+\caption{Qualitative comparison of landing performance and observed failure mechanisms under the common simulation conditions of Section~\ref{experimentation: section}-\ref{test conditions: subsec}, IC$_2=[2,2,-5]$~m.}
 \label{qualitative comparison: table}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
 \begin{threeparttable}
-\begin{tabular}{l c c c c p{0.26\textwidth} p{0.26\textwidth}}
+\begin{tabular}{lccccp{0.30\textwidth}}
 \toprule
-\textbf{Controller} & \textbf{Visibility} & \textbf{Precise} & \textbf{Soft} & \textbf{Stable} & \textbf{Observed failure mode} & \textbf{Missing mechanism} \\
+\textbf{Method} & \textbf{Visibility} & \textbf{Precise} & \textbf{Soft} & \textbf{Landing} & \textbf{Observed limitation} \\
 \midrule
-\textbf{Proposed} & \checkmark & \checkmark & \checkmark & \checkmark & None observed & --- \\
-\cite{lin2022} & $\times$ & $\times$ & $\times$ & \checkmark & Single PPC velocity-error barrier saturates under mean wind and target motion; the commanded excursion forces features out of the FoV before touchdown on every case & Target-visibility feedback (no barrier or retention mechanism on the image features) \\
-\cite{zhang2026} & $\circ$ & $\times$ & $\times$ & \checkmark & Fixed closed-loop timescale decouples descent rate from lateral-error closure: where visibility holds, the residual lateral offset and terminal speed both persist to touchdown; on the oscillatory cases it grows enough to break visibility instead & Depth/altitude-coupled convergence acceleration (descent rate is not slaved to the image-plane error) \\
-\cite{lin2023} & $\times$ & $\times$ & $\times$ & \checkmark & No disturbance-rejection integrator: constant wind holds a steady lateral image offset, and the prescribed-performance funnel bounds the feature \emph{error} rather than retaining the off-center target inside the FoV & Integral disturbance rejection and a visibility-retention mechanism \\
-\cite{cho2022} & $\times$ & $\times$ & $\times$ & \checkmark & Pseudo-inverse lateral velocity law gated by a sigmoid altitude gain carries no integral action; the lateral error grows unchecked through the descent until the features leave the FoV & Integral disturbance rejection and a visibility-retention mechanism \\
+
+\textbf{Proposed}
+& \checkmark
+& \checkmark
+& \checkmark
+& Successful
+& Joint image-position/optical-flow regulation with an explicit visibility barrier and leakage-type adaptive disturbance rejection leaves no observed limitation on this test set. \\
+
+\cite{lin2022}
+& $\times$
+& ---
+& ---
+& Aborted
+& The prescribed-performance velocity barrier does not explicitly enforce camera visibility; under mean wind and target motion, the commanded excursion drives the image features out of the FoV before touchdown on every case. \\
+
+\cite{zhang2026}
+& $\circ$
+& $\times$
+& $\times$
+& Hard/imprecise
+& The fixed-bandwidth pose regulation does not couple lateral-error closure to the descent rate: where visibility holds, a residual lateral offset and an excessive touchdown speed both persist to the surface; on the two most oscillatory cases the residual instead grows enough to break visibility outright. \\
+
+\cite{lin2023}
+& $\times$
+& ---
+& ---
+& Aborted
+& Image-feature regulation carries no disturbance-rejection integrator and no visibility constraint; the prescribed-performance funnel bounds the feature \emph{error} rather than retaining the target in view, so persistent wind disturbance produces a lateral bias and eventual FoV loss. \\
+
+\cite{cho2022}
+& $\times$
+& ---
+& ---
+& Aborted
+& The pseudo-inverse image-based velocity law, gated by a sigmoid altitude gain, carries no disturbance-rejection integrator or visibility enforcement, allowing wind and target motion to drive the features outside the FoV. \\
+
 \bottomrule
 \end{tabular}
 \begin{tablenotes}[flushleft]
 \footnotesize
-\item \checkmark: achieved on every case; $\times$: achieved on no case; $\circ$: achieved on a subset (\cite{zhang2026} reaches the surface, but not soft-precise, on 3 of 5 cases). \textbf{Stable} is closed-loop numerical stability (bounded state and command signals) under the retuned within-framework gains of Table~\ref{baseline gains: table} --- every baseline is stable in this sense; stability alone does not imply visibility, precision, or softness.
+\item \checkmark: achieved on every case; $\times$: achieved on no case; $\circ$: achieved on a subset (\cite{zhang2026} reaches the target surface, but not soft-precise, on 3 of the 5 cases; it breaks visibility on the remaining 2). Precise/Soft are marked --- where the controller aborts before reaching the surface, since touchdown precision and softness are not defined for a landing that did not occur. \textbf{Landing}: Successful = soft \emph{and} precise on every case; Hard/imprecise = reaches the surface but violates the precision and/or softness threshold; Aborted = breaks feature visibility (or times out) before reaching the surface on every case. All five controllers are closed-loop numerically stable (bounded state and command signals) under the retuned within-framework gains of Table~\ref{baseline gains: table}; stability alone does not imply visibility, precision, or softness.
 \end{tablenotes}
 \end{threeparttable}
 \end{table*}
