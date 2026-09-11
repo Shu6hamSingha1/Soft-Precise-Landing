@@ -227,7 +227,8 @@ CAT_SYMBOL = {"soft-precise": "S", "hard-imprecise": "H", "aborted": "A"}   # S 
 CAT_COLORS = ["#2e7d32", "#f9a825", "#c62828"]   # green / amber / red
 
 
-def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, legend_fontsize=10):
+def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, legend_fontsize=10,
+                   show_legend=True):
     """5 (controller) x 5 (case) outcome grid. Shared by the standalone
     comparison_outcome_heatmap.pdf and panel (a) of the merged figure."""
     grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
@@ -249,9 +250,10 @@ def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, leg
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=title_fontsize, pad=10)
-    legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
-    ax.legend(legend_handles, ["S soft-precise touchdown", "H hard/imprecise touchdown", "A aborted (did not reach surface)"],
-              loc="upper left", bbox_to_anchor=(0.0, -0.13), ncol=1, frameon=False, fontsize=legend_fontsize)
+    if show_legend:
+        legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
+        ax.legend(legend_handles, ["S soft-precise touchdown", "H hard/imprecise touchdown", "A aborted (did not reach surface)"],
+                  loc="upper left", bbox_to_anchor=(0.0, -0.13), ncol=1, frameon=False, fontsize=legend_fontsize)
 
 
 def _draw_3d(ax3d, fontsize=18, ticksize=13):
@@ -338,28 +340,39 @@ def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
 #   baselines fail, not just that they do; (d) relative touchdown energy --
 #   soft-landing quality as a severity measure, not a binary pass/fail.
 # ============================================================================
-fig = plt.figure(figsize=(11.0, 8.6))
-ax_hm = fig.add_subplot(2, 2, 1)
-ax3d  = fig.add_subplot(2, 2, 2, projection="3d")
-ax_m  = fig.add_subplot(2, 2, 3)
-ax_ke = fig.add_subplot(2, 2, 4)
+#   Layout 2026-09-11: the 3D view was cramped to a quarter-panel with a lot
+#   of dead space around the actual cube (3D axes don't fill a small square
+#   slot well). Promoted to its own full-width row, sized clearly larger than
+#   the other three -- (a)/(c)/(d) share a second, shorter row underneath.
+fig = plt.figure(figsize=(13.5, 7.6))
+gs = fig.add_gridspec(2, 3, height_ratios=[1.15, 1.0], hspace=0.42, wspace=0.38,
+                       left=0.075, right=0.99, top=0.93, bottom=0.175)
+ax3d  = fig.add_subplot(gs[0, :], projection="3d")
+ax_hm = fig.add_subplot(gs[1, 0])
+ax_m  = fig.add_subplot(gs[1, 1])
+ax_ke = fig.add_subplot(gs[1, 2])
 
-_draw_heatmap(ax_hm, title_fontsize=15, cell_fontsize=14, tick_fontsize=12, legend_fontsize=10)
-ax_hm.set_title("(a) Closed-Loop Outcome by Controller and Case", fontsize=15, pad=10)
+_draw_3d(ax3d, fontsize=19, ticksize=14)
+ax3d.set_title("(a) Landing Trajectories, Case 5", fontsize=19, y=0.94)
+# 3D axes otherwise pad heavily inside their box; pull it in and widen it to
+# use the extra row height/width just allocated, without colliding with row 2.
+ax3d.set_position([0.20, 0.555, 0.62, 0.365])
 
-_draw_3d(ax3d)
-ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=17, y=1.0)
+# Category legend dropped here (redundant with the caption's S/H/A key and
+# collided with the shared bottom controller-color legend); kept only on the
+# standalone comparison_outcome_heatmap.pdf.
+_draw_heatmap(ax_hm, title_fontsize=13, cell_fontsize=12, tick_fontsize=10, show_legend=False)
+ax_hm.set_title("(b) Closed-Loop Outcome", fontsize=13, pad=8)
 
 _draw_fov_margin(ax_m)
-ax_m.set_title("(c) FoV Margin, Case 5", fontsize=17, y=1.03)
+ax_m.set_title("(c) FoV Margin, Case 5", fontsize=15, y=1.03)
 
 _draw_energy(ax_ke)
-ax_ke.set_title("(d) Relative Touchdown Energy", fontsize=17, y=1.03)
+ax_ke.set_title("(d) Relative Touchdown Energy", fontsize=15, y=1.03)
 
 handles, labels = ax3d.get_legend_handles_labels()
-fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0),
-           frameon=False, fontsize=13, handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
-fig.tight_layout(rect=(0, 0.06, 1, 1), h_pad=4.0, w_pad=3.0)
+fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0),
+           frameon=False, fontsize=12, handlelength=1.6, columnspacing=1.6, handletextpad=0.5)
 
 safe_savefig(fig, f"{OUT}/comparison_combined_circular.pdf", pad_inches=0.05)
 plt.close(fig)
