@@ -310,6 +310,8 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim(bottom=0)
     ax.set_ylabel(r"$\eta_E$", fontsize=fontsize, labelpad=4)
+    ax.text(0.02, 0.97, "Only surface-reaching controllers shown", transform=ax.transAxes,
+            fontsize=10, ha="left", va="top", style="italic")
 
 
 def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
