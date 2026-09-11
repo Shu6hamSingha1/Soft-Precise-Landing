@@ -228,7 +228,7 @@ CAT_COLORS = ["#2e7d32", "#f9a825", "#c62828"]   # green / amber / red
 
 
 def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, legend_fontsize=10,
-                   show_legend=True, legend_ncol=1, legend_anchor=(0.0, -0.13)):
+                   show_legend=True, legend_ncol=1, legend_anchor=(0.0, -0.13), show_title=True):
     """5 (controller) x 5 (case) outcome grid. Shared by the standalone
     comparison_outcome_heatmap.pdf and panel (a) of the merged figure."""
     grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
@@ -249,7 +249,8 @@ def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, leg
     ax.tick_params(which="major", length=0)
     for spine in ax.spines.values():
         spine.set_visible(False)
-    ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=title_fontsize, pad=10)
+    if show_title:
+        ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=title_fontsize, pad=10)
     if show_legend:
         legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
         ax.legend(legend_handles, ["S: soft-precise", "H: hard/imprecise", "A: aborted"],
@@ -290,26 +291,34 @@ def _draw_3d(ax3d, fontsize=18, ticksize=13):
 
 
 def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
-    """Relative touchdown energy eta_E = (v_f/v_soft)^2, controllers that
-    ever reach the surface only (VISTA, Zhang 2026) -- no bar slots wasted
-    on controllers that never land."""
+    """Relative touchdown energy eta_E = (v_f/v_soft)^2, plotted as
+    log10(eta_E) so VISTA's near-zero bars and Zhang's 5-9x bars share one
+    readable axis. Controllers that ever reach the surface only (VISTA,
+    Zhang 2026) -- no bar slots wasted on controllers that never land."""
     xb = np.arange(len(TRAJS))
     width_b = 0.30
     xj_off = np.linspace(-0.5, 0.5, len(REACHED_CTRLS) + 2)[1:-1] * width_b * 2
+    log_etas = []
     for j, name in enumerate(REACHED_CTRLS):
         eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
                         if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
-        mask = ~np.isnan(eta)
+        log_eta = np.log10(eta)
+        log_etas.append(log_eta)
+        mask = ~np.isnan(log_eta)
         xj = xb + xj_off[j]
-        ax.bar(xj[mask], eta[mask], width_b, color=CTRL_COLORS[name], label=CTRL_DISPLAY[name])
-        for xk in xj[~mask]:
-            ax.text(xk, 0.05, "N/A", rotation=90, ha="center", va="bottom",
+        ax.bar(xj[mask], log_eta[mask], width_b, color=CTRL_COLORS[name], label=CTRL_DISPLAY[name])
+    ymin = np.nanmin(log_etas) if log_etas else -1.0
+    for j, name in enumerate(REACHED_CTRLS):
+        eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
+                        if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
+        xj = xb + xj_off[j]
+        for xk in xj[np.isnan(eta)]:
+            ax.text(xk, ymin - 0.15, "N/A", rotation=90, ha="center", va="bottom",
                     fontsize=9, color=CTRL_COLORS[name])
     ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=20, fontsize=tick_fontsize)
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
-    ax.set_ylim(bottom=0)
-    ax.set_ylabel(r"$\eta_E$", fontsize=fontsize, labelpad=4)
+    ax.set_ylabel(r"$\log_{10}\eta_E$", fontsize=fontsize, labelpad=4)
     ax.text(0.02, 0.97, "Only surface-reaching controllers shown", transform=ax.transAxes,
             fontsize=10, ha="left", va="top", style="italic")
 
@@ -353,17 +362,31 @@ ax3d  = fig.add_subplot(gs[0, 1], projection="3d")
 ax_m  = fig.add_subplot(gs[1, 0])
 ax_ke = fig.add_subplot(gs[1, 1])
 
+# ax_hm's gridspec-computed top edge (y1=0.95) sat close enough to its
+# axes-relative title (y=0.967, tuned to match (b)'s absolute title height)
+# that the title's own bottom edge dipped into the cell -- an overlap with
+# the heatmap grid, not with any other panel. Fix: shrink ax_hm from the
+# top only (y0/gap-to-panel-(c) unchanged) so there is real clearance below
+# the (still absolutely-fixed) title position.
+_hm_pos = ax_hm.get_position()
+ax_hm.set_position([_hm_pos.x0, _hm_pos.y0, _hm_pos.width, 0.928 - _hm_pos.y0])
+
 # Category legend dropped here (redundant with the caption's S/H/A key and
 # collided with the shared bottom controller-color legend); kept only on the
 # standalone comparison_outcome_heatmap.pdf.
 PANEL_TITLE_FS = 16   # shared across all four panel subtitles
 
 _draw_heatmap(ax_hm, title_fontsize=PANEL_TITLE_FS, cell_fontsize=13, tick_fontsize=11,
-              show_legend=True, legend_ncol=3, legend_anchor=(-0.02, -0.07), legend_fontsize=10)
-# y tuned to land at the same absolute figure height as (b)'s title below --
-# ax_hm's cell is shorter than ax3d's, so the same axes-relative y would not
-# align (matched empirically against the rendered title bboxes).
-ax_hm.set_title("(a) Closed-Loop Outcome", fontsize=PANEL_TITLE_FS, y=0.967)
+              show_legend=True, legend_ncol=3, legend_anchor=(-0.02, -0.07), legend_fontsize=10,
+              show_title=False)
+# Title as an absolute fig.text, not ax_hm.set_title(): a 2D axes' title y is
+# resolved as a FRACTION OF THAT AXES' OWN bbox, so it would move every time
+# ax_hm's box is resized (as just happened above) and re-drift out of
+# alignment with (b)'s title. Fixed figure-fraction y=0.9401 matches (b)'s
+# already-verified absolute title height (checked via PDF text-bbox extraction).
+_hm_pos = ax_hm.get_position()
+fig.text((_hm_pos.x0 + _hm_pos.x1) / 2, 0.9401, "(a) Closed-Loop Outcome",
+          ha="center", va="bottom", fontsize=PANEL_TITLE_FS)
 
 _draw_3d(ax3d, fontsize=17, ticksize=13)
 ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=PANEL_TITLE_FS, y=0.96)
