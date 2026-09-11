@@ -356,22 +356,27 @@ ax_ke = fig.add_subplot(gs[1, 1])
 # Category legend dropped here (redundant with the caption's S/H/A key and
 # collided with the shared bottom controller-color legend); kept only on the
 # standalone comparison_outcome_heatmap.pdf.
-_draw_heatmap(ax_hm, title_fontsize=14, cell_fontsize=13, tick_fontsize=11,
+PANEL_TITLE_FS = 16   # shared across all four panel subtitles
+
+_draw_heatmap(ax_hm, title_fontsize=PANEL_TITLE_FS, cell_fontsize=13, tick_fontsize=11,
               show_legend=True, legend_ncol=3, legend_anchor=(-0.02, -0.07), legend_fontsize=10)
-ax_hm.set_title("(a) Closed-Loop Outcome", fontsize=14, pad=8)
+# y tuned to land at the same absolute figure height as (b)'s title below --
+# ax_hm's cell is shorter than ax3d's, so the same axes-relative y would not
+# align (matched empirically against the rendered title bboxes).
+ax_hm.set_title("(a) Closed-Loop Outcome", fontsize=PANEL_TITLE_FS, y=0.967)
 
 _draw_3d(ax3d, fontsize=17, ticksize=13)
-ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=17, y=0.96)
+ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=PANEL_TITLE_FS, y=0.96)
 # 3D axes otherwise pad heavily inside their allotted cell; pull the bbox in
 # to actually use the larger width_ratios/height_ratios cell just reserved.
 pos = ax3d.get_position()
 ax3d.set_position([pos.x0 - 0.03, pos.y0 - 0.02, pos.width + 0.05, pos.height + 0.06])
 
 _draw_fov_margin(ax_m)
-ax_m.set_title("(c) FoV Margin, Case 5", fontsize=15, y=1.03)
+ax_m.set_title("(c) FoV Margin, Case 5", fontsize=PANEL_TITLE_FS, y=1.03)
 
 _draw_energy(ax_ke)
-ax_ke.set_title("(d) Relative Touchdown Energy", fontsize=15, y=1.03)
+ax_ke.set_title("(d) Relative Touchdown Energy", fontsize=PANEL_TITLE_FS, y=1.03)
 
 handles, labels = ax3d.get_legend_handles_labels()
 fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0),
