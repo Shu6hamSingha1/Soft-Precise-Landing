@@ -1,5 +1,5 @@
 """
-Generate publication-quality VDF-ASMC internals plots from Multi_init_cond datasets.
+Generate publication-quality VISTA internals plots from Multi_init_cond datasets.
 
 Rebuilt 2026-06-25 for the CURRENT visibility-CBF + combined-barrier architecture
 (the previous version targeted the superseded "Approach 2" funnel-margin / cone-clamp
@@ -43,6 +43,20 @@ ROOT = str(Path(__file__).resolve().parent.parent)
 DATA = f"{ROOT}/MATLAB/Datasets/MultiInit/Sinusoidal_multi_init.mat"
 OUT  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT, exist_ok=True)
+
+
+def safe_savefig(fig, target_path, **kwargs):
+    """Save to a unique temp file, then replace the target -- a target open
+    in a PDF viewer (Acrobat, etc.) locks the path against a direct write."""
+    tmp_path = f"{os.path.dirname(target_path)}/.tmp_{os.getpid()}_{os.path.basename(target_path)}"
+    fig.savefig(tmp_path, **kwargs)
+    try:
+        os.replace(tmp_path, target_path)
+        print(f"Wrote {target_path}")
+    except PermissionError:
+        print(f"WARNING: {target_path} is locked (likely open in a viewer) -- "
+              f"wrote {tmp_path} instead. Close it and re-run.")
+
 
 m = sio.loadmat(DATA, squeeze_me=True, struct_as_record=False)
 run = m["results"][1]   # IC2 = [2,2,-5]
@@ -117,9 +131,9 @@ for k in range(3):
     ax.locator_params(axis="x", nbins=4)
 axes[1].legend(loc="upper right", fontsize=13)
 
-fig.suptitle("Dual-Funnel Invariance under VDF-ASMC", fontsize=24, y=1.0)
+fig.suptitle("Dual-Funnel Invariance under VISTA", fontsize=24, y=1.0)
 fig.tight_layout(pad=0.5)
-fig.savefig(f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
+safe_savefig(fig, f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
 
 # ======================================================================
@@ -139,7 +153,7 @@ ax.legend(loc="upper right", ncol=3, fontsize=14,
           title=r"dotted: boundary layer $\pm\mathcal{E}$", title_fontsize=11)
 fig.suptitle("Sliding-Surface Evolution", fontsize=24, y=0.99)
 fig.tight_layout(pad=0.3)
-fig.savefig(f"{OUT}/plasmc_sliding.pdf", bbox_inches="tight", pad_inches=0.02)
+safe_savefig(fig, f"{OUT}/plasmc_sliding.pdf", bbox_inches="tight", pad_inches=0.02)
 plt.close(fig)
 
 # ======================================================================
@@ -180,7 +194,7 @@ axes[1, 1].legend(loc="upper right", fontsize=11)
 fig.suptitle("Adaptive Gain Rejection of the Per-Axis Disturbance", fontsize=22, y=1.0)
 fig.tight_layout(pad=0.5)
 fig.subplots_adjust(wspace=0.42, hspace=0.42)
-fig.savefig(f"{OUT}/plasmc_adaptive_gain.pdf", bbox_inches="tight", pad_inches=0.03)
+safe_savefig(fig, f"{OUT}/plasmc_adaptive_gain.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
 
 # ======================================================================
@@ -212,7 +226,7 @@ axes[1].legend(loc="upper right", fontsize=14)
 fig.suptitle("Thrust and Lateral Acceleration", fontsize=24, y=0.99)
 fig.tight_layout(pad=0.3)
 fig.subplots_adjust(wspace=0.3)
-fig.savefig(f"{OUT}/plasmc_thrust_accel.pdf", bbox_inches="tight", pad_inches=0.02)
+safe_savefig(fig, f"{OUT}/plasmc_thrust_accel.pdf", bbox_inches="tight", pad_inches=0.02)
 plt.close(fig)
 
-print("Wrote 4 VDF-ASMC internals plots (CBF-architecture rebuild) to:", OUT)
+print("Wrote 4 VISTA internals plots (CBF-architecture rebuild) to:", OUT)

@@ -67,6 +67,19 @@ COMP = f"{ROOT}/MATLAB/Datasets/Comparison"
 OUT  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT, exist_ok=True)
 
+
+def safe_savefig(fig, target_path, **kwargs):
+    """Save to a unique temp file, then replace the target -- a target open
+    in a PDF viewer (Acrobat, etc.) locks the path against a direct write."""
+    tmp_path = f"{os.path.dirname(target_path)}/.tmp_{os.getpid()}_{os.path.basename(target_path)}"
+    fig.savefig(tmp_path, **kwargs)
+    try:
+        os.replace(tmp_path, target_path)
+        print(f"Wrote {target_path}")
+    except PermissionError:
+        print(f"WARNING: {target_path} is locked (likely open in a viewer) -- "
+              f"wrote {tmp_path} instead. Close it and re-run.")
+
 RES = (320.0, 240.0)          # image resolution [px] (Common/Constants.m)
 PRECISE_XY_M   = 0.08
 SOFT_V_REL_MPS = 0.20
@@ -84,18 +97,18 @@ CTRL_COLORS = {
     "Cho 2022":          "C1",
 }
 CTRL_DISPLAY = {
-    "PLASMC (Proposed)": "VDF-ASMC (Proposed)",
-    "Lin 2022":          "Baseline A [1] (PBVS--PPC)",
-    "Zhang 2026":        "Baseline B [2] (PBVS--AEDO)",
-    "Lin 2023":          "Baseline C [10] (IBVS--PPC)",
-    "Cho 2022":          "Baseline D [9] (FF--IBVS)",
+    "PLASMC (Proposed)": "VISTA (Proposed)",
+    "Lin 2022":          "Baseline A (PBVS--PPC)",
+    "Zhang 2026":        "Baseline B (PBVS--AEDO)",
+    "Lin 2023":          "Baseline C (IBVS--PPC)",
+    "Cho 2022":          "Baseline D (FF--IBVS)",
 }
 ROW_LABELS = {
     "PLASMC (Proposed)": "Proposed",
-    "Lin 2022":          "Lin 2022 [1]",
-    "Zhang 2026":        "Zhang 2026 [2]",
-    "Lin 2023":          "Lin 2023 [10]",
-    "Cho 2022":          "Cho 2022 [9]",
+    "Lin 2022":          "Lin 2022",
+    "Zhang 2026":        "Zhang 2026",
+    "Lin 2023":          "Lin 2023",
+    "Cho 2022":          "Cho 2022",
 }
 
 
@@ -276,16 +289,8 @@ for k, ax in enumerate((ax_h, ax_ke, ax_m)):
     x0 = bar_left + k * (bar_w + gap)
     ax.set_position([x0, bar_y0, bar_w, bar_h])
 
-_target1 = f"{OUT}/comparison_combined_circular.pdf"
-_tmp1 = f"{OUT}/.tmp_comparison_combined_circular.pdf"
-fig.savefig(_tmp1, pad_inches=0.05)
+safe_savefig(fig, f"{OUT}/comparison_combined_circular.pdf", pad_inches=0.05)
 plt.close(fig)
-try:
-    os.replace(_tmp1, _target1)
-    print(f"Wrote {_target1}")
-except PermissionError:
-    print(f"WARNING: {_target1} is locked (likely open in a viewer) -- wrote {_tmp1} instead. "
-          f"Close the PDF and re-run, or manually replace it.")
 
 # ============================================================================
 # Figure 2: comparison_outcome_heatmap.pdf (NEW)
@@ -322,9 +327,8 @@ ax.legend(legend_handles, ["soft-precise touchdown", "hard/imprecise touchdown",
           loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False, fontsize=10)
 
 fig.tight_layout()
-fig.savefig(f"{OUT}/comparison_outcome_heatmap.pdf", bbox_inches="tight", pad_inches=0.05)
+safe_savefig(fig, f"{OUT}/comparison_outcome_heatmap.pdf", bbox_inches="tight", pad_inches=0.05)
 plt.close(fig)
-print(f"Wrote {OUT}/comparison_outcome_heatmap.pdf")
 
 # ============================================================================
 # Console summary (for the manuscript prose)
