@@ -329,8 +329,10 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylabel(r"$\log_{10}(\eta_E)$", fontsize=fontsize, labelpad=4)
-    ax.text(0.5, -0.30, "Only surface-reaching controllers shown", transform=ax.transAxes,
-            fontsize=10, ha="center", va="top", style="italic")
+    # Sits in the x-label slot but at the shared bottom legend's font size
+    # (well below the other panels' axis-label size) so it reads as a note,
+    # not as this panel's actual x-axis label.
+    ax.set_xlabel("Only surface-reaching controllers shown", fontsize=12, style="italic", labelpad=6)
 
 
 def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
