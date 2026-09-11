@@ -678,7 +678,32 @@ The robustness across both ICs and target velocities traces to four design featu
 
 \subsection{Comparison with State-of-the-Art Landing Controllers}
 \label{comparison: subsec}
-VDF-ASMC is compared against four representative landing controllers: \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{lin2023} (robust prescribed-performance IBVS), and \cite{cho2022} (feed-forward IBVS). All four share a common geometric SO(3) inner loop and are exercised under the disturbance model of Section~\ref{experimentation: section}-\ref{test conditions: subsec} from IC$_2=[2,2,-5]~\text{m}$ (the diagonal offset that drives the tilt commands hardest, most stressing the baselines' visibility margin) for up to $40~\text{s}$. Each baseline uses best-effort gains \emph{within its own framework}, since the published gains crash on this IC under the noise model of Table~\ref{uav params: table}; the full gain comparison is in Table~\ref{baseline gains: table} of Appendix~\ref{baseline analyses appendix: section}, where each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model, isolating a \emph{structural} limitation of each scheme rather than a tuning shortcoming. Table~\ref{comparison: table} reports landing time, final horizontal error, and final altitude.
+VDF-ASMC is compared against four representative landing controllers: \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{lin2023} (robust prescribed-performance IBVS), and \cite{cho2022} (feed-forward IBVS). All four share a common geometric SO(3) inner loop and are exercised under the disturbance model of Section~\ref{experimentation: section}-\ref{test conditions: subsec} from IC$_2=[2,2,-5]~\text{m}$ (the diagonal offset that drives the tilt commands hardest, most stressing the baselines' visibility margin) for up to $40~\text{s}$. Each baseline uses best-effort gains \emph{within its own framework}, since the published gains crash on this IC under the noise model of Table~\ref{uav params: table}; the full gain comparison is in Table~\ref{baseline gains: table} of Appendix~\ref{baseline analyses appendix: section}, where each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model, isolating a \emph{structural} limitation of each scheme rather than a tuning shortcoming. Table~\ref{qualitative comparison: table} summarizes the closed-loop outcome of each controller at a glance; Table~\ref{comparison: table} reports the underlying landing time, final horizontal error, and final altitude on every case.
+
+\begin{table*}[!t]
+\centering
+\caption{Qualitative closed-loop comparison across the five cases of Section~\ref{experimentation: section}-\ref{test conditions: subsec}, IC$_2=[2,2,-5]$~m.}
+\label{qualitative comparison: table}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{threeparttable}
+\begin{tabular}{l c c c c p{0.26\textwidth} p{0.26\textwidth}}
+\toprule
+\textbf{Controller} & \textbf{Visibility} & \textbf{Precise} & \textbf{Soft} & \textbf{Stable} & \textbf{Observed failure mode} & \textbf{Missing mechanism} \\
+\midrule
+\textbf{Proposed} & \checkmark & \checkmark & \checkmark & \checkmark & None observed & --- \\
+\cite{lin2022} & $\times$ & $\times$ & $\times$ & \checkmark & Single PPC velocity-error barrier saturates under mean wind and target motion; the commanded excursion forces features out of the FoV before touchdown on every case & Target-visibility feedback (no barrier or retention mechanism on the image features) \\
+\cite{zhang2026} & $\circ$ & $\times$ & $\times$ & \checkmark & Fixed closed-loop timescale decouples descent rate from lateral-error closure: where visibility holds, the residual lateral offset and terminal speed both persist to touchdown; on the oscillatory cases it grows enough to break visibility instead & Depth/altitude-coupled convergence acceleration (descent rate is not slaved to the image-plane error) \\
+\cite{lin2023} & $\times$ & $\times$ & $\times$ & \checkmark & No disturbance-rejection integrator: constant wind holds a steady lateral image offset, and the prescribed-performance funnel bounds the feature \emph{error} rather than retaining the off-center target inside the FoV & Integral disturbance rejection and a visibility-retention mechanism \\
+\cite{cho2022} & $\times$ & $\times$ & $\times$ & \checkmark & Pseudo-inverse lateral velocity law gated by a sigmoid altitude gain carries no integral action; the lateral error grows unchecked through the descent until the features leave the FoV & Integral disturbance rejection and a visibility-retention mechanism \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \checkmark: achieved on every case; $\times$: achieved on no case; $\circ$: achieved on a subset (\cite{zhang2026} reaches the surface, but not soft-precise, on 3 of 5 cases). \textbf{Stable} is closed-loop numerical stability (bounded state and command signals) under the retuned within-framework gains of Table~\ref{baseline gains: table} --- every baseline is stable in this sense; stability alone does not imply visibility, precision, or softness.
+\end{tablenotes}
+\end{threeparttable}
+\end{table*}
 
 \begin{table*}[!t]
 \centering
