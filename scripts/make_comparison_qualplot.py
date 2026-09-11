@@ -228,7 +228,7 @@ CAT_COLORS = ["#2e7d32", "#f9a825", "#c62828"]   # green / amber / red
 
 
 def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, legend_fontsize=10,
-                   show_legend=True):
+                   show_legend=True, legend_ncol=1, legend_anchor=(0.0, -0.13)):
     """5 (controller) x 5 (case) outcome grid. Shared by the standalone
     comparison_outcome_heatmap.pdf and panel (a) of the merged figure."""
     grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
@@ -252,8 +252,9 @@ def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, leg
     ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=title_fontsize, pad=10)
     if show_legend:
         legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
-        ax.legend(legend_handles, ["S soft-precise touchdown", "H hard/imprecise touchdown", "A aborted (did not reach surface)"],
-                  loc="upper left", bbox_to_anchor=(0.0, -0.13), ncol=1, frameon=False, fontsize=legend_fontsize)
+        ax.legend(legend_handles, ["S: soft-precise", "H: hard/imprecise", "A: aborted"],
+                  loc="upper left", bbox_to_anchor=legend_anchor, ncol=legend_ncol,
+                  frameon=False, fontsize=legend_fontsize, columnspacing=1.2, handletextpad=0.5)
 
 
 def _draw_3d(ax3d, fontsize=18, ticksize=13):
@@ -310,7 +311,7 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim(bottom=0)
-    ax.set_ylabel(r"$E_{\mathrm{rel},f}/E_\mathrm{soft}$", fontsize=fontsize, labelpad=4)
+    ax.set_ylabel(r"$\eta_E$", fontsize=fontsize, labelpad=4)
 
 
 def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
@@ -357,7 +358,8 @@ ax_ke = fig.add_subplot(gs[1, 1])
 # Category legend dropped here (redundant with the caption's S/H/A key and
 # collided with the shared bottom controller-color legend); kept only on the
 # standalone comparison_outcome_heatmap.pdf.
-_draw_heatmap(ax_hm, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, show_legend=False)
+_draw_heatmap(ax_hm, title_fontsize=14, cell_fontsize=13, tick_fontsize=11,
+              show_legend=True, legend_ncol=3, legend_anchor=(-0.02, -0.07), legend_fontsize=10)
 ax_hm.set_title("(a) Closed-Loop Outcome", fontsize=14, pad=8)
 
 _draw_3d(ax3d, fontsize=17, ticksize=13)
