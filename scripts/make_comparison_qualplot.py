@@ -305,12 +305,6 @@ fig, ax = plt.subplots(figsize=(7.2, 3.6))
 cmap = ListedColormap(CAT_COLORS)
 norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
 ax.imshow(grid, cmap=cmap, norm=norm, aspect="auto")
-for i, name in enumerate(CTRLS):
-    for j, tr in enumerate(TRAJS):
-        met = METRICS[(tr, name)]
-        cat = met["cat"]
-        ax.text(j, i, CAT_TEXT[cat], ha="center", va="center", fontsize=9,
-                color="white" if cat != "hard-imprecise" else "black", linespacing=1.1)
 ax.set_xticks(range(len(TRAJS))); ax.set_xticklabels(LABELS, fontsize=11)
 ax.set_yticks(range(len(CTRLS))); ax.set_yticklabels([ROW_LABELS[n] for n in CTRLS], fontsize=11)
 ax.set_xticks(np.arange(-0.5, len(TRAJS), 1), minor=True)
