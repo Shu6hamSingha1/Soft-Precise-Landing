@@ -30,13 +30,27 @@ REPLACED WITH (this script), all defined for every run regardless of outcome:
      tracked feature exits, vs time.
 
 comparison_outcome_heatmap.pdf: 5 (controller) x 5 (case) categorical grid
--- soft-precise / hard-imprecise / visibility-loss -- text-annotated.
+-- soft-precise / hard-imprecise / aborted.
 
 Classification (thresholds match the rest of the manuscript):
   reached the surface <=> altitude above target at termination <= Z_REACH_M
   soft-precise         <=> reached AND r_xy <= PRECISE_XY_M AND v_term <= SOFT_V_REL_MPS
   hard/imprecise        <=> reached AND NOT soft-precise
-  visibility-loss       <=> NOT reached (broke feature visibility, or timed out)
+  aborted               <=> NOT reached
+
+NOTE 2026-09-11: "aborted" is deliberately mechanism-neutral, not "visibility
+loss". Checking the run log against the FoV-margin panel found that most
+Lin2023 cells never print "BREAK: FoV violation" -- they exit via one of the
+un-logged safety clamps (norm(I_a_cd)>1e2, or a NaN guard on I_a_cd/u_2/x_c),
+one iteration after the last logged sample (the same break-before-write
+pattern fixed in _fov_margin below). The corrected margin trace confirms it:
+on Case 5, Lin2023's margin dips to ~0.05-0.08 but never reaches zero before
+the run ends, i.e. a command/acceleration divergence, not a literal FoV exit.
+"Reached the surface: yes/no" is measured directly and is trustworthy; the
+specific FAILURE MECHANISM per aborted cell is not verified here -- treat the
+manuscript's "leaves the FoV" prose for baselines as needing that same
+per-cell audit (log an explicit fov_fail flag alongside the break) before
+citing a mechanism more specific than "did not reach the surface".
 """
 import os
 import numpy as np
@@ -128,7 +142,7 @@ def _run_metrics(run):
     v_term = float(np.linalg.norm(X[7:10, k] - dxt[:, k]))
     reached = h_term <= Z_REACH_M
     if not reached:
-        cat = "loss"
+        cat = "aborted"
     elif r_xy <= PRECISE_XY_M and v_term <= SOFT_V_REL_MPS:
         cat = "soft-precise"
     else:
@@ -143,14 +157,26 @@ def _fov_margin(run, N):
     """Per-timestep FoV margin: min over corners/axes of the fraction of
     half-frame remaining before the feature would exit (1 = centered, 0 =
     at the edge). Requires P_DS (run_comparison.m patched 2026-09-11 to
-    save it; re-run the comparison if this raises)."""
+    save it; re-run the comparison if this raises).
+
+    BUG FIX 2026-09-11: on an FoV-break run, the break in
+    visualControl_comparison.m fires BEFORE that step's P_DS(:,:,idx) is
+    written, so the column at N-1 is the zero-initialized default, not a
+    real corner -- it reads as a spurious margin=1 (dead center) right at
+    the moment the run actually terminated. Back-search for the last
+    column with any nonzero corner (same pattern as
+    make_multi_init_plots.py's _last_valid_p) and trim to it."""
     d = run.data
     P = d.P_DS[:, :, :N]
     Np = P.shape[1] // 3
     cnp = P[:, 2 * Np:3 * Np, :]                     # physical camera corners [px]
+    j = cnp.shape[-1] - 1
+    while j >= 0 and not np.any(cnp[:, :, j] != 0):
+        j -= 1
+    cnp = cnp[:, :, :j + 1]
     mx = (RES[0] / 2 - np.abs(cnp[0])) / (RES[0] / 2)
     my = (RES[1] / 2 - np.abs(cnp[1])) / (RES[1] / 2)
-    return np.minimum(mx, my).min(axis=0)            # (N,)
+    return np.minimum(mx, my).min(axis=0)            # (j+1,)
 
 
 def _closed_quad(px, py):
@@ -193,46 +219,16 @@ for traj in TRAJS:
 # ============================================================================
 # Figure 1: comparison_combined_circular.pdf (1x4)
 # ============================================================================
-fig = plt.figure(figsize=(18.0, 5.0))
-gs  = fig.add_gridspec(1, 4, left=0.05, right=0.99, wspace=0.40)
-ax3d  = fig.add_subplot(gs[0, 0], projection="3d")
-ax_h  = fig.add_subplot(gs[0, 1])
-ax_ke = fig.add_subplot(gs[0, 2])
-ax_m  = fig.add_subplot(gs[0, 3])
-
-# --- Panel 1: 3D Circular (Case 5) trajectories, corrected outcome markers ---
+# No 3D panel (dropped 2026-09-11 at user request -- the 3 diagnostic panels
+# read better enlarged, and the 3D view added little the other three didn't
+# already cover more legibly).
+fig, (ax_h, ax_ke, ax_m) = plt.subplots(1, 3, figsize=(15.0, 4.6))
 CASE5 = "Circular"
-target_drawn = False
-for name in CTRLS:
-    run = RUNS[(CASE5, name)]
-    met = METRICS[(CASE5, name)]
-    d = run.data
-    N = met["N"]
-    X = d.X_DS[:, :N]
-    color = CTRL_COLORS[name]
-    ax3d.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=CTRL_DISPLAY[name])
-    ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
-    marker = {"soft-precise": "^", "hard-imprecise": "o", "loss": "x"}[met["cat"]]
-    if met["cat"] == "hard-imprecise":
-        ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], facecolors="none", edgecolors=color,
-                     marker=marker, s=34, linewidths=1.2)
-    else:
-        ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color, marker=marker, s=34)
-    if not target_drawn:
-        xt = d.x_t[:3, :N]
-        draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])
-        target_drawn = True
-ax3d.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=18)
-ax3d.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=18)
-ax3d.set_zlabel("altitude [m]", labelpad=2, fontsize=18)
-ax3d.locator_params(axis="x", nbins=4)
-ax3d.locator_params(axis="y", nbins=4)
-ax3d.locator_params(axis="z", nbins=4)
-ax3d.tick_params(pad=1, labelsize=13)
-ax3d.set_title("Landing Trajectories, Case 5", fontsize=18, x=0.55, y=0.95)
-ax3d.view_init(elev=22, azim=-58)
 
-# --- Panel 2: altitude above target at termination, all 5 cases ---
+M_KG = float(getattr(RUNS[(CASE5, CTRLS[0])].data, "m", 2.114))
+E_SOFT_J = 0.5 * M_KG * SOFT_V_REL_MPS ** 2     # touchdown-softness kinetic-energy reference
+
+# --- Panel 1: altitude above target at termination, all 5 cases ---
 xb = np.arange(len(TRAJS))
 width = 0.16
 for j, name in enumerate(CTRLS):
@@ -246,24 +242,32 @@ ax_h.grid(axis="y", alpha=0.3)
 ax_h.set_ylabel("altitude above target\nat termination [m]", fontsize=16, labelpad=4)
 ax_h.set_title("Descent Reached", fontsize=18, y=1.03)
 
-# --- Panel 3: terminal kinetic energy where reached (gap where aborted) ---
+# --- Panel 2: terminal kinetic energy where reached; x/N/A marker where aborted ---
 for j, name in enumerate(CTRLS):
     vals = np.array([METRICS[(tr, name)]["ke"] for tr in TRAJS])
     mask = ~np.isnan(vals)
-    ax_ke.bar((xb + (j - 2) * width)[mask], vals[mask], width, color=CTRL_COLORS[name])
+    xj = xb + (j - 2) * width
+    ax_ke.bar(xj[mask], vals[mask], width, color=CTRL_COLORS[name])
+    for xk in xj[~mask]:
+        ax_ke.text(xk, 0.003, "N/A", rotation=90, ha="center", va="bottom",
+                   fontsize=8, color=CTRL_COLORS[name])
+ax_ke.axhline(E_SOFT_J, color="k", lw=0.8, ls=":")
+ax_ke.text(xb[-1] + 0.55, E_SOFT_J, fr"$E_\mathrm{{soft}}={E_SOFT_J:.3f}$ J",
+          fontsize=11, va="bottom", ha="right")
 ax_ke.set_xticks(xb); ax_ke.set_xticklabels(LABELS, rotation=20, fontsize=14)
 ax_ke.tick_params(axis="y", labelsize=14)
 ax_ke.grid(axis="y", alpha=0.3)
+ax_ke.set_ylim(bottom=0)
 ax_ke.set_ylabel(r"terminal K.E. $\frac{1}{2} m\|v_\mathrm{rel}\|^2$ [J]", fontsize=16, labelpad=4)
-ax_ke.set_title("Touchdown Severity\n(bar absent = did not reach)", fontsize=16, y=1.0)
+ax_ke.set_title("Touchdown Severity\n(N/A = did not reach the surface)", fontsize=16, y=1.0)
 
-# --- Panel 4: FoV-margin time series, Case 5, all 5 controllers ---
+# --- Panel 3: FoV-margin time series, Case 5, all 5 controllers ---
 for name in CTRLS:
     run = RUNS[(CASE5, name)]
     N = METRICS[(CASE5, name)]["N"]
-    t = run.data.tRange[:N]
-    margin = _fov_margin(run, N)
-    ax_m.plot(t, margin, color=CTRL_COLORS[name], lw=1.4)
+    margin = _fov_margin(run, N)                # may trim further than N -- see docstring
+    t = run.data.tRange[:len(margin)]
+    ax_m.plot(t, margin, color=CTRL_COLORS[name], lw=1.4, label=CTRL_DISPLAY[name])
 ax_m.axhline(0.0, color="k", lw=0.8, ls=":")
 ax_m.text(0.3, 0.02, "FoV edge", fontsize=11, va="bottom")
 ax_m.set_ylim(bottom=min(-0.05, ax_m.get_ylim()[0]))
@@ -273,21 +277,12 @@ ax_m.set_title("Visibility Margin, Case 5", fontsize=18, y=1.03)
 ax_m.tick_params(labelsize=14)
 ax_m.grid(alpha=0.3)
 
-handles, labels = ax3d.get_legend_handles_labels()
+handles, labels = ax_m.get_legend_handles_labels()
 fig.legend(handles, labels, loc="lower center", ncol=5, bbox_to_anchor=(0.5, 0.0),
            frameon=False, fontsize=13, handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
 fig.suptitle("Closed-Loop Comparison of Five Controllers across Cases 1--5",
              fontsize=22, y=0.99)
-fig.subplots_adjust(bottom=0.230, top=0.865)
-ax3d.set_position([0.000, 0.10, 0.24, 0.84])
-bar_y0, bar_h = 0.23, 0.56
-bar_left, bar_right = 0.33, 0.99
-gap = 0.035
-n_bars = 3
-bar_w = (bar_right - bar_left - (n_bars - 1) * gap) / n_bars
-for k, ax in enumerate((ax_h, ax_ke, ax_m)):
-    x0 = bar_left + k * (bar_w + gap)
-    ax.set_position([x0, bar_y0, bar_w, bar_h])
+fig.tight_layout(rect=(0, 0.12, 1, 0.94))
 
 safe_savefig(fig, f"{OUT}/comparison_combined_circular.pdf", pad_inches=0.05)
 plt.close(fig)
@@ -295,8 +290,8 @@ plt.close(fig)
 # ============================================================================
 # Figure 2: comparison_outcome_heatmap.pdf (NEW)
 # ============================================================================
-CAT_CODE = {"soft-precise": 0, "hard-imprecise": 1, "loss": 2}
-CAT_TEXT = {"soft-precise": "soft-\nprecise", "hard-imprecise": "hard/\nimprecise", "loss": "visibility\nloss"}
+CAT_CODE = {"soft-precise": 0, "hard-imprecise": 1, "aborted": 2}
+CAT_TEXT = {"soft-precise": "soft-\nprecise", "hard-imprecise": "hard/\nimprecise", "aborted": "aborted"}
 CAT_COLORS = ["#2e7d32", "#f9a825", "#c62828"]   # green / amber / red
 
 grid = np.array([[CAT_CODE[METRICS[(tr, name)]["cat"]] for tr in TRAJS] for name in CTRLS])
@@ -317,7 +312,7 @@ for spine in ax.spines.values():
 ax.set_title("Closed-Loop Outcome by Controller and Case", fontsize=14, pad=10)
 
 legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
-ax.legend(legend_handles, ["soft-precise touchdown", "hard/imprecise touchdown", "visibility loss"],
+ax.legend(legend_handles, ["soft-precise touchdown", "hard/imprecise touchdown", "aborted (did not reach surface)"],
           loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False, fontsize=10)
 
 fig.tight_layout()
