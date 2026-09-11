@@ -307,14 +307,20 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
         mask = ~np.isnan(log_eta)
         xj = xb + xj_off[j]
         ax.bar(xj[mask], log_eta[mask], width_b, color=CTRL_COLORS[name], label=CTRL_DISPLAY[name])
-    ymin = np.nanmin(log_etas) if log_etas else -1.0
+    # N/A markers: horizontal "N/A" set in a small white box at the eta_E=1
+    # (log=0) reference line -- previously rotated 90deg text sitting at the
+    # bottom axis edge, which sat flush against the frame and was easy to
+    # miss/clip. Centering on the y=0 gridline keeps every marker inside the
+    # visible range regardless of the data's own log-scale extent.
     for j, name in enumerate(REACHED_CTRLS):
         eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
                         if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
         xj = xb + xj_off[j]
         for xk in xj[np.isnan(eta)]:
-            ax.text(xk, ymin - 0.15, "N/A", rotation=90, ha="center", va="bottom",
-                    fontsize=9, color=CTRL_COLORS[name])
+            ax.text(xk, 0.0, "N/A", rotation=90, ha="center", va="center",
+                    fontsize=8, color=CTRL_COLORS[name], clip_on=False,
+                    bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                              edgecolor=CTRL_COLORS[name], linewidth=0.6))
     ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=20, fontsize=tick_fontsize)
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
