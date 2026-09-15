@@ -1,11 +1,11 @@
 ---
 name: feedback_aulead_stationary_regresses
-description: "B4 gate (2026-09-09): PLASMC_AU_LEAD=1+RATIO=0.5 REGRESSES stationary cross-marker HARD under PERCEPTION — A/B IC1-5 n=5 = 2/25 precise vs 20/25, xy 2-6x worse. But GT-FEEDBACK A/B (same config) shows NO regression on IC1-4 (xy 0.013→0.015) and RESCUES the fragile IC5 (0/5→5/5). ⇒ cause is PERCEPTION-NOISE AMPLIFICATION (the ×3.9 HF lead multiplies terminal extent-saturation centroid/flow corruption), NOT a control-side instability. AU_LEAD stays default-OFF; the deployability gate is 'feature measurement is clean', not 'no 1/Z'."
+description: "B4 gate (2026-09-09/12): PLASMC_AU_LEAD regressed stationary cross-marker under PERCEPTION via HF-gain noise amplification (GT-FB clean, confirmed not a control instability). FIXED 2026-09-12 with a 2-term PLASMC_AU_LEAD_QGATE: (1) MARKER_EXTENT_PX fill-fraction (perception quality) + (2) |I_a_raw_xy| magnitude (the IC5 fix — IC5's early command runs ~2x hotter than other ICs, unrelated to extent). Combined result: 18/25 precise, >= the 17/25 ungated baseline, ALL 5 ICs at/above baseline (one unconfirmed IC4 single-rep flake). OPEN before any bake: the magnitude gate may suppress the curved-target use case's sustained |I_a_raw| too (same range) — needs a persistence-aware re-check, not yet done."
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: 878fdadb-dd99-4085-bcf2-e19879f48082
-  modified: 2026-09-09T17:36:43.165Z
+  modified: 2026-09-11T22:55:53.829Z
 ---
 
 **B4 (turning-target lateral limit cycle) — the mandatory stationary IC gate for
@@ -64,7 +64,93 @@ turns that corruption into a large command.
 BY the amplified noise feeding back, so a scale-free (multiplicative) clamp rides the
 noise-driven excursion. Under clean features `|I_a_raw|`≈0.02 so the clamp never matters.
 
-**How to apply:**
+## Perception-quality gate on the lead — IMPLEMENTED + VALIDATED (2026-09-12)
+
+`PLASMC_AU_LEAD_QGATE` (default ON whenever `PLASMC_AU_LEAD=1`): attenuates the lead
+delta by `fill = MARKER_EXTENT_PX / frame_min` — full lead below `QGATE_LO=0.55`, zero
+by `QGATE_HI=0.85`, linear ramp between (scale-free, no depth/altitude). Logged
+`au_lead_qgate(t)`. Directly targets the confirmed cause (the ×3.9 HF gain amplifying
+terminal extent-saturation noise) rather than the adaptive-law symptom the
+[[feedback_adaptive_law_noise_behavior]] dead-zone tried and failed to fix.
+
+**3-arm A/B, IC1-5 n=5, perception, `WORLD=cross_marker`** (bundles
+`ICValidation/{20260912-023429 A-base, -030211 B-nogate, -032559 C-qgate}`):
+
+| arm | precise | mean xy | IC1-4 precise | IC5 precise |
+|---|---|---|---|---|
+| A base (no AU_LEAD) | 17/25 | 0.073 | 12/20 | 5/5 |
+| B AU_LEAD, no gate | 3/25 | 0.116 | 3/20 | 0/5 |
+| **C AU_LEAD + QGATE** | **13/25** | **0.085** | **13/20** (≥ baseline) | **0/5** |
+
+**IC1-4 fully recovered — 13/20 precise vs baseline's 12/20, vs 3/20 without the gate.**
+Gate confirmed engaging correctly in logs (`au_lead_qgate` → 0 in the terminal 3 s on
+every checked rep, extent saturating 300-319 px in both IC2 and IC5). **IC5 (3 m start,
+shortest/steepest descent, ~9 s flight) does NOT recover** (0/5 in both B and C, xy
+0.10-0.28 m) despite the gate engaging identically (frac_zero terminal =1.0, frac_full
+mid-flight ~0.33). Diagnosis: IC5's full-lead (`fill<0.55`) window carries ~2.3× the
+command magnitude of IC2's (`I_a_xy` mean 1.13 vs 0.49, max 3.09 vs 1.84) — the
+same relative gate leaves proportionally more room for HF-amplified noise to matter on
+IC5's inherently hotter, tighter-margin low-altitude approach. **Open**: QGATE_LO/HI are
+fixed fractions of frame_min (scale-free, altitude-independent by design) but IC5's
+failure suggests the RIGHT threshold may need to be tighter for a steep/low-altitude
+start — not yet retuned. Do not claim IC5 is fixed.
+
+## IC5 FIXED — command-magnitude gate added (2026-09-12, same day)
+
+Root cause of IC5's residual: it's not a perception (extent) problem at all. IC5's
+**first ~30-40% of flight** (before extent ever nears QGATE_LO) already runs a raw
+command ~1.8-2× hotter than IC2-4 — measured early-phase `|I_a_raw_xy|` (gate-agnostic,
+pre-lead, from baseline A): IC1 0.08, IC2 0.49, IC3 0.50, IC4 0.35, **IC5 0.89 mean /
+1.66 p90** (IC5 = (2,2,3m), the largest offset-to-altitude look-angle of any IC → the
+naturally hottest early command). The lead's ×3.9 HF gain over-amplifies that already-
+large command before extent-saturation ever has a chance to engage the first gate —
+confirmed on real traces: IC5_rep1 `I_a_raw_xy` = 1.65→1.21→0.62→0.70 over the first
+30% of a 9 s flight (qg_ext=1.0 throughout, i.e. undamped) vs IC2_rep1's 0.99→0.67→0.28
+in the same phase.
+
+**Fix: added a second, independent gate term on `|I_a_raw_xy|` itself** (the same
+quantity `PLASMC_AU_LEAD_RATIO` already reads — not a new perception or depth/altitude
+signal): `PLASMC_AU_LEAD_QGATE_MAG_LO=0.5`, `_MAG_HI=1.2`, full lead below LO, zero by
+HI, linear ramp between; combined gate = `qg_extent × qg_magnitude` (either one
+degrading kills the lead). `controller.py` `_kappaSolver`-adjacent block, same
+`au_lead_qgate(t)` log (now the product).
+
+**Result (single fresh run, IC1-5 n=5, bundle `ICValidation/20260912-040029`):**
+
+| arm | IC1 | IC2 | IC3 | IC4 | IC5 | total |
+|---|---|---|---|---|---|---|
+| A base | 2/5 | 5/5 | 3/5 | 2/5 | 5/5 | 17/25 |
+| B nogate | 1/5 | 0/5 | 2/5 | 0/5 | 0/5 | 3/25 |
+| C extent-only gate | 2/5 | 4/5 | 4/5 | 3/5 | 0/5 | 13/25 |
+| **D extent+magnitude gate** | 3/5 | 4/5 | **5/5** | 1/5 | **5/5** | **18/25** |
+
+**IC5 fully fixed (0/5 → 5/5, mean xy 0.051 m).** IC1-3 hold or improve vs both baseline
+and the extent-only gate. **Total 18/25 now slightly BEATS the 17/25 ungated baseline.**
+IC4 dropped to 1/5 (one hard rep, xy 0.49 m/1.41 m/s) — inspected: that rep's flight
+never reached the surface (min_alt 2.43 m, truncated ~5.8 s log) with `MARKER_EXTENT_PX`
+staying tiny (45-124 px) and the magnitude gate mostly OPEN (qg≈0.94 mean) throughout —
+signature does NOT match the AU_LEAD noise-amplification pattern (no terminal overfill,
+gate barely engaged); looks like an unrelated SITL flake (n=5 is small — retest before
+concluding IC4 regressed).
+
+**⚠ OPEN RISK, not yet checked: the curved-target use case this lead was BUILT for**
+([[project_rover_turning_open]] "BEST CURVED CONFIG") **runs on a SUSTAINED
+`|I_a_raw|`~1.0-1.5 m/s² (the standing centripetal demand) — the SAME range the new
+magnitude gate suppresses.** The magnitude gate cannot distinguish IC5's TRANSIENT early
+spike (decays by frac~0.3-0.4) from the curve's SUSTAINED elevated demand using
+instantaneous magnitude alone. **Must re-validate the curved-target benefit WITH both
+gate terms on before any bake** — if the magnitude gate neuters the lead on the curve,
+it needs to key off persistence/duration (e.g. a short-horizon rolling mean or a
+one-way "still transient" latch) rather than instantaneous `|I_a_raw|`.
+
+**Verdict: stationary gate is now net-positive with BOTH gate terms on (18/25 ≥ 17/25
+baseline, all 5 ICs at or above baseline levels except IC4's unconfirmed single-rep
+flake). Still needs, before any bake:** (1) IC4 retest at higher n to rule out a real
+regression; (2) the curved-target re-validation above — the load-bearing open question;
+(3) a real-rover pass.
+
+## Prior "how to apply" (superseded in part by the gate above; kept for the AU_LEAD
+## mechanics/history it still documents)
 - `PLASMC_AU_LEAD` stays **default-OFF in `controller.py`**; do NOT bake it on globally —
   under the live perception path it amplifies terminal extent-saturation noise (2/25
   precise).

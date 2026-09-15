@@ -9,6 +9,27 @@ a moving-target run (rover, and/or the ArUco/cross world with a scripted target 
 MATLAB (realistic plant: pixel noise + ground effect + 1-step delay) says this pair is clean on
 **both** regimes; `XIR` alone is not enough and `XI2=1.0` is the reason.
 
+## ⛔ ADDENDUM (2026-09-12) — thm:translational R_k(t) compatibility-margin hypothesis also REFUTED
+
+A follow-up hypothesis (proof audit): Theorem `thm:translational`'s stated condition `C_k(t) =
+rho_nu,k/(rho_nu,z*s_bar_k) > 1` is violated 65-86% of the MATLAB flight, but that's a conservative
+bound (`|e_nu,z|` replaced by its worst-case envelope). The TIGHT, solution-dependent bound
+`R_k(t) = C_k(t)/|eta_nu_z(t)|` (`eta_nu_z = e_nu,z/rho_nu,z`) holds 2.9-4.4x in MATLAB. Hypothesis:
+PX4's real dynamics inflate the realized `|e_nu,z(t)|`, breaking this margin on the moving-target
+case — a concrete mechanism for why MATLAB's XIR=0.10 doesn't port.
+
+**Computed R_k(t) directly on the SITL logs below (test_data/XirXi2_RoverGTFB/, not inferred).
+Refuted.** `min R_k(t) > 1` holds in 22/24 reps (margin 1.5-5.6x), same structural pattern as
+MATLAB — including on moving-target base-arm, the case the hypothesis targeted (minR 1.5-1.7x/y,
+3/3 precise). The one dip (`moving_base_IC1` rep0, R_x→0.746) is a touchdown-window transient in
+the last 0.3s of a 10s run, not a breach precursor — no FoV-breach/target_lost occurred in ANY of
+the 24 runs. The candidate arm has LARGER R_k margins than base (3.5-5.6x vs 1.5-2.3x — a tighter
+funnel structurally strengthens the bound) yet performs WORSE empirically (IC1 detonation at
+R_x=1.18, still >1 throughout the blowup) — margin does not track outcome either way. Xi_r's real
+non-portability cause is elsewhere (most likely the kappa-leakage/`P_XY`-over-leaky chain,
+`project_ic1_kappa_leakage_drift_20260721`), not this boundedness condition.
+Memory: `px4/feedback_rk_compatibility_hypothesis_refuted_sitl`.
+
 ## ⛔ SITL RESULT (2026-09-11) — REFUTED, do NOT bake
 
 Ran the exact experiment above: GT-FB, **rover world only** (per user), 2 arms
