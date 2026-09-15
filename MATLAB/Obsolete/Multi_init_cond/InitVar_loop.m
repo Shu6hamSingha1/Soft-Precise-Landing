@@ -1,3 +1,7 @@
+%% MOVED TO Obsolete 2026-09-15: only caller was visualControl_IBVS_adaptive_loop.m
+% (also moved here), a pre-ASMC PID-era driver that is orphaned and independently
+% broken (references K.zp/zi/zd, never defined). See that file's header. The
+% canonical InitVar today is Multi_init_cond/InitVar.m.
 %% Simulation conditions
 NOISE = 1; GE = 1; delay = 1;
 ZOF = 1;
@@ -33,11 +37,22 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % Computing Desired Image Features Parameters
 % *************************************************************************
 % Defining Desired Feature Points wrt to Target Origin in Target Reference Frame
-T_nP3 = [-30, 15, 15, -15; 30, 15, -15, -15; 0, 0, 0, 0]/100; 
-% T_nP3 = [-15, 15, 15, -15; 15, 15, -15, -15; 0, 0, 0, 0]/100; 
-% T_nP3 = [-16, 15, 15, -15; 16, 15, -15, -15; 0, 0, 0, 0]/100; 
+% 5-point CROSS marker (abstraction of the PX4 SITL cross marker, same camera
+% model f=135 / res=[320;240]): cols 1-4 are the four arm tips of a SYMMETRIC
+% plus; col 5 is the STUB, a fifth point extending the +x arm. The stub is the
+% only asymmetry and is what makes the image orientation a full 2pi direction
+% (yaw observable past the +-90deg principal-axis fold) -- consumed by the N==5
+% weighted-centroid branch in image_feature.m. Column order (stub LAST) is a
+% contract with that branch; do not permute. Aligned cross -> alpha = 0.
+% Matches Multi_init_cond/InitVar.m and Comparison/InitVar.m (2026-09-09
+% switch) -- this file (the Monte-Carlo/parameter-sweep driver) was missed
+% and still had the pre-2026-09-09 4-point trapezoid until now.
+% Legacy 4-point trapezoid: [-30 15 15 -15; 30 15 -15 -15; 0 0 0 0]/100
+T_nP3 = [ 15, -15,   0,   0,  22 ;
+           0,   0,  15, -15,   0 ;
+           0,   0,   0,   0,   0 ] / 250;
 
-% Removing offset due to unsymmetry
+% Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame

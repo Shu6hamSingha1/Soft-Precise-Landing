@@ -1,3 +1,11 @@
+%% MOVED TO Obsolete 2026-09-15: pre-ASMC PID-era driver, orphaned (nothing in the
+% live tree calls this or InitVar_loop.m), and already broken independent of that --
+% it references K.zp/K.zi/K.zd for z-axis control, which Adapt_Control_Params.m
+% never defines. The current architecture (MATLAB/VDF_ASMC/+blocks/asmc.m and PX4's
+% controller.py) uses the leakage-type ASMC kappa-ODE for every axis instead; there
+% is no K.zp/zi/zd anywhere in the live design to restore. Do not resurrect by
+% patching in those fields -- that would reintroduce a superseded control law.
+% The canonical Monte-Carlo/sweep entry point today is run_simulation.m.
 %% Started working on 06/01/2026
 % Last updated on 06/01/2026
 %% Refer to "Adaptive Visual Control Strategies for Autonomous Landing of Quadrotor Platforms"
