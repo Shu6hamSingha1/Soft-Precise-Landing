@@ -118,23 +118,24 @@ CTRL_COLORS = {
     "Lin 2023":          "C4",
     "Cho 2022":          "C1",
 }
-# 2026-09-11: no author names, citation numbers, or method acronyms anywhere
-# -- just "Proposed" / "Baseline A-D", per explicit user instruction, applied
-# uniformly across all comparison figures (legends AND the heatmap's row
-# labels below).
+# 2026-09-11: no author names or citation numbers anywhere, per explicit user
+# instruction, applied uniformly across all comparison figures (legends AND
+# the heatmap's row labels below).
+# 2026-09-15: "Baseline A-D" swapped for method-acronym tags per explicit
+# user instruction (supersedes the 2026-09-11 "Baseline A-D only" call).
 CTRL_DISPLAY = {
     "PLASMC (Proposed)": "Proposed",
-    "Lin 2022":          "Baseline A",
-    "Zhang 2026":        "Baseline B",
-    "Lin 2023":          "Baseline C",
-    "Cho 2022":          "Baseline D",
+    "Lin 2022":          "PBVS--PPC",
+    "Zhang 2026":        "PBVS--AEDO",
+    "Lin 2023":          "IBVS--PPC",
+    "Cho 2022":          "FF--IBVS",
 }
 ROW_LABELS = {
     "PLASMC (Proposed)": "Proposed",
-    "Lin 2022":          "Baseline A",
-    "Zhang 2026":        "Baseline B",
-    "Lin 2023":          "Baseline C",
-    "Cho 2022":          "Baseline D",
+    "Lin 2022":          "PBVS--PPC",
+    "Zhang 2026":        "PBVS--AEDO",
+    "Lin 2023":          "IBVS--PPC",
+    "Cho 2022":          "FF--IBVS",
 }
 
 

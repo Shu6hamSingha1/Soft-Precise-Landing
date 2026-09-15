@@ -185,10 +185,10 @@ def _scatter_outcome(ax, x, y, z, color, run):
     """Plot the touchdown marker per the 5-category scheme."""
     marker, filled = _classify_outcome(run)
     if filled:
-        ax.scatter(x, y, z, color=color, marker=marker, s=30)
+        ax.scatter(x, y, z, color=color, marker=marker, s=55)
     else:
         ax.scatter(x, y, z, facecolors='none', edgecolors=color,
-                   marker=marker, s=30, linewidths=1.0)
+                   marker=marker, s=55, linewidths=1.4)
 
 
 def _idx_of(d):
@@ -279,7 +279,25 @@ def plot_image_plane(traj):
     corner_styles = ["-", "--", "-.", ":"]
 
     def _closed_quad(px, py):
-        return list(px) + [px[0]], list(py) + [py[0]]
+        """Return (x, y) for ax.plot() depicting the marker outline. N==4:
+        legacy closed quad (unchanged). N==5 cross+stub: NOT a sequential
+        closed polygon through all 5 points (that draws a bowtie, not a
+        cross) -- instead two disconnected line segments: the two arm
+        diagonals (px[0]-px[1], px[2]-px[3], opposite-pair convention of
+        InitVar.m's T_nP3) plus a third segment from the arm-tip centroid
+        (the true cross junction) out to the stub (px[4]). Segments are
+        joined with a NaN break so a single ax.plot() call still draws all
+        three without connecting them. Fixed 2026-09-15 alongside the
+        InitVar.m T_nP3 orientation correction (see that file's comments)."""
+        px = list(px); py = list(py)
+        if len(px) == 5:
+            cx = sum(px[:4]) / 4.0
+            cy = sum(py[:4]) / 4.0
+            nan = float("nan")
+            xs = [px[0], px[1], nan, px[2], px[3], nan, cx, px[4]]
+            ys = [py[0], py[1], nan, py[2], py[3], nan, cy, py[4]]
+            return xs, ys
+        return px + [px[0]], py + [py[0]]
 
     # Pass 1: gather data, find desired quad, compute per-IC max corner-to-
     # desired offset (used for legend annotation and inset zoom range).
@@ -305,11 +323,26 @@ def plot_image_plane(traj):
             Pd = d.V_nP_d
             desired_quad = (np.asarray(Pd[0, :]).copy(),
                             np.asarray(Pd[1, :]).copy())
+    def _marker_centre(px, py):
+        """Marker-centre position: mean of the arm tips only (first 4 cols;
+        the cross junction), excluding the stub (col 5), which biases the
+        centroid off the true junction by construction (InitVar.m). Falls
+        back to the mean of all points for the legacy 4-point quad, where
+        it's the same thing."""
+        n = min(4, len(px))
+        return float(np.mean(px[:n])), float(np.mean(py[:n]))
+
+    # Delta_c: offset of the MARKER CENTRE (cross junction) from its desired
+    # position at touchdown -- not a max over the individual arm/stub points.
+    # With the cross+stub marker the corner points aren't individually
+    # meaningful targets (unlike the legacy 4-point quad, where each corner
+    # WAS a tracked feature); what matters is where the marker as a whole
+    # ends up relative to where it should be. Fixed 2026-09-15.
     for k in range(len(results)):
         if desired_quad is not None:
-            dx_c = end_corners[k][0] - desired_quad[0]
-            dy_c = end_corners[k][1] - desired_quad[1]
-            max_offsets.append(float(np.max(np.hypot(dx_c, dy_c))))
+            cx_e, cy_e = _marker_centre(*end_corners[k])
+            cx_d, cy_d = _marker_centre(*desired_quad)
+            max_offsets.append(float(np.hypot(cx_e - cx_d, cy_e - cy_d)))
         else:
             max_offsets.append(np.nan)
 
@@ -334,7 +367,7 @@ def plot_image_plane(traj):
         # End quad (long-dash, IC color) — uses the back-searched last sample
         ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
         ic_label = (rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
-                    rf" $\Delta_{{\max}}={max_offsets[k]:.1f}$~px")
+                    rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
         h, = ax.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
                      label=ic_label)
         ic_handles.append(h)
@@ -453,7 +486,7 @@ def plot_combined(traj):
         ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=1.3,
                  label=rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
         ax3.scatter(X[0, 0], X[1, 0], -X[2, 0],
-                    color=RUN_COLORS[k], marker="o", s=20)
+                    color=RUN_COLORS[k], marker="o", s=35)
         _scatter_outcome(ax3, X[0, -1], X[1, -1], -X[2, -1],
                          RUN_COLORS[k], run)
         if n > longest_n:
@@ -485,7 +518,25 @@ def plot_combined(traj):
     corner_styles = ["-", "--", "-.", ":"]
 
     def _closed_quad(px, py):
-        return list(px) + [px[0]], list(py) + [py[0]]
+        """Return (x, y) for ax.plot() depicting the marker outline. N==4:
+        legacy closed quad (unchanged). N==5 cross+stub: NOT a sequential
+        closed polygon through all 5 points (that draws a bowtie, not a
+        cross) -- instead two disconnected line segments: the two arm
+        diagonals (px[0]-px[1], px[2]-px[3], opposite-pair convention of
+        InitVar.m's T_nP3) plus a third segment from the arm-tip centroid
+        (the true cross junction) out to the stub (px[4]). Segments are
+        joined with a NaN break so a single ax.plot() call still draws all
+        three without connecting them. Fixed 2026-09-15 alongside the
+        InitVar.m T_nP3 orientation correction (see that file's comments)."""
+        px = list(px); py = list(py)
+        if len(px) == 5:
+            cx = sum(px[:4]) / 4.0
+            cy = sum(py[:4]) / 4.0
+            nan = float("nan")
+            xs = [px[0], px[1], nan, px[2], px[3], nan, cx, px[4]]
+            ys = [py[0], py[1], nan, py[2], py[3], nan, cy, py[4]]
+            return xs, ys
+        return px + [px[0]], py + [py[0]]
 
     desired_quad = None
     end_corners  = []
@@ -503,11 +554,26 @@ def plot_combined(traj):
             Pd = d.V_nP_d
             desired_quad = (np.asarray(Pd[0, :]).copy(),
                             np.asarray(Pd[1, :]).copy())
+    def _marker_centre(px, py):
+        """Marker-centre position: mean of the arm tips only (first 4 cols;
+        the cross junction), excluding the stub (col 5), which biases the
+        centroid off the true junction by construction (InitVar.m). Falls
+        back to the mean of all points for the legacy 4-point quad, where
+        it's the same thing."""
+        n = min(4, len(px))
+        return float(np.mean(px[:n])), float(np.mean(py[:n]))
+
+    # Delta_c: offset of the MARKER CENTRE (cross junction) from its desired
+    # position at touchdown -- not a max over the individual arm/stub points.
+    # With the cross+stub marker the corner points aren't individually
+    # meaningful targets (unlike the legacy 4-point quad, where each corner
+    # WAS a tracked feature); what matters is where the marker as a whole
+    # ends up relative to where it should be. Fixed 2026-09-15.
     for k in range(len(results)):
         if desired_quad is not None:
-            dx_c = end_corners[k][0] - desired_quad[0]
-            dy_c = end_corners[k][1] - desired_quad[1]
-            max_offsets.append(float(np.max(np.hypot(dx_c, dy_c))))
+            cx_e, cy_e = _marker_centre(*end_corners[k])
+            cx_d, cy_d = _marker_centre(*desired_quad)
+            max_offsets.append(float(np.hypot(cx_e - cx_d, cy_e - cy_d)))
         else:
             max_offsets.append(np.nan)
 
@@ -525,7 +591,7 @@ def plot_combined(traj):
         axI.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
         ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
         ic_label = (rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
-                    rf" $\Delta_{{\max}}={max_offsets[k]:.1f}$~px")
+                    rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
         h, = axI.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
                       label=ic_label)
         ic_handles.append(h)
@@ -584,14 +650,14 @@ def plot_combined(traj):
     #     3 rows (5 IC entries, last cell empty).
     # =========================================================================
     style_legend = axI.legend(handles=style_handles, loc="lower right",
-                              fontsize=14, ncol=1, framealpha=0.9)
+                              fontsize=18, ncol=1, framealpha=0.9)
     axI.add_artist(style_legend)
 
     # 2-row IC legend (5 entries -> 2 rows x 3 cols, last cell empty),
-    # fontsize 14, anchored at the figure bottom.
+    # fontsize 18, anchored at the figure bottom.
     fig.legend(handles=ic_handles, loc="lower center", ncol=3,
-               fontsize=14, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
-               handlelength=1.6, columnspacing=1.0, handletextpad=0.6)
+               fontsize=16, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
+               handlelength=1.4, columnspacing=0.7, handletextpad=0.5)
 
     fig.suptitle(f"Landing for Multiple Initial Conditions for {TRAJ_CASE[traj]}",
                  fontsize=24, y=0.99)

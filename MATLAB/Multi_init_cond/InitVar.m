@@ -48,16 +48,28 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % Defining Desired Feature Points wrt to Target Origin in Target Reference Frame
 % 5-point CROSS marker (abstraction of the PX4 SITL cross marker, same camera
 % model f=135 / res=[320;240]): cols 1-4 are the four arm tips of a SYMMETRIC
-% plus; col 5 is the STUB, a fifth point extending the +x arm. The stub is the
-% only asymmetry and is what makes the image orientation a full 2pi direction
-% (yaw observable past the +-90deg principal-axis fold) -- consumed by the N==5
-% weighted-centroid branch in image_feature.m. Column order (stub LAST) is a
-% contract with that branch; do not permute. Aligned cross -> alpha = 0.
+% X (the two arm-LINES are the diagonals, col1/col2 opposite, col3/col4
+% opposite, 90deg apart); col 5 is the STUB, a fifth point extending
+% horizontally (+x) -- at 45deg RELATIVE to the nearest arm (col1/col4), not
+% collinear with any arm. This matches the real PX4 marker geometry: see
+% src/cross_marker_detector.py's own detection-geometry comments ("two arms
+% meet near 90deg" + STUB_REL_ANGLE_DEG=45) and PX4_Gazebo/Images/cross_marker.png.
+% CORRECTED 2026-09-15: the previous definition here had the arms axis-aligned
+% (a +, not an X) with the stub COLLINEAR (0deg relative) with the +x arm --
+% wrong on both counts, caught by comparing a generated figure against the
+% actual PX4 marker image. This changes the real simulated feature geometry
+% (image_feature.m's alpha depends on it), not just how it plots -- every
+% MATLAB result was re-run after this fix (see run history/memory).
+% The stub is the only asymmetry and is what makes the image orientation a full
+% 2pi direction (yaw observable past the +-90deg principal-axis fold) --
+% consumed by the N==5 weighted-centroid branch in image_feature.m. Column
+% order (stub LAST) is a contract with that branch; do not permute. Aligned
+% cross -> alpha = 0.
 % Legacy 4-point trapezoid (pre-2026-09-09): [-20 15 15 -15; 20 15 -15 -15; 0 0 0 0]/250
 % Sized so the recentred half-extent (~19.4/250) matches the legacy marker's (~18.8/250).
-T_nP3 = [ 15, -15,   0,   0,  22 ;
-           0,   0,  15, -15,   0 ;
-           0,   0,   0,   0,   0 ] / 250;
+T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
+          15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
+                   0,           0,           0,           0,   0 ] / 250;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);

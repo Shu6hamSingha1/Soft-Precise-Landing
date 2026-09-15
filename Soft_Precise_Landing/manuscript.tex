@@ -651,17 +651,17 @@ VISTA achieves $25/25$ soft-precise landings under the disturbance model, with a
 
 The four displaced ICs stress the closed loop in distinct modes. IC$_2=[2,2,-5]$~m (diagonal lateral offset) drives the roll and pitch commands hardest in the first $1$--$2$~s, where the visibility CBF conditions the commanded tilt while $\boldsymbol{\kappa}(t)$ rises to absorb the combined lateral chase, yet lands within $2.44$~cm. IC$_3=[2,-2,-5]$~m, the sign-reversed counterpart of IC$_2$ across $y$, lands within $2.50$~cm and confirms no hidden $y$-axis bias. The high-altitude IC$_4=[2,2,-7]$~m extends the descent the most, to $t_\text{f}^{\max}=12.21$~s, and lands within $2.52$~cm. The features start depth-scaled by $5/7$, the visibility constraint is slack at $t=0$, and the image-position error contracts toward its terminal bound while the UAV still has altitude. The low-altitude IC$_5=[2,2,-3]$~m is the tightest visibility case, the fastest to land ($t_\text{f}^{\max}=10.51$~s), and carries the worst-case horizontal error of the set ($3.50$~cm, on Case~4). The pinhole projection magnifies the lateral offset by $5/3\approx 1.67\times$, producing the worst-case pixel excursions of the $25$-run set, with the visibility barrier most active in the first $1$--$2$~s and the FoV margin remaining strictly positive throughout. Across the five ICs, landing time follows initial altitude, while touchdown error follows the oscillatory demand of the target trajectory, largest on Cases~3 and~4, rather than the initial geometry.
 
-The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run on Case~3 (sinusoidal trajectory) are reported in Fig.~\ref{funnel internals: figure}, with the adaptive-gain, sliding-surface, and thrust trajectories in Appendix~\ref{extended results appendix: section} (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}). The run combines a $2.83$-m diagonal lateral offset with oscillatory $x$-axis chase, exercising both the visibility CBF and the leakage-type adaptive law.
+The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run on Case~5 (circular ship-deck trajectory) are reported in Fig.~\ref{funnel internals: figure}, with the adaptive-gain, sliding-surface, and thrust trajectories in Appendix~\ref{extended results appendix: section} (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}). The run combines a $2.83$-m diagonal lateral offset with the rotating-platform chase of Case~5, exercising both the visibility CBF and the leakage-type adaptive law.
 
 \begin{figure*}[!t]
 \centering
     \includegraphics[width=\textwidth]{Figures/generated/plasmc_funnel_combined.pdf}
-    \caption{Prescribed-performance envelope preservation and funnel compatibility for the representative IC$_2$ Case~3 run. \textbf{(a)} Image-position error $e_{p,k}$ normalized by $\varphi_{k,\max}\rho_{p,k}$ ($k\in\{x,y\}$; $\rho_{p,k}\equiv p_{r,k}$ of the position funnel); the prescribed-performance guarantee of Theorem~\ref{thm:precision} bounds this ratio to $[-1,1]$, but the axis is zoomed to the trajectories' own range to show their near-origin evolution rather than the (far wider) $\pm1$ bound itself. \textbf{(b)} Optical-flow error $e_{\nu,k}$ normalized by $\rho_{\nu,k}$ ($k\in\{x,y,z\}$; $\rho_{\nu,k}\equiv p_{h,k}$ of the optic-flow funnel), zoomed the same way. \textbf{(c)} Funnel-compatibility ratio $\mathcal{C}_k(t)\triangleq\rho_{\nu,k}(t)/(\rho_{\nu,z}(t)\bar{s}_k(t))$, $k\in\{x,y\}$, where $\bar{s}_k$ is the raw (signed) normalized lateral image position; the sufficient condition of Theorem~\ref{thm:precision} linking the lateral and descent-axis funnels is $\mathcal{C}_k(t)>1$, shown here on a log axis since $\bar{s}_k$ crosses zero periodically on the oscillatory target, driving brief $1/|\bar{s}_k|$ spikes that are not a real margin signal.}
+    \caption{Prescribed-performance error evolution for the representative IC$_2$ Case~5 run. \textbf{(a)} Image-position error $e_{p,k}$ normalized by $\varphi_{k,\max}\rho_{p,k}$ ($k\in\{x,y\}$; $\rho_{p,k}\equiv p_{r,k}$ of the position funnel); the prescribed-performance guarantee of Theorem~\ref{thm:precision} bounds this ratio to $[-1,1]$, but the axis is zoomed to the trajectories' own range to show their near-origin evolution rather than the (far wider) $\pm1$ bound itself. \textbf{(b)} Optical-flow error $e_{\nu,k}$ normalized by $\rho_{\nu,k}$ ($k\in\{x,y,z\}$; $\rho_{\nu,k}\equiv p_{h,k}$ of the optic-flow funnel), zoomed the same way.}
     \label{funnel internals: figure}
 \end{figure*}
 
-Fig.~\ref{funnel internals: figure}(a)--(b) normalizes each error by its own envelope, so the prescribed-performance guarantee of Theorem~\ref{thm:precision} holds throughout even though the zoomed axes only display a small fraction of the admissible $\pm1$ band. The position-error ratio (a) never exceeds $4.5\%$ of its envelope on either lateral axis, confirming the $2.83$-m IC$_2$ diagonal offset is absorbed well inside the funnel from the first sample. The optical-flow ratio (b) exposes three distinct behaviors that originate from the controller design and the trajectory geometry. (i)~\emph{Initial transient}: $\boldsymbol{h}_\text{e}(0)=-\boldsymbol{h}_\text{d}(0)$ exactly, since the UAV starts at rest ($\boldsymbol{h}(0)=\boldsymbol{0}$); the desired flow at $t=0$ is dominated by the descent feedforward $h_\text{rd}\boldsymbol{s}(0)$, so the transient is absorbed within the first second. (ii)~\emph{Small lateral errors}: with the funnel-prescribed rate in $\boldsymbol{h}_\text{d}$, the lateral error is the barrier-coordinate rate of \eqref{h_e identity: equation}, so the lateral ratios never exceed $3\%$ of their envelope. (iii)~\emph{Vertical positivity}: $h_{\text{e},z}(t)>0$ throughout, since the descent reference $h_{\text{d},z}=h_\text{rd}=-0.38$ is a constant negative value and $h_z$ approaches it from above; the persistent positive residual reflects steady-state disturbance absorption by the leakage-type adaptive gain (Remark~\ref{rem:leakage}) and settles at $11\%$ of the descent-axis envelope, the largest ratio on this run and well below the $1-\epsilon_S=0.95$ funnel-saturation threshold of Appendix~
-\ref{implementation appendix: section}, so the funnel-saturation guard stays dormant on this run. Panel (c) confirms the funnel-compatibility condition holds with wide margin on this run: $\mathcal{C}_x(t)$ and $\mathcal{C}_y(t)$ never drop below $3.90$, nearly $4\times$ the $\mathcal{C}_k>1$ sufficient threshold, with brief spikes toward $10^3$ where $\bar{s}_k$ passes through zero on the oscillatory target.
+Fig.~\ref{funnel internals: figure}(a)--(b) normalizes each error by its own envelope, so the prescribed-performance guarantee of Theorem~\ref{thm:precision} holds throughout even though the zoomed axes only display a small fraction of the admissible $\pm1$ band. The position-error ratio (a) never exceeds $7.0\%$ of its envelope on either lateral axis, confirming the $2.83$-m IC$_2$ diagonal offset is absorbed well inside the funnel from the first sample. The optical-flow ratio (b) exposes three distinct behaviors that originate from the controller design and the trajectory geometry. (i)~\emph{Initial transient}: $\boldsymbol{h}_\text{e}(0)=-\boldsymbol{h}_\text{d}(0)$ exactly, since the UAV starts at rest ($\boldsymbol{h}(0)=\boldsymbol{0}$); the desired flow at $t=0$ is dominated by the descent feedforward $h_\text{rd}\boldsymbol{s}(0)$, so the transient is absorbed within the first second. (ii)~\emph{Small lateral errors}: with the funnel-prescribed rate in $\boldsymbol{h}_\text{d}$, the lateral error is the barrier-coordinate rate of \eqref{h_e identity: equation}, so the lateral ratios never exceed $3.1\%$ of their envelope. (iii)~\emph{Vertical positivity}: $h_{\text{e},z}(t)>0$ throughout, since the descent reference $h_{\text{d},z}=h_\text{rd}=-0.38$ is a constant negative value and $h_z$ approaches it from above; the persistent positive residual reflects steady-state disturbance absorption by the leakage-type adaptive gain (Remark~\ref{rem:leakage}) and settles at $7.0\%$ of the descent-axis envelope (peaking at $7.4\%$), well below the $1-\epsilon_S=0.95$ funnel-saturation threshold of Appendix~
+\ref{implementation appendix: section}, so the funnel-saturation guard stays dormant on this run.
 
 A target-\emph{yaw}-rate sweep isolates the inner yaw loop. Sweeping the platform yaw rate $\omega_{\text{t},z}\in\{0.3,\ldots,1.1\}~\text{rad/s}$ on the two rotating trajectories (Case~5 and an independent-yaw circular variant), from the centred IC$_1$ so the acquisition transient does not mask the yaw response, the direct rate law \eqref{yaw control law: equation} drives the terminal orientation error $|\alpha_\text{e}|$ to within $1^\circ$ on every run it lands, its feedforward of the measured image yaw rate cancelling the ramp lag, consistent with the asymptotic-convergence branch of Theorem~\ref{thm:yaw} ($\dot d_\alpha\to 0$ for a constant-rate platform). Its landing ceiling is $\omega_{\text{t},z}\approx 0.7$--$0.9~\text{rad/s}$ (trajectory-dependent); above it the marker leaves the FoV during the turn and the binding limit becomes the lateral chase of Theorem~\ref{thm:precision} rather than the yaw loop. The leakage-type ASMC yaw law of Remark~\ref{rem:yawceiling} instead keeps landing to $\omega_{\text{t},z}\approx 1.1~\text{rad/s}$ but with a rate-proportional steady alignment error growing roughly linearly from $\sim 9^\circ$ at $0.3~\text{rad/s}$ to $\sim 27^\circ$ at $1.1~\text{rad/s}$ --- the signature of the $e_{R,z}=\sin(\psi_\text{d}-\psi_\text{b})$ ceiling; $\alpha_\text{e}$ stays bounded throughout, as Theorem~\ref{thm:yaw} guarantees for either law. The rate law thus trades a lower spin-rate ceiling for near-exact heading alignment below it.
 
@@ -713,27 +713,27 @@ VISTA is compared against four representative landing controllers: \cite{lin2022
     & $\mathbf{11.62}$           & $\mathbf{0.008}$ & $0.200$
     & $\mathbf{11.06}$           & $\mathbf{0.040}$ & $0.201$
     & $\mathbf{11.42}$           & $\mathbf{0.025}$ & $0.200$
-    & $\mathbf{11.65}$           & $\mathbf{0.010}$ & $0.200$
+    & $\mathbf{11.67}$           & $\mathbf{0.010}$ & $0.200$
     & $\mathbf{11.29}$           & $\mathbf{0.011}$ & $0.201$ \\
-\cite{lin2022}
+PBVS--PPC \cite{lin2022}
     & $\phantom{0}6.86^\dagger$  & $2.455$ & $1.538$
     & $\phantom{0}4.82^\dagger$  & $1.785$ & $1.972$
     & $\phantom{0}8.90^\dagger$  & $1.483$ & $1.074$
     & $\phantom{0}3.74^\dagger$  & $3.084$ & $2.577$
     & $\phantom{0}5.27^\dagger$  & $2.585$ & $1.859$ \\
-\cite{zhang2026}
+PBVS--AEDO \cite{zhang2026}
     & $\phantom{0}7.79$          & $0.351$ & $0.208$
     & $\phantom{0}7.49$          & $0.320$ & $0.203$
     & $\phantom{0}7.67^\dagger$  & $0.498$ & $0.220$
     & $\phantom{0}6.77^\dagger$  & $0.680$ & $0.749$
     & $\phantom{0}7.41$          & $0.284$ & $0.205$ \\
-\cite{lin2023}
+IBVS--PPC \cite{lin2023}
     & $\phantom{0}4.79^\dagger$  & $2.191$ & $2.889$
     & $\phantom{0}8.00^\dagger$  & $1.405$ & $1.561$
     & $\phantom{0}2.33^\dagger$  & $2.104$ & $4.138$
     & $\phantom{0}0.86^\dagger$  & $2.544$ & $4.866$
     & $\phantom{0}8.72^\dagger$  & $1.771$ & $1.472$ \\
-\cite{cho2022}
+FF--IBVS \cite{cho2022}
     & $\phantom{0}5.42^\dagger$  & $2.818$ & $2.105$
     & $\phantom{0}6.20^\dagger$  & $1.960$ & $1.469$
     & $\phantom{0}5.36^\dagger$  & $2.874$ & $2.145$
@@ -936,7 +936,7 @@ The locked numerical values of all VISTA parameters are tabulated in Table~\ref{
 
 
 \section{Extended Single-Run and Multi-Initial-Condition Results} \label{extended results appendix: section}
-This appendix collects the multi-initial-condition results for Cases~1--4 of Section~\ref{experimentation: section}-\ref{multi init: subsec} (Fig.~\ref{fig:sup-multiinit}) and the internal closed-loop trajectories for the representative IC$_2$ Case~3 run (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}), referenced from Section~\ref{experimentation: section}.
+This appendix collects the multi-initial-condition results for Cases~1--4 of Section~\ref{experimentation: section}-\ref{multi init: subsec} (Fig.~\ref{fig:sup-multiinit}) and the internal closed-loop trajectories for the representative IC$_2$ Case~5 run (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}), referenced from Section~\ref{experimentation: section}.
 
 \begin{figure*}[!t]
 \centering
@@ -951,7 +951,7 @@ This appendix collects the multi-initial-condition results for Cases~1--4 of Sec
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
-    \caption{Optical-flow adaptive gains $\boldsymbol{\kappa}(t)$ and the yaw error/rate $(\alpha_\text{e},\omega_r)(t)$ for the representative IC$_2$ Case~3 run.}
+    \caption{Optical-flow adaptive gains $\boldsymbol{\kappa}(t)$ and the yaw error/rate $(\alpha_\text{e},\omega_r)(t)$ for the representative IC$_2$ Case~5 run; the yaw adaptive gain $\kappa_\alpha(t)$ is identically zero under the direct-rate yaw law \eqref{yaw control law: equation} used here (Remark~\ref{rem:yawceiling}'s leakage-type ASMC yaw law is the one that exercises $\kappa_\alpha$).}
     \label{adaptive gain: figure}
 \end{figure}
 
@@ -960,7 +960,7 @@ Fig.~\ref{adaptive gain: figure} shows the three optical-flow adaptive gains and
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_sliding.pdf}
-    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis for the representative IC$_2$ Case~3 run.}
+    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis for the representative IC$_2$ Case~5 run.}
     \label{fig:sup-sliding}
 \end{figure}
 
@@ -969,7 +969,7 @@ The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface b
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_thrust_accel.pdf}
-    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the deliverable-tilt-induced limit for the representative IC$_2$ Case~3 run.}
+    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the deliverable-tilt-induced limit for the representative IC$_2$ Case~5 run.}
     \label{fig:sup-thrust}
 \end{figure}
 
@@ -988,10 +988,10 @@ This appendix provides the full baseline gain comparison (Table~\ref{baseline ga
 \toprule
 \textbf{Controller} & \textbf{Paper-authoritative} & \textbf{Used here} & \textbf{Reason for deviation} \\
 \midrule
-\cite{lin2022} & $k_1{=}4.5$, $\rho_\infty{=}0.05$ uniform & $k_1{=}0.6$, $k_2{=}4.0$, $\rho_\infty^p{=}\rho_\infty^v{=}[0.30,0.30,0.15]$ & paper $\xi_v$ saturates the PPC barrier in 1--2 steps. $\rho_\infty^z$ widened to absorb the~\cite{lin2022} heave \\
-\cite{zhang2026} & $K_{c_1}(3){=}0.6$, $K_{c_2}(3){=}2.6$ & $K_{c_1}{=}\text{diag}(0.25,0.25,0.03)$, $K_{c_2}{=}\text{diag}(2,2,0.15)$, $K_{c_3}{=}\text{diag}(2.5,2.5,0.5)$ & paper vertical $\omega_n{\approx}1.6$~rad/s finishes descent before horizontal loop converges \\
-\cite{lin2023} & control law per~\cite{lin2023}, \S III (per-axis $K_t,K_v$ + funnel $\rho$) & $k_1{=}[0.4,0.4,0.4]$, $k_2{=}4.0$, $\rho_{t,\infty}{=}[0.1,0.1,0.03]$, $l_t{=}[0.05,0.05,0.1]$ & best-effort within-framework tuning; no disturbance-rejection integrator $\Rightarrow$ steady lateral offset (structural) \\
-\cite{cho2022} & $\lambda_{xy}{=}2.0$, $\lambda_z{=}5.0$ (Table~2) & $\lambda_{xy}{=}{-}0.8$, $\lambda_z{=}0$, $k_\sigma{=}0.02$, $v_\text{sat}^z{=}0.7$ & paper too aggressive for moving targets. Sign-flip resolves the downward-camera convention \\
+PBVS--PPC \cite{lin2022} & $k_1{=}4.5$, $\rho_\infty{=}0.05$ uniform & $k_1{=}0.6$, $k_2{=}4.0$, $\rho_\infty^p{=}\rho_\infty^v{=}[0.30,0.30,0.15]$ & paper $\xi_v$ saturates the PPC barrier in 1--2 steps. $\rho_\infty^z$ widened to absorb the~\cite{lin2022} heave \\
+PBVS--AEDO \cite{zhang2026} & $K_{c_1}(3){=}0.6$, $K_{c_2}(3){=}2.6$ & $K_{c_1}{=}\text{diag}(0.25,0.25,0.03)$, $K_{c_2}{=}\text{diag}(2,2,0.15)$, $K_{c_3}{=}\text{diag}(2.5,2.5,0.5)$ & paper vertical $\omega_n{\approx}1.6$~rad/s finishes descent before horizontal loop converges \\
+IBVS--PPC \cite{lin2023} & control law per~\cite{lin2023}, \S III (per-axis $K_t,K_v$ + funnel $\rho$) & $k_1{=}[0.4,0.4,0.4]$, $k_2{=}4.0$, $\rho_{t,\infty}{=}[0.1,0.1,0.03]$, $l_t{=}[0.05,0.05,0.1]$ & best-effort within-framework tuning; no disturbance-rejection integrator $\Rightarrow$ steady lateral offset (structural) \\
+FF--IBVS \cite{cho2022} & $\lambda_{xy}{=}2.0$, $\lambda_z{=}5.0$ (Table~2) & $\lambda_{xy}{=}{-}0.8$, $\lambda_z{=}0$, $k_\sigma{=}0.02$, $v_\text{sat}^z{=}0.7$ & paper too aggressive for moving targets. Sign-flip resolves the downward-camera convention \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -1019,10 +1019,10 @@ The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\bold
 \toprule
 \textbf{Baseline} & \textbf{Structural failure mode} & \textbf{VISTA mechanism that prevents it} & \textbf{Reference} \\
 \midrule
-\cite{lin2022} & PPC barrier saturates under wind plus mean target motion, forcing image features outside the camera FoV before touchdown & Visibility CBF conditions the commanded body tilt to keep every feature point in view, independently of the funnel transients & Property~\ref{prop:deliverable} + Theorem~\ref{thm:visibility} \\
-\cite{zhang2026} & Fixed closed-loop bandwidth produces terminal lateral error proportional to target velocity; cannot couple descent rate to image-plane error closure & Depth-aware $\beta$ accelerates convergence as $z\to h_\text{lg}$, shrinking the terminal error within the precise bound & Theorem~\ref{thm:precision} ($\beta$-adaptive ASMC) + Remark~\ref{rem:leakage} \\
-\cite{lin2023} & Prescribed-performance funnel on image features carries no disturbance-rejection integrator; constant wind produces a steady lateral offset that grows unchecked on a moving platform, and the closed loop never reaches the target surface & Leakage-type adaptive sliding-mode law identifies and rejects the disturbance online with no steady offset, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
-\cite{cho2022} & Pseudo-inverse lateral velocity law carries no disturbance-rejection integrator and no visibility mechanism; wind and target motion drive the features out of the FoV during descent & Leakage-type adaptive law rejects the wind with no steady offset through independent lateral and descent feedback paths, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
+PBVS--PPC \cite{lin2022} & PPC barrier saturates under wind plus mean target motion, forcing image features outside the camera FoV before touchdown & Visibility CBF conditions the commanded body tilt to keep every feature point in view, independently of the funnel transients & Property~\ref{prop:deliverable} + Theorem~\ref{thm:visibility} \\
+PBVS--AEDO \cite{zhang2026} & Fixed closed-loop bandwidth produces terminal lateral error proportional to target velocity; cannot couple descent rate to image-plane error closure & Depth-aware $\beta$ accelerates convergence as $z\to h_\text{lg}$, shrinking the terminal error within the precise bound & Theorem~\ref{thm:precision} ($\beta$-adaptive ASMC) + Remark~\ref{rem:leakage} \\
+IBVS--PPC \cite{lin2023} & Prescribed-performance funnel on image features carries no disturbance-rejection integrator; constant wind produces a steady lateral offset that grows unchecked on a moving platform, and the closed loop never reaches the target surface & Leakage-type adaptive sliding-mode law identifies and rejects the disturbance online with no steady offset, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
+FF--IBVS \cite{cho2022} & Pseudo-inverse lateral velocity law carries no disturbance-rejection integrator and no visibility mechanism; wind and target motion drive the features out of the FoV during descent & Leakage-type adaptive law rejects the wind with no steady offset through independent lateral and descent feedback paths, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
 \bottomrule
 \end{tabular}
 \end{table*}

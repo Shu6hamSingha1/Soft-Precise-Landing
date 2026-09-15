@@ -8,14 +8,32 @@ kappa). Now driven by the internals logs added to run_simulation.m:
   kappa_log, kappa_a_log, theta_cone_log, s_e_log, p_r_log, p_h_log, dist_log.
 
 Outputs PDFs into Figures/generated/:
-  plasmc_funnel_combined.pdf — image-feature funnel (r_bar_e vs +/-p_r) + optic-flow
-                               funnel (h_e vs +/-p_h) per axis (1x4).
+  plasmc_funnel_combined.pdf — normalized image-position error eta_p,k + normalized
+                               image-velocity error eta_nu,k, each in [-1,1] (1x2).
+                               Panel (c) (funnel-compatibility ratio C_k(t)) DROPPED
+                               2026-09-12 per user call: an internal proof diagnostic,
+                               not the figure's main contribution -- the schedule-only
+                               C_k>1 bound is conservative (violated most of the flight)
+                               and only the tighter, solution-dependent R_k(t)=C_k/|eta_
+                               nu,z| > 1 actually holds; not worth relitigating in a
+                               3rd panel here. If revived, recompute per that R_k
+                               definition, not the plain C_k one removed below.
   plasmc_sliding.pdf         — sliding surface sigma vs boundary layer +/-E.
   plasmc_adaptive_gain.pdf   — kappa(t) overlaid with the injected disturbance it adapts
                                against (twin axis) + yaw gain kappa_a(t).
   plasmc_thrust_accel.pdf    — total thrust + lateral acceleration vs CBF tilt-cone bound.
 
-Representative case: IC2 = [2,2,-5] on Sinusoidal (Case 3) trajectory (index 1, 0-based).
+Representative case: IC2 = [2,2,-5] on Circular (Case 5) trajectory (index 1, 0-based).
+Switched from Sinusoidal (Case 3) 2026-09-11 so IC2-Case5 is the one representative
+case that recurs across every figure family (multi-init, comparison study, and here) --
+previously this was the only one on Case 3.
+NOTE on the yaw panel: kappa_a_log is a flat ZERO line in every existing dataset
+(Sinusoidal_multi_init.mat included, not just this Circular switch) -- vdf_params.m
+defaults P.yaw_rate_law=1 (the current primary yaw law, direct-w_z), under which
+yaw_asmc.m hardcodes `cs.kappa_a = 0` unconditionally (kappa_a ASMC is now the
+P.yaw_rate_law=0 fallback only). The yaw panel's "no target yaw on Case 3" framing
+was ALREADY stale before this switch; it needs a real fix (plot something meaningful
+under the primary law, e.g. the commanded w_z or e_a) independent of which Case is used.
 NOTE for the manuscript: the funnel figure now shows the centroid error r_bar_e in the
 p_r funnel (current theory, manuscript eq. position barrier), NOT the 4 feature points in
 an rho_fov box (old Approach 2). The caption (which still says "four feature points / p_1")
@@ -40,7 +58,7 @@ plt.rcParams.update({
 
 from pathlib import Path
 ROOT = str(Path(__file__).resolve().parent.parent)
-DATA = f"{ROOT}/MATLAB/Datasets/MultiInit/Sinusoidal_multi_init.mat"
+DATA = f"{ROOT}/MATLAB/Datasets/MultiInit/Circular_multi_init.mat"
 OUT  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT, exist_ok=True)
 
@@ -108,19 +126,11 @@ axis_lbl = [r"$x$", r"$y$", r"$z$"]
 pos_ratio = r_bar_e / p_r     # 2 x N, in [-1, 1]: image-position error / its envelope
 vel_ratio = h_e / p_h         # 3 x N, in [-1, 1]: optic-flow error / its envelope
 
-# Panel (c): funnel-compatibility ratio C_k = rho_nu,k / (rho_nu,z * |s_k|), k in {x,y}.
-# s_k is the RAW (not error) normalized lateral image position -- V_X_DS rows 1:2 are
-# cs.V_s_i(1:2), the controller-recovered s_x, s_y (matches s_e_log's source, so it's
-# the same internal signal the rest of this figure already uses).
-s_xy   = d.V_X_DS[0:2, :N]                    # 2 x N
-compat = p_h[0:2] / (p_h[2:3] * (np.abs(s_xy) + 1e-9)) # 2 x N: C_x, C_y (eps guards s_k==0)
-
 print("Panel 1 (position) peak |ratio| per axis:", np.max(np.abs(pos_ratio), axis=1))
 print("Panel 2 (velocity) peak |ratio| per axis:", np.max(np.abs(vel_ratio), axis=1))
 print("Panel 2 (velocity) terminal ratio per axis:", vel_ratio[:, -1])
-print("Panel 3 (compatibility) min ratio per axis:", np.nanmin(compat, axis=1))
 
-fig, axes = plt.subplots(1, 3, figsize=(15.5, 3.68))
+fig, axes = plt.subplots(1, 2, figsize=(11.0, 3.68))
 
 ax = axes[0]
 for k, c in zip(range(2), ["C0", "C2"]):
@@ -155,26 +165,7 @@ ax.tick_params(labelsize=16)
 ax.locator_params(axis="x", nbins=4)
 ax.legend(loc="lower right", fontsize=13)
 
-# --- Panel (c): funnel-compatibility ratio C_k(t), sufficient condition C_k > 1 ---
-# Log y-axis: C_k = rho_nu,k/(rho_nu,z*|s_k|) is singular whenever the raw lateral
-# position s_k crosses zero (happens naturally on an oscillatory target -- s_k is a
-# signed position, not an error, so it passes through 0 every half-cycle). Those
-# crossings are not a real margin signal, just 1/|s_k| blowing up; log-scale
-# compresses them to readable peaks while keeping the dimensionless ratio and the
-# C_k>1 threshold (now log C_k>0) intact.
-ax = axes[2]
-for k, c in zip(range(2), ["C0", "C2"]):
-    ax.plot(t, compat[k], color=c, lw=1.4,
-            label=fr"$C_{axis_lbl[k][1]}(t)$")
-ax.set_yscale("log")
-ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-ax.set_ylabel(r"$C_k(t)$", fontsize=20, labelpad=4)
-ax.set_title("(c) Funnel Compatibility", fontsize=20)
-ax.tick_params(labelsize=16)
-ax.locator_params(axis="x", nbins=4)
-ax.legend(loc="upper left", fontsize=13)
-
-fig.suptitle("Prescribed-Performance Preservation and Funnel Compatibility", fontsize=20, y=1.0)
+fig.suptitle("Prescribed-Performance Error Evolution", fontsize=20, y=1.0)
 fig.tight_layout(pad=0.5)
 safe_savefig(fig, f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
@@ -204,8 +195,12 @@ plt.close(fig)
 #   kappa is a 3-vector (per-axis regressor norm); each kappa_k bounds its OWN
 #   (Y d_bar)_k = (v_k(beta-1)+d_h,k)/beta_min, not a shared scalar. The
 #   disturbance grows ~1/z near the deck; the funnel/barrier absorbs that growth
-#   so kappa stays bounded. kappa_alpha (yaw): Case 3 (Sinusoidal) has no target
-#   yaw, so kappa_alpha decays under leakage -- no spurious adaptation.
+#   so kappa stays bounded. kappa_alpha (yaw) is flat ZERO here regardless of
+#   target yaw motion -- P.yaw_rate_law=1 (vdf_params.m default, the current
+#   primary yaw law) hardcodes cs.kappa_a=0 in yaw_asmc.m; the kappa_a ASMC
+#   this panel was designed around is now only exercised under the
+#   P.yaw_rate_law=0 fallback. Panel kept for now; needs a real fix (plot
+#   something meaningful under the primary law) independent of Case choice.
 # ======================================================================
 fig, axes = plt.subplots(2, 2, figsize=(11.5, 7.6))
 panels = [(axes[0, 0], 0, "x", "C0"),
@@ -229,7 +224,7 @@ for ax, k, lab, col in panels:
 axes[1, 1].plot(t, kappa_a, color="C4", lw=1.7, label=r"$\kappa_\alpha$")
 axes[1, 1].set_xlabel(r"$t$ [s]", fontsize=17, labelpad=3)
 axes[1, 1].set_ylabel(r"$\kappa_\alpha(t)$", fontsize=17, labelpad=3)
-axes[1, 1].set_title(r"yaw (no target yaw on Case 3)", fontsize=18)
+axes[1, 1].set_title(r"yaw ($\kappa_\alpha=0$ under primary yaw law)", fontsize=18)
 axes[1, 1].tick_params(labelsize=13)
 axes[1, 1].locator_params(axis="x", nbins=4)
 axes[1, 1].legend(loc="upper right", fontsize=11)

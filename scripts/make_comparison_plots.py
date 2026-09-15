@@ -56,12 +56,14 @@ CTRL_COLORS = {
 # only the rendered labels change. MAIN/SUPP are now identical (the
 # distinction existed only for citation numbers, which are gone) but both
 # names are kept so call sites elsewhere don't need to change.
+# 2026-09-15: Baseline A-D swapped for method-acronym tags per explicit user
+# instruction (supersedes the 2026-09-11 "Baseline A-D only" convention).
 CTRL_DISPLAY_MAIN = {
     "PLASMC (Proposed)": "Proposed",
-    "Lin 2022":          "Baseline A",
-    "Zhang 2026":        "Baseline B",
-    "Lin 2023":          "Baseline C",
-    "Cho 2022":          "Baseline D",
+    "Lin 2022":          "PBVS--PPC",
+    "Zhang 2026":        "PBVS--AEDO",
+    "Lin 2023":          "IBVS--PPC",
+    "Cho 2022":          "FF--IBVS",
 }
 CTRL_DISPLAY_SUPP = dict(CTRL_DISPLAY_MAIN)
 # Default (for any code path that doesn't specify): main-paper variant.

@@ -67,14 +67,16 @@ CTRL_ORDER  = [2, 3, 4, 5]
 # existed only for citation numbers, which are gone) but both names are
 # kept so call sites elsewhere don't need to change.
 # ctrl_id maps to baseline letter:
-#   2 -> Baseline A (was Lin 2022)
-#   3 -> Baseline B (was Zhang 2026)
-#   4 -> Baseline C (was Lin 2023)
-#   5 -> Baseline D (was Cho 2022)
-CTRL_TITLE_MAIN = {2: "Baseline A",
-                   3: "Baseline B",
-                   4: "Baseline C",
-                   5: "Baseline D"}
+#   2 -> PBVS--PPC (was Lin 2022 / Baseline A)
+#   3 -> PBVS--AEDO (was Zhang 2026 / Baseline B)
+#   4 -> IBVS--PPC (was Lin 2023 / Baseline C)
+#   5 -> FF--IBVS (was Cho 2022 / Baseline D)
+# 2026-09-15: swapped from "Baseline A-D" to method-acronym tags per explicit
+# user instruction.
+CTRL_TITLE_MAIN = {2: "PBVS--PPC",
+                   3: "PBVS--AEDO",
+                   4: "IBVS--PPC",
+                   5: "FF--IBVS"}
 CTRL_TITLE_SUPP = dict(CTRL_TITLE_MAIN)
 # Circular trajectory PDF goes to main paper; the other three go to supplement.
 TRAJ_IS_MAIN = {"Circular": True, "Linear": False,

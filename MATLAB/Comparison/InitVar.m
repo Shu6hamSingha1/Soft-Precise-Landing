@@ -39,13 +39,19 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % *************************************************************************
 % Defining Desired Feature Points wrt to Target Origin in Target Reference Frame
 % 5-point CROSS marker (matches Multi_init_cond/InitVar.m and the PX4 SITL cross):
-% cols 1-4 = symmetric plus-arm tips, col 5 = STUB extending the +x arm (the sole
-% asymmetry -> full 2pi image orientation). Column order (stub LAST) is a contract
-% with image_feature.m's N==5 branch; do not permute.
+% cols 1-4 = symmetric X-arm tips (arm-LINES are the diagonals, col1/col2 and
+% col3/col4 opposite pairs, 90deg apart), col 5 = STUB extending horizontally
+% (+x), at 45deg RELATIVE to the nearest arm -- the sole asymmetry -> full 2pi
+% image orientation. Column order (stub LAST) is a contract with
+% image_feature.m's N==5 branch; do not permute.
+% CORRECTED 2026-09-15 (matches Multi_init_cond/InitVar.m's same-date fix): was
+% previously an axis-aligned + with the stub collinear (0deg relative) with the
+% +x arm -- wrong on both counts vs the real PX4 marker (src/cross_marker_detector.py:
+% "two arms meet near 90deg" + STUB_REL_ANGLE_DEG=45, PX4_Gazebo/Images/cross_marker.png).
 % Legacy 4-point trapezoid (pre-2026-09-10): [-20 15 15 -15; 20 15 -15 -15; 0 0 0 0]/250
-T_nP3 = [ 15, -15,   0,   0,  22 ;
-           0,   0,  15, -15,   0 ;
-           0,   0,   0,   0,   0 ] / 250;
+T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
+          15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
+                   0,           0,           0,           0,   0 ] / 250;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);
