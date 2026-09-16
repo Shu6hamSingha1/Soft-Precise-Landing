@@ -99,10 +99,13 @@ TRAJ_TITLE = {"Static": "Static Target", "Linear": "Linear Target Trajectory",
 # perceptual contrast and colorblind accessibility than the default
 # matplotlib tab10 C0-C4 cycle, same blue/orange/green/red/purple
 # intuition so it does not break continuity with earlier figures.
-RUN_COLORS = ["#0072B2",   # IC1 blue
+RUN_COLORS = ["#009E73",   # IC1 bluish green (was blue #0072B2 -- duplicated the
+                           # sky blue below once IC3 was swapped; changed 2026-09-16)
               "#E69F00",   # IC2 orange
-              "#009E73",   # IC3 bluish green
-              "#D55E00",   # IC4 vermillion
+              "#56B4E9",   # IC3 sky blue (was bluish green #009E73 -- too close to
+                           # IC1 blue at print size; swapped 2026-09-16)
+              "#000000",   # IC4 black (was vermillion #D55E00 -- too close to
+                           # IC2 orange at print size; swapped 2026-09-16)
               "#CC79A7"]   # IC5 reddish purple
 
 PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
@@ -525,7 +528,7 @@ def plot_combined(traj):
         n = _land_idx(d) or _idx_of(d)
         X = d.X_DS[:, :n]
         ic = X[:3, 0]
-        ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=2.2,
+        ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=3,
                  label=rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$")
         ax3.scatter(X[0, 0], X[1, 0], -X[2, 0],
                     color=RUN_COLORS[k], marker="o", s=35)

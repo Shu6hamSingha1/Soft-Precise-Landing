@@ -67,6 +67,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.patches as mpatches
 from mpl_toolkits.mplot3d import Axes3D  # noqa
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
@@ -123,9 +124,15 @@ CASE_NUMS = [str(i + 1) for i in range(len(TRAJS))]  # bare "1".."5" for (a)/(b)
 CTRLS  = ["PLASMC (Proposed)", "Lin 2022", "Zhang 2026", "Lin 2023", "Cho 2022"]
 
 CTRL_COLORS = {
-    "PLASMC (Proposed)": "#D55E00",
-    "Lin 2022":          "#0072B2",
-    "Zhang 2026":        "#009E73",
+    # 2026-09-16: vermillion/bluish-green swapped for black/sky-blue -- at Fig. 3/4's
+    # printed size (~3.5in wide) vermillion was too close to orange, and bluish-green
+    # too close to blue. Then blue itself swapped for bluish-green (2026-09-16, later
+    # same day) since sky-blue made it redundant -- sky-blue's much lighter/less
+    # saturated than blue was, so it stays distinguishable from bluish-green here.
+    # Still a subset of the 8-color Okabe-Ito colorblind-safe palette.
+    "PLASMC (Proposed)": "#000000",
+    "Lin 2022":          "#009E73",
+    "Zhang 2026":        "#56B4E9",
     "Lin 2023":          "#CC79A7",
     "Cho 2022":          "#E69F00",
 }
@@ -342,7 +349,7 @@ def _draw_3d(ax3d, fontsize=18, ticksize=13):
         N = met["N"]
         X = d.X_DS[:, :N]
         color = CTRL_COLORS[name]
-        ax3d.plot(X[0], X[1], -X[2], color=color, lw=2.2, label=CTRL_DISPLAY[name])
+        ax3d.plot(X[0], X[1], -X[2], color=color, lw=3, label=CTRL_DISPLAY[name])
         ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=116)
         marker = {"soft-precise": "^", "hard-imprecise": "o", "aborted": "x"}[met["cat"]]
         if met["cat"] == "hard-imprecise":
@@ -354,17 +361,17 @@ def _draw_3d(ax3d, fontsize=18, ticksize=13):
             xt = d.x_t[:3, :N]
             draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])
             target_drawn = True
-    ax3d.set_xlabel(r"$\,^\mathcal{I}x_\mathrm{b}$ [m]", labelpad=30, fontsize=fontsize)
-    ax3d.set_ylabel(r"$\,^\mathcal{I}y_\mathrm{b}$ [m]", labelpad=30, fontsize=fontsize)
-    # z labelpad bumped 10 -> 24 (explicit user request) -- at the bumped label fontsize, "I_z_b
+    ax3d.set_xlabel(r"$\,^\mathcal{I}x_\mathrm{b}$ [m]", labelpad=35, fontsize=fontsize)
+    ax3d.set_ylabel(r"$\,^\mathcal{I}y_\mathrm{b}$ [m]", labelpad=35, fontsize=fontsize)
+    # z labelpad bumped 10 -> 24 -> 30 (explicit user request) -- at the bumped label fontsize, "I_z_b
     # [m]" was sitting right on top of the topmost z tick number.
-    ax3d.set_zlabel(r"$\,^\mathcal{I}z_\mathrm{b}$ [m]", labelpad=24, fontsize=fontsize)
+    ax3d.set_zlabel(r"$\,^\mathcal{I}z_\mathrm{b}$ [m]", labelpad=30, fontsize=fontsize)
     ax3d.locator_params(axis="x", nbins=4)
     ax3d.locator_params(axis="y", nbins=4)
     ax3d.locator_params(axis="z", nbins=4)
     # tick pad bumped 2 -> 12 (explicit user request) -- same reason, the tick numbers
     # themselves were sitting flush against the axis spine at the bumped tick fontsize.
-    ax3d.tick_params(pad=12, labelsize=ticksize)
+    ax3d.tick_params(pad=10, labelsize=ticksize)
     ax3d.view_init(elev=22, azim=-58)
     # No box_aspect/zoom override -- comparison_combined_circular.pdf's 3-D
     # panel (make_comparison_plots.py) doesn't use one either; it relies
@@ -401,10 +408,15 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
                         if METRICS[(tr, name)]["reached"] else np.nan for tr in TRAJS])
         xj = xb + xj_off[j]
         for xk in xj[np.isnan(eta)]:
-            ax.text(xk, 0.0, "N/A", rotation=90, ha="center", va="center",
-                    fontsize=16, color=CTRL_COLORS[name], clip_on=False,
-                    bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
-                              edgecolor=CTRL_COLORS[name], linewidth=0.6))
+            # Empty box (no "N/A" text) matching the legend's N/A swatch exactly --
+            # white fill, black edge, same style/width as that patch -- the legend
+            # explains what it means, so the in-plot marker doesn't need its own label
+            # (explicit user request; previously an "N/A"-labelled, per-controller-colored
+            # box, which duplicated the legend and used a stale unscaled fontsize).
+            ax.add_patch(mpatches.Rectangle(
+                (xk - width_b / 2, -0.05), width_b, 0.10,
+                facecolor="white", edgecolor="black", linewidth=0.6,
+                transform=ax.transData, clip_on=False, zorder=5))
     # Bare case numbers instead of "Case 1".."Case 5" (explicit user request) -- short enough
     # at tick_fontsize to no longer need the rotation/shrinking the old "Case N" text required.
     ax.set_xticks(xb); ax.set_xticklabels(CASE_NUMS, rotation=0, fontsize=tick_fontsize)
@@ -417,7 +429,7 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
     # at a size well below the other panels' axis-label size for the same reason -- this is a
     # full sentence, not a short label, and at anything much above 32 its centered width
     # (measured via page.search_for on the rendered PDF) exceeds the gap back to (a)'s legend.
-    ax.text(0.5, -0.34, "Only landed runs shown (full outcomes in (a))",
+    ax.text(0.5, -0.36, "Only landed runs shown (full outcomes in (a))",
             transform=ax.transAxes, ha="center", va="top", fontsize=32, color="red")
 
 
@@ -454,7 +466,7 @@ def _draw_fov_3d(ax, fontsize=16, tick_fontsize=14, zoom=1.18, elong=1.8):
         # segment (verified continuous -- no NaNs, uniform 0.01s dt) can visually alias
         # into a dotted/beaded look at the thinner effective stroke width; 3.2 keeps it
         # solid without visibly thickening the shallower parts of the curve.
-        ax.plot(t, ny, nx, color=CTRL_COLORS[name], lw=5.0, label=CTRL_DISPLAY[name], zorder=3)
+        ax.plot(t, ny, nx, color=CTRL_COLORS[name], lw=3, label=CTRL_DISPLAY[name], zorder=3)
 
     # Pin all three axes to exactly the safe box's own extent -- [0, t_max] in time,
     # [-1, 1] in y/z -- matplotlib's default 5% autoscale margin otherwise extends
@@ -483,24 +495,24 @@ def _draw_fov_3d(ax, fontsize=16, tick_fontsize=14, zoom=1.18, elong=1.8):
 
     # x labelpad bumped 38 -> 65 (explicit user request) -- same tick-vs-label crowding as
     # y/z below, now that the x tick pad also grew to 22.
-    ax.set_xlabel(r"$t$ [s]", fontsize=fontsize, labelpad=65)
+    ax.set_xlabel(r"$t$ [s]", fontsize=fontsize, labelpad=40)
     # y/z labelpad and tick pads bumped hard (explicit user request) -- at this fontsize AND
     # this viewing angle (elev=22, azim=-58), the y/z tick numbers and axis labels crowd into
     # each other and into the shared box corner much more aggressively than a linear
     # pad-vs-fontsize scaling would suggest; two earlier, smaller bumps (14->28 label / 1->10
     # tick / 16->30 z-tick) were each insufficient and had to be redone larger.
-    ax.set_ylabel(r"$\,^\mathcal{C}\tilde{r}_y$", fontsize=fontsize, labelpad=48)
-    ax.set_zlabel(r"$\,^\mathcal{C}\tilde{r}_x$", fontsize=fontsize, labelpad=72)
+    ax.set_ylabel(r"$\,^\mathcal{C}\tilde{r}_y$", fontsize=fontsize, labelpad=40)
+    ax.set_zlabel(r"$\,^\mathcal{C}\tilde{r}_x$", fontsize=fontsize, labelpad=50)
     # z labelpad must clear the z TICK pad (50, below) by a wide margin -- label/tick pads
     # both offset from the same axis spine independently, so a label pad merely close to (or
     # smaller than) the tick pad puts the label BETWEEN the spine and the pushed-out ticks.
-    ax.tick_params(pad=22, labelsize=tick_fontsize)
+    ax.tick_params(pad=12, labelsize=tick_fontsize)
     # z-axis ticks need MORE pad than x/y: at this viewing angle the z=1 tick label
     # sits right at the shared box corner with the y=1 tick label, and the two
     # overlap into unreadable garbled text there -- push z's labels further out.
-    ax.tick_params(axis="z", pad=50)
+    ax.tick_params(axis="z", pad=25)
     ax.locator_params(axis="x", nbins=4)
-    ax.locator_params(axis="y", nbins=4)
+    ax.locator_params(axis="y", nbins=3)
     ax.locator_params(axis="z", nbins=4)
     ax.view_init(elev=22, azim=-58)
     # Elongate the time axis explicitly -- matplotlib doesn't stretch a 3-D
@@ -656,7 +668,7 @@ def _inset_title(ax, text, x_ref_center, extra_shift=0.0):
     aligned with (a)/(b) above them, even though the box pairs have
     different widths/positions)."""
     p = ax.get_position(original=True)
-    ax.figure.text(x_ref_center - (TITLE_X_SHIFT + extra_shift) / FIG_W, p.y1 - 0.05 * (p.y1 - p.y0), text,
+    ax.figure.text(x_ref_center - (TITLE_X_SHIFT + extra_shift) / FIG_W, p.y1 - 0.035 * (p.y1 - p.y0), text,
                     fontsize=PANEL_TITLE_FS, ha="center", va="top")
 
 
@@ -733,6 +745,20 @@ _draw_heatmap(ax_hm, cell_fontsize=43, tick_fontsize=_TICK_FS,
               # roughly halving the widest row's horizontal footprint.
               show_title=False)
 _draw_energy(ax3d, fontsize=_LBL_FS, tick_fontsize=_TICK_FS)      # (b): Relative Touchdown Energy
+# (b)'s own legend, separate from (c)'s shared bottom controller-color legend below --
+# (b) only ever plots REACHED_CTRLS (2 of 5; controllers that never land get no bar), so
+# reusing the full 5-controller legend would mislabel it. The "N/A" swatch (a white patch
+# with the same black-edge/pad styling as the in-axes N/A markers drawn by _draw_energy)
+# was previously undocumented anywhere in this panel -- explicit user request to add it here.
+_b_handles, _b_labels = ax3d.get_legend_handles_labels()
+_b_handles = _b_handles + [mpatches.Patch(facecolor="white", edgecolor="black",
+                                           linewidth=0.6, label="N/A")]
+_b_labels = _b_labels + ["N/A"]
+# Single row (ncol=3, one per entry), anchored below the "Only landed runs shown" footnote
+# (footnote itself sits at y=-0.36 in axes fraction -- legend placed further down still).
+ax3d.legend(_b_handles, _b_labels, loc="upper center", bbox_to_anchor=(0.5, -0.45),
+            ncol=3, frameon=False, fontsize=36,
+            handlelength=1.4, handletextpad=0.5, columnspacing=1.2)
 _draw_3d(ax_m, fontsize=_LBL_FS, ticksize=_TICK_FS)               # (c): Landing Trajectories
 # _D_ELONG (box_aspect's time-axis:y:z ratio) and _D_ZOOM were both tuned by
 # rendering and comparing (d)'s rendered height against (c)'s: (i) matplotlib's
