@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 878fdadb-dd99-4085-bcf2-e19879f48082
-  modified: 2026-09-16T13:44:45.889Z
+  modified: 2026-09-16T14:35:05.868Z
 ---
 
 **B4 (turning-target lateral limit cycle) — the mandatory stationary IC gate for
@@ -137,21 +137,28 @@ signature does NOT match the AU_LEAD noise-amplification pattern (no terminal ov
 gate barely engaged); looks like an unrelated SITL flake (n=5 is small — retest before
 concluding IC4 regressed).
 
-**⚠ OPEN RISK, not yet checked: the curved-target use case this lead was BUILT for**
-([[project_rover_turning_open]] "BEST CURVED CONFIG") **runs on a SUSTAINED
-`|I_a_raw|`~1.0-1.5 m/s² (the standing centripetal demand) — the SAME range the new
-magnitude gate suppresses.** The magnitude gate cannot distinguish IC5's TRANSIENT early
-spike (decays by frac~0.3-0.4) from the curve's SUSTAINED elevated demand using
-instantaneous magnitude alone. **Must re-validate the curved-target benefit WITH both
-gate terms on before any bake** — if the magnitude gate neuters the lead on the curve,
-it needs to key off persistence/duration (e.g. a short-horizon rolling mean or a
-one-way "still transient" latch) rather than instantaneous `|I_a_raw|`.
+**✅ CURVE RISK RESOLVED 2026-09-16 — it did NOT materialise**
+([[project_20260916_curve_qgate_revalidation]], n=4/arm, campaign recipe verbatim).
+Gated vs ungated lead on the Circular curve is **indistinguishable**: e_mean 0.253 vs
+0.250 (p=0.72), touchdown lat p=0.16, osc_std p=0.49, **both 4/4 ON-PLATFORM**; the gate
+transmits ~33 % through the 0.8-3.5 m tracking window, which is enough. The premise of the
+worry was simply wrong: measured tracking-window `|I_a_raw|` median is **0.44-0.49**, not
+the 1.0-1.5 m/s² this file previously asserted, so the magnitude term sits mostly OPEN
+(0.73) on the curve. No persistence/latch redesign is needed.
 
-**Verdict: stationary gate is now net-positive with BOTH gate terms on (18/25 ≥ 17/25
-baseline, all 5 ICs at or above baseline levels except IC4's unconfirmed single-rep
-flake). Still needs, before any bake:** (1) IC4 retest at higher n to rule out a real
-regression; (2) the curved-target re-validation above — the load-bearing open question;
-(3) a real-rover pass.
+**⚠ But the PREMISE of AU_LEAD itself changed:** the no-lead baseline now *lands* the
+curve (3/4 ON-PLATFORM, lat 0.130 m, **e_rot +0.05 vs July's +1.11**) — the self-sustained
+rotating limit cycle the lead was built to damp is essentially GONE from the current
+stack. AU_LEAD is now a modest refinement (e_mean 0.345→0.250, −27 %, p=0.0001), not a
+rescue. What killed the cycle is unidentified; prime suspect `CBF_DRIFT_TAU=0.15` (itself
+a τ·d moving-target lead in the visibility QP) — if so, AU_LEAD may be redundant.
+
+**Verdict: stationary parity restored with BOTH gate terms on (18/25, p=0.797 vs pooled
+baseline — parity, not an improvement), and the curve benefit survives the gate.
+Remaining before any bake:** (1) IC4 retest at higher n; (2) a real-rover-perception pass
+(all curve validation to date is GT-FB; rover perception itself is still broken);
+(3) decide whether AU_LEAD is worth its complexity now that the baseline lands the curve —
+and first isolate what actually fixed it.
 
 ## Prior "how to apply" (superseded in part by the gate above; kept for the AU_LEAD
 ## mechanics/history it still documents)
