@@ -582,8 +582,9 @@ COL1_X0, COL1_W = 12.164055, 8.905945
 # left (a 2-D bar-chart panel doesn't need column 1's full width) while
 # holding its right edge fixed; capped short of aligning box edges because
 # (a)'s S/H/A legend (legend_ncol=3) extends past ax_hm's own right edge.
-AX3D_X0, AX3D_W = 12.934055, 6.540945  # X0 bumped +1.0in (explicit user request, 2026-09-16),
-                                        # then nudged -0.15in left (explicit user request, 2026-09-17)
+AX3D_X0, AX3D_W = 13.584055, 6.540945  # X0 bumped +1.0in (explicit user request, 2026-09-16);
+                                        # a -0.15in nudge tried 2026-09-17 was reverted, then
+                                        # +0.5in applied instead (explicit user request, 2026-09-17)
                                         # to move (b) right; FIG_W=21.0 leaves ample margin
                                         # (right edge lands at 19.625in of 21.0)
 
@@ -708,8 +709,7 @@ ax_m  = fig.add_axes([AX_M_X0 / FIG_W, _y0_frac(row2_top, ROW2_C_H), AX_M_W / FI
 # back as clearance from (c) once widened; _D_ELONG/_D_ZOOM below are tuned
 # to fill the resulting wider box while keeping the same rendered HEIGHT as
 # (c).
-AX_KE_EXTRA_RIGHT = 1.85  # inches -- additional (d)-only rightward push (explicit user request,
-                          # trimmed 2.0 -> 1.85 for a small leftward nudge, 2026-09-17)
+AX_KE_EXTRA_RIGHT = 2.5   # inches -- additional (d)-only rightward push (explicit user request,
                           # bumped 0.5 -> 0.8 -> 2.0 on 2026-09-16: the box's own content
                           # (curves/z-label, measured below its title row) had ~1.67in of
                           # margin to FIG_W's edge, plenty of room for this). Was dropped to
