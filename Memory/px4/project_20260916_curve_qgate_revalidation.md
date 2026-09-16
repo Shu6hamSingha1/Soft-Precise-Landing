@@ -171,3 +171,45 @@ independent and ARE safe to compare across that boundary.
 **How to apply:** the gate/curve conflict is settled — stop treating it as a blocker. The
 open questions are now (1) what actually killed the curve cycle, and (2) is AU_LEAD still
 worth its complexity given the baseline already lands. [[project_rover_turning_open]]
+
+## ⛔⛔ BISECT ABORTED — THE CAUSE IS NOT IN THE REPOSITORY (2026-09-16)
+
+Attempted to bisect Jul3→Sep9 for what killed the rotating cycle. **Validated the endpoints
+first, and the July endpoint FAILED to reproduce**, which invalidates the whole bisect:
+
+**Ran the EXACT July commit `edb546f0` (2026-07-03 — the commit that produced the cycling
+data) on a worktree TODAY, same curve recipe, n=2:**
+`NO-CYCLE, median |e_rot| = 0.13` (reps +0.13, +0.13) — versus that same commit's own
+archived July data at **e_rot +0.58…+1.10, 27/27 cycle reps**.
+
+**⇒ Same commit. Cycle in July, no cycle today. The cause is OUTSIDE the git repo.**
+A commit bisect would have falsely converged on the earliest commit. Do not attempt it.
+
+**Leading hypothesis: the camera SDF** (`~/PX4-Autopilot/Tools/simulation/gz/models/
+mono_cam/model.sdf`, OUTSIDE the repo), changed **2026-08-27 from 640×480/fx=270 to
+320×240/fx=135**. It is the one clear, dated environmental difference: `Img_Params`
+records `resolution (480,640)` for every cycling July run and `(240,320)` for every
+non-cycling run today (July-code-today, d380901c, HEAD). Logged `FPS` is 62.5 in all (that
+is the capture rate, not the achieved `process_frame` rate, so it does not discriminate).
+
+Mechanism fit is strong: the cycle was characterised as **lag-pumped** — *"anti-position
+command on a circulating error + ANY lag → pumps ∝ sin(Wτ)"*, damping needs *"χ > Wτ ≈
+25-40°"*, and *"K_R=2.5 worked because it cut Wτ (real phase)"*
+([[project_rover_turning_open]]). CLAUDE.md records that the 640×480→320×240 drop was made
+precisely to recover `process_frame()` rate (~15-23 Hz → ~38 Hz). **Halving the image
+workload ≈ halving perception latency ≈ cutting τ — which flips the `χ > Wτ` pump
+condition.** That would kill the cycle without any controller change, exactly as observed.
+
+**Other out-of-repo candidates not yet excluded:** the Gazebo world/marker assets
+(`cross_marker.png` texture changed 08-09; `rover_cross.sdf`/`cross_marker.sdf` have dated
+`.bak`s), PX4-Autopilot version/params, Gazebo/ROS versions, host load.
+
+**DECISIVE TEST (not yet run, needs a temporary edit to the SHARED out-of-repo PX4 install):**
+restore `mono_cam/model.sdf` to 640×480/fx=270, run today's HEAD on the same curve recipe
+n=2-3. Cycle returns ⇒ confirmed. Back up and restore the SDF (trap on exit) — it is shared
+with other sessions.
+
+**How to apply:** ⚠ **this project's behaviour depends on out-of-repo state** (camera SDF,
+world/marker assets, PX4 version). A git worktree does NOT reconstruct a historical
+experiment. Before attributing any behaviour change to a commit, verify the old commit
+still reproduces the old behaviour — endpoint validation is mandatory, not optional.
