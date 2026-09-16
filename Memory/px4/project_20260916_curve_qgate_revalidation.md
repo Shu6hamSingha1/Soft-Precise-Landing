@@ -1,6 +1,6 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "CURVED-TARGET re-validation of PLASMC_AU_LEAD_QGATE (2026-09-16), the load-bearing open question. TWO results: (1) ✅ BLOCKER CLEARED — the gate does NOT neuter the curve benefit (gated vs ungated lead: e_mean 0.253 vs 0.250 p=0.72, osc_std p=0.49, both 4/4 ON-PLATFORM; gate transmits ~33% in the tracking window, enough). (2) ⚠ PREMISE CHANGED — the curved-target limit cycle is GONE from the current baseline: no-lead is now 3/4 ON-PLATFORM, e_rot +0.05 (was +1.11), osc_std 0.033 (was 0.06-0.07), vs July's 0/4 at 1.0-1.7 m. AU_LEAD is now a modest refinement (e_mean 0.345->0.250, p=0.0001), not a rescue. (3) ✅ CAUSE IDENTIFIED: the TWO-TIER VISIBILITY-QP REWRITE killed the cycle — all four env-togglable gain reverts (CBF_DRIFT_TAU=0, P_xy=1.5, P2INF=1.0, XI2=0.7) are NULL (13/13 ON-PLATFORM, no cycle), and the old cone rotated the lateral cmd 0.345-0.473 rad at 100% duty vs the new QP's 0.058-0.106 rad / 0-16% active — the old cone WAS the cycle's amplitude-setting describing-function element. ⇒ AU_LEAD is very likely REDUNDANT. Also: my offline pre-check predicting the gate would kill the curve was WRONG by 2x — it divided July 640x480 extents by today's 320x240 frame_min."
+description: "CURVED-TARGET re-validation of PLASMC_AU_LEAD_QGATE (2026-09-16), the load-bearing open question. TWO results: (1) ✅ BLOCKER CLEARED — the gate does NOT neuter the curve benefit (gated vs ungated lead: e_mean 0.253 vs 0.250 p=0.72, osc_std p=0.49, both 4/4 ON-PLATFORM; gate transmits ~33% in the tracking window, enough). (2) ⚠ PREMISE CHANGED — the curved-target limit cycle is GONE from the current baseline: no-lead is now 3/4 ON-PLATFORM, e_rot +0.05 (was +1.11), osc_std 0.033 (was 0.06-0.07), vs July's 0/4 at 1.0-1.7 m. AU_LEAD is now a modest refinement (e_mean 0.345->0.250, p=0.0001), not a rescue. (3) ⛔ CAUSE STILL UNIDENTIFIED. Four env-togglable gain reverts (CBF_DRIFT_TAU=0, P_xy=1.5, P2INF=1.0, XI2=0.7) are ALL NULL (13/13 ON-PLATFORM). I then concluded the visibility-QP rewrite killed it — WRONG: a worktree at the pre-rewrite commit d380901c (old cone verified live at July magnitude, theta_cone 0.358-0.478) shows e_rot +0.05..+0.21, NOT July's +1.11 — the rotating cycle does NOT reproduce on the old code either. What the rewrite DOES do on the curve is eliminate TAIL VARIANCE (old e_mean sd 0.691 / lat 0.018-5.90 m bimodal vs new sd 0.006 / 0.030-0.352), matching the peer's stationary VisProjGate finding; n=4 so no contrast reaches p<0.05. TWO distinct phenomena were conflated. AU_LEAD redundancy stands directionally (the cycle is gone regardless of cause) but NOT on an established mechanism. Also: my offline pre-check predicting the gate would kill the curve was WRONG by 2x — it divided July 640x480 extents by today's 320x240 frame_min."
 metadata: 
   node_type: memory
   type: project
@@ -52,7 +52,10 @@ So AU_LEAD is no longer a rescue, it is a **modest refinement of an already-work
 e_mean 0.345 → 0.250 (**−27 %, p=0.0001**, very tight data), ON-PLATFORM 3/4 → 4/4
 (ns at n=4). Real, but nothing like the July 0/4 → 2/3 step.
 
-**✅ IDENTIFIED (same day, isolation sweep): the TWO-TIER VISIBILITY-QP REWRITE killed it.**
+**⛔ PARTIALLY RETRACTED — see the worktree test at the end of this section. The
+elimination sweep below is valid; the conclusion drawn from it was NOT.**
+
+**Isolation sweep (valid):**
 
 Diffed July's vs today's recorded `Control_Params` on the curve → exactly four
 env-togglable lateral-loop changes. Reverted each ONE AT A TIME, no lead, GT-FB Circular
@@ -79,23 +82,68 @@ tracking window:
 | `vis_active` | n/a | **0-16 %** (0 % in 2 of 4 reps) |
 | `rho_fov` | 358, always present | channel gone |
 
-This matches [[project_rover_turning_open]]'s OWN diagnosis of the cycle, which named the
-cone as the amplitude-setting element: *"tau_ia+cone −9° but gain 0.43 (cone active 26-38 %
+This SEEMED to match [[project_rover_turning_open]]'s OWN diagnosis of the cycle, which named
+the cone as the amplitude-setting element: *"tau_ia+cone −9° but gain 0.43 (cone active 26-38 %
 of samples — **the DF that caps growth**)"* and *"A·W*² = a_osc ≈ 1.0 m/s² CONSTANT across
 reps → **amplitude is authority-set**"*. A limit cycle needs a nonlinearity to set its
 amplitude; the old chattering cone WAS that nonlinearity. Replace it with a QP that sits
 idle on a clean approach and the describing-function element sustaining the orbit is gone.
 
-⚠ Caveat: `theta_cone(t)`'s computation may itself have changed in the rewrite, so treat
-the 5-8× as corroboration rather than a like-for-like measurement. The decisive evidence is
-the 13/13 null elimination plus the structural replacement. **Gold-standard confirmation
-still available if wanted: a worktree at the pre-rewrite commit** (`d380901c`, the OLD arm
-of the VisProjGate A/B) run on the same curve recipe.
+## ⛔ WORKTREE TEST REFUTES THE "REWRITE KILLED THE CYCLE" CONCLUSION (same day)
 
-⇒ **AU_LEAD is very likely REDUNDANT.** It was built to damp a cycle that the visibility-QP
-rewrite already removed. It still buys ~27 % tracking error on the curve (e_mean 0.345→0.250),
-but that is a refinement of a solved case, not the rescue it was designed to be — weigh that
-against its complexity (two gate terms, four knobs) before any bake.
+Ran the identical curve recipe (no lead, n=4) on a sparse worktree at **`d380901c`** — the
+commit immediately BEFORE `82fa9c16` "wire in visibility_projection.py, retire the CBF
+machinery". Verified the old path was live (`from cbf_visibility import cbf2_filter`;
+measured `theta_cone` 0.358-0.478, i.e. exactly July's 0.345-0.473 band). Camera was
+already 320×240 at that commit, so resolution is held constant.
+Data `test_data/Rover_Turning/worktree_d380901c/`.
+
+| | JULY (old stack, 640×480) | **OLD CODE TODAY (d380901c)** | NEW today |
+|---|---|---|---|
+| ON-PLATFORM | 0/4 | **1/4** | 3/4 |
+| touchdown lat | 1.0-1.7 m | **2.88 m mean (0.018-5.90)** | 0.130 (0.030-0.352) |
+| e_mean | ~0.70 | **1.26 (0.32-1.78)** | 0.345 (0.340-0.350) |
+| osc_std | 0.06-0.07 | **0.199 (0.033-0.309)** | 0.033 (0.030-0.035) |
+| **`e_rot`** (THE cycle signature) | **+1.11** | **+0.05…+0.21** | +0.03…+0.09 |
+| `theta_cone` | 0.345-0.473 | 0.358-0.478 | 0.058-0.106 |
+
+**THE KEY NEGATIVE: `e_rot` on the OLD code today is +0.05…+0.21, NOT July's +1.11.** The
+rotating epicycle does **not** reproduce even with the old cone stack fully active at July's
+magnitude. **⇒ the visibility-QP rewrite did NOT kill the rotating limit cycle.** Something
+else between 2026-07-03 and 2026-09-09 did, and it is **still unidentified** (it is also not
+any of the four gain reverts above, which were tested on today's code and came back null).
+
+**What the worktree test DOES support:** the rewrite substantially improves curve
+performance and, above all, **consistency** — but ⚠ **at n=4 nothing reaches significance**
+(ON-PLATFORM 1/4 vs 3/4 Fisher p=0.486; e_mean Welch p=0.077 / MWU p=0.304; osc_std p=0.076;
+lat p=0.117). The striking part is the **variance**, matching the peer's independent
+stationary VisProjGate finding (*"median is a WASH… NEW wins the TAIL; the old stack
+THRASHED on marginal approaches"*):
+
+| spread across 4 reps | OLD | NEW |
+|---|---|---|
+| e_mean sd | 0.691 (0.32→1.78) | **0.006** (0.340→0.350) |
+| osc_std sd | 0.125 | **0.002** |
+| lat sd | 2.527 (0.018→5.90) | **0.150** |
+
+The old stack is bimodal — one rep at 0.018 m, three at 1.8-5.9 m; the new one is
+almost perfectly repeatable. So the rewrite's benefit on the curve is **tail/variance
+elimination**, not cycle removal.
+
+⇒ **Two distinct phenomena, not one:** (a) July's rotating limit cycle (`e_rot`≈1.11) — gone
+in BOTH old and new code today, cause UNKNOWN; (b) the old CBF stack's tail-thrashing —
+fixed by the rewrite. Conflating them was the error.
+
+⇒ **AU_LEAD's redundancy claim is now WEAKER but still stands directionally**: it was built
+to damp (a), and (a) is gone regardless of cause. It still buys ~27 % curve tracking error
+(e_mean 0.345→0.250) on an already-working baseline. Do not bake it on the strength of a
+mechanism story — the mechanism is not established.
+
+**⚠ METHODOLOGICAL NOTE — this is the SECOND time this session an observational
+log-diff mechanism claim was refuted by a controlled test:** the κ-ratchet story fell to the
+GT-FB A/B, and the cone/DF story fell to this worktree. Both times the observational
+evidence looked strong (correlations, magnitudes, matching prior analysis). **Treat
+log-diff mechanism inferences as hypotheses to be tested, never as findings.**
 
 (`PLASMC_YAW_RATE_LAW` was never a candidate here: this curve recipe runs heading-hold with
 `YAW_{GAMMA,KAPPA0,OMEGA,N}=0`, so the yaw law is inert.)
