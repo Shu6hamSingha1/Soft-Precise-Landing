@@ -43,6 +43,9 @@ plt.rcParams.update({
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
     "lines.linewidth": 1.2,
+    "pdf.fonttype": 42,   # embed text/math as scalable Type 42 (TrueType), not Type 3 --
+    "ps.fonttype": 42,    # ICRA/IEEE PDF checkers reject Type 3 fonts (mathtext's cm fontset
+                          # defaults to Type 3 bitmaps otherwise)
 })
 
 from pathlib import Path
