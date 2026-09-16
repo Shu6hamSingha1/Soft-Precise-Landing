@@ -23,6 +23,8 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
+    "figure.dpi": 300,
+    "savefig.dpi": 300,
     "font.family": "serif",
     "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
     "mathtext.fontset": "cm",
@@ -33,6 +35,9 @@ plt.rcParams.update({
     "legend.fontsize": 8,
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
+    "pdf.fonttype": 42,   # embed text/math as scalable Type 42 (TrueType), not Type 3 --
+    "ps.fonttype": 42,    # ICRA/IEEE PDF checkers reject Type 3 fonts (mathtext's cm fontset
+                          # defaults to Type 3 bitmaps otherwise)
 })
 
 from pathlib import Path

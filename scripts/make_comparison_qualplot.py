@@ -71,6 +71,8 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
+    "figure.dpi": 600,
+    "savefig.dpi": 600,
     "font.family": "serif",
     "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
     "mathtext.fontset": "cm",
@@ -81,6 +83,9 @@ plt.rcParams.update({
     "legend.fontsize": 8,
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
+    "pdf.fonttype": 42,   # embed text/math as scalable Type 42 (TrueType), not Type 3 --
+    "ps.fonttype": 42,    # ICRA/IEEE PDF checkers reject Type 3 fonts (mathtext's cm fontset
+                          # defaults to Type 3 bitmaps otherwise)
 })
 
 from pathlib import Path
@@ -103,39 +108,53 @@ def safe_savefig(fig, target_path, **kwargs):
               f"wrote {tmp_path} instead. Close it and re-run.")
 
 RES = (320.0, 240.0)          # image resolution [px] (Common/Constants.m)
+F_PX = 135.0                  # camera focal length [px] (Common/Constants.m: f=135)
+CBF_BUFFER_FRAC = 0.15        # b: FoV-edge buffer (vdf_params.m P.cbf_buffer_frac)
+PHI_MAX = (np.array(RES) / 2.0 / F_PX) * (1.0 - CBF_BUFFER_FRAC)  # [phi_x,max, phi_y,max]
 PRECISE_XY_M   = 0.08
 SOFT_V_REL_MPS = 0.20
 Z_REACH_M      = 0.21         # altitude-above-target at which the run counts as "reached"
 
 TRAJS  = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"]
-LABELS = ["Case 1", "Case 2", "Case 3", "Case 4", "Case 5"]
+LABELS = ["Case 1", "Case 2", "Case 3", "Case 4", "Case 5"]  # still used for the console summary
+CASE_NUMS = [str(i + 1) for i in range(len(TRAJS))]  # bare "1".."5" for (a)/(b)'s x-tick labels,
+                                                      # paired with a "Cases" axis label instead
+                                                      # (explicit user request)
 CTRLS  = ["PLASMC (Proposed)", "Lin 2022", "Zhang 2026", "Lin 2023", "Cho 2022"]
 
 CTRL_COLORS = {
-    "PLASMC (Proposed)": "C3",
-    "Lin 2022":          "C0",
-    "Zhang 2026":        "C2",
-    "Lin 2023":          "C4",
-    "Cho 2022":          "C1",
+    "PLASMC (Proposed)": "#D55E00",
+    "Lin 2022":          "#0072B2",
+    "Zhang 2026":        "#009E73",
+    "Lin 2023":          "#CC79A7",
+    "Cho 2022":          "#E69F00",
 }
 # 2026-09-11: no author names or citation numbers anywhere, per explicit user
 # instruction, applied uniformly across all comparison figures (legends AND
 # the heatmap's row labels below).
 # 2026-09-15: "Baseline A-D" swapped for method-acronym tags per explicit
 # user instruction (supersedes the 2026-09-11 "Baseline A-D only" call).
+# 2026-09-16: citation numbers added back for baselines IN THE LEGENDS ONLY
+# (CTRL_DISPLAY), per explicit user instruction -- supersedes the 2026-09-11
+# "no citation numbers" call for this one use. ROW_LABELS (heatmap row
+# labels) intentionally left uncited, matching the "in the legends" wording.
+# "Proposed" -> "VISTA" applies everywhere (both dicts) since it's a rename,
+# not a citation; the shared bottom legend also moves VISTA to the end of
+# the row (see the handles/labels reorder below), baselines keeping CTRLS'
+# original order.
 CTRL_DISPLAY = {
-    "PLASMC (Proposed)": "Proposed",
-    "Lin 2022":          "PBVS--PPC",
-    "Zhang 2026":        "PBVS--AEDO",
-    "Lin 2023":          "IBVS--PPC",
-    "Cho 2022":          "FF--IBVS",
+    "PLASMC (Proposed)": "VISTA",
+    "Lin 2022":          "PBVS-PPC [2]",
+    "Zhang 2026":        "PBVS-AEDO [12]",
+    "Lin 2023":          "IBVS-PPC [6]",
+    "Cho 2022":          "FF-IBVS [1]",
 }
 ROW_LABELS = {
-    "PLASMC (Proposed)": "Proposed",
-    "Lin 2022":          "PBVS--PPC",
-    "Zhang 2026":        "PBVS--AEDO",
-    "Lin 2023":          "IBVS--PPC",
-    "Cho 2022":          "FF--IBVS",
+    "PLASMC (Proposed)": "VISTA",
+    "Lin 2022":          "PBVS-PPC",
+    "Zhang 2026":        "PBVS-AEDO",
+    "Lin 2023":          "IBVS-PPC",
+    "Cho 2022":          "FF-IBVS",
 }
 
 
@@ -167,12 +186,29 @@ def _run_metrics(run):
 
 
 def _fov_margin(run, N):
-    """Per-timestep FoV margin: min over corners/axes of the fraction of
-    half-frame remaining before the feature would exit (1 = centered, 0 =
-    at the edge). Requires P_DS (run_comparison.m patched 2026-09-11 to
-    save it; re-run the comparison if this raises).
+    """Per-timestep barrier h_k({}^C r-tilde) = 1 - |[Phi^-1 {}^C r-tilde]_k|,
+    k in {x,y} (ICRA.tex cbf barrier: equation), evaluated at the MARKER
+    CENTRE (mean of the 4 arm tips, excluding the stub -- same convention as
+    make_multi_init_plots.py's _marker_centre) and plotted as min_k h_k(t).
+    Phi^-1 normalizes by the buffered, focal-length-normalized FoV half-width
+    phi_max = (R/2/f)(1-b) (f=135px, b=0.15, both from the live controller
+    constants -- see PHI_MAX above), so this is the exact theorem quantity,
+    not a raw-pixel analog. 1 = centred, 0 = at the buffered FoV edge
+    (negative = past the buffer, inside the true sensor edge only if
+    |value| < b-dependent slack -- the buffer is the margin the CBF holds
+    open, not the physical sensor boundary itself).
 
-    BUG FIX 2026-09-11: on an FoV-break run, the break in
+    CORRECTED 2026-09-16 (two fixes): (1) evaluated at the marker centre
+    only, not min'd over all tracked corners (wrong for the cross+stub
+    marker -- only the centre is theory-relevant, same reasoning as the
+    Delta_c fix in make_multi_init_plots.py); (2) uses the actual buffered,
+    Phi-normalized barrier instead of a raw-pixel (half-frame-relative,
+    unbuffered) stand-in, so the plotted symbol min_k h_k(t) now matches
+    ICRA.tex's h_k exactly rather than by structural analogy only.
+    Requires P_DS (run_comparison.m patched 2026-09-11 to save it; re-run
+    the comparison if this raises).
+
+    BUG FIX 2026-09-11 (still applies): on an FoV-break run, the break in
     visualControl_comparison.m fires BEFORE that step's P_DS(:,:,idx) is
     written, so the column at N-1 is the zero-initialized default, not a
     real corner -- it reads as a spurious margin=1 (dead center) right at
@@ -187,9 +223,14 @@ def _fov_margin(run, N):
     while j >= 0 and not np.any(cnp[:, :, j] != 0):
         j -= 1
     cnp = cnp[:, :, :j + 1]
-    mx = (RES[0] / 2 - np.abs(cnp[0])) / (RES[0] / 2)
-    my = (RES[1] / 2 - np.abs(cnp[1])) / (RES[1] / 2)
-    return np.minimum(mx, my).min(axis=0)            # (j+1,)
+    n_arms = min(4, Np)                              # exclude the stub (col 5)
+    cx = cnp[0, :n_arms, :].mean(axis=0)              # marker-centre x [px]
+    cy = cnp[1, :n_arms, :].mean(axis=0)              # marker-centre y [px]
+    rx = cx / F_PX                                    # tangent-space r-tilde_x
+    ry = cy / F_PX                                    # tangent-space r-tilde_y
+    hx = 1.0 - np.abs(rx / PHI_MAX[0])
+    hy = 1.0 - np.abs(ry / PHI_MAX[1])
+    return rx, ry, np.minimum(hx, hy)                 # each (j+1,)
 
 
 def _closed_quad(px, py):
@@ -253,7 +294,10 @@ def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, leg
             cat = METRICS[(tr, name)]["cat"]
             ax.text(j, i, CAT_SYMBOL[cat], ha="center", va="center", fontsize=cell_fontsize,
                     fontweight="bold", color="white" if cat != "hard-imprecise" else "black")
-    ax.set_xticks(range(len(TRAJS))); ax.set_xticklabels(LABELS, fontsize=tick_fontsize)
+    # Bare case numbers on the ticks + "Cases" as the actual axis label, replacing the old
+    # "Case 1".."Case 5" tick text (explicit user request).
+    ax.set_xticks(range(len(TRAJS))); ax.set_xticklabels(CASE_NUMS, fontsize=tick_fontsize)
+    ax.set_xlabel("Cases", fontsize=tick_fontsize)
     ax.set_yticks(range(len(CTRLS))); ax.set_yticklabels([ROW_LABELS[n] for n in CTRLS], fontsize=tick_fontsize)
     ax.set_xticks(np.arange(-0.5, len(TRAJS), 1), minor=True)
     ax.set_yticks(np.arange(-0.5, len(CTRLS), 1), minor=True)
@@ -279,7 +323,9 @@ def _draw_heatmap(ax, title_fontsize=14, cell_fontsize=13, tick_fontsize=11, leg
             if xs:
                 inv = ax.transAxes.inverted()
                 x_anchor, _ = inv.transform((min(xs), 0))
-            legend_anchor = (x_anchor, legend_anchor[1] if isinstance(legend_anchor, tuple) else -0.07)
+            # -0.30 (was -0.07): pushed further down now that this axes also has a "Cases"
+            # x-label sitting right below its tick labels -- the legend needs to clear that too.
+            legend_anchor = (x_anchor, legend_anchor[1] if isinstance(legend_anchor, tuple) else -0.30)
         legend_handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in CAT_COLORS]
         ax.legend(legend_handles, ["S: soft-precise", "H: hard/imprecise", "A: aborted"],
                   loc="upper left", bbox_to_anchor=legend_anchor, ncol=legend_ncol,
@@ -296,25 +342,29 @@ def _draw_3d(ax3d, fontsize=18, ticksize=13):
         N = met["N"]
         X = d.X_DS[:, :N]
         color = CTRL_COLORS[name]
-        ax3d.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=CTRL_DISPLAY[name])
-        ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
+        ax3d.plot(X[0], X[1], -X[2], color=color, lw=2.2, label=CTRL_DISPLAY[name])
+        ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=116)
         marker = {"soft-precise": "^", "hard-imprecise": "o", "aborted": "x"}[met["cat"]]
         if met["cat"] == "hard-imprecise":
             ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], facecolors="none", edgecolors=color,
-                         marker=marker, s=34, linewidths=1.2)
+                         marker=marker, s=183, linewidths=2.6)
         else:
-            ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color, marker=marker, s=34)
+            ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color, marker=marker, s=183)
         if not target_drawn:
             xt = d.x_t[:3, :N]
             draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])
             target_drawn = True
-    ax3d.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=10, fontsize=fontsize)
-    ax3d.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=10, fontsize=fontsize)
-    ax3d.set_zlabel("altitude [m]", labelpad=2, fontsize=fontsize)
+    ax3d.set_xlabel(r"$\,^\mathcal{I}x_\mathrm{b}$ [m]", labelpad=30, fontsize=fontsize)
+    ax3d.set_ylabel(r"$\,^\mathcal{I}y_\mathrm{b}$ [m]", labelpad=30, fontsize=fontsize)
+    # z labelpad bumped 10 -> 24 (explicit user request) -- at the bumped label fontsize, "I_z_b
+    # [m]" was sitting right on top of the topmost z tick number.
+    ax3d.set_zlabel(r"$\,^\mathcal{I}z_\mathrm{b}$ [m]", labelpad=24, fontsize=fontsize)
     ax3d.locator_params(axis="x", nbins=4)
     ax3d.locator_params(axis="y", nbins=4)
     ax3d.locator_params(axis="z", nbins=4)
-    ax3d.tick_params(pad=1, labelsize=ticksize)
+    # tick pad bumped 2 -> 12 (explicit user request) -- same reason, the tick numbers
+    # themselves were sitting flush against the axis spine at the bumped tick fontsize.
+    ax3d.tick_params(pad=12, labelsize=ticksize)
     ax3d.view_init(elev=22, azim=-58)
     # No box_aspect/zoom override -- comparison_combined_circular.pdf's 3-D
     # panel (make_comparison_plots.py) doesn't use one either; it relies
@@ -352,37 +402,112 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
         xj = xb + xj_off[j]
         for xk in xj[np.isnan(eta)]:
             ax.text(xk, 0.0, "N/A", rotation=90, ha="center", va="center",
-                    fontsize=12, color=CTRL_COLORS[name], clip_on=False,
+                    fontsize=16, color=CTRL_COLORS[name], clip_on=False,
                     bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
                               edgecolor=CTRL_COLORS[name], linewidth=0.6))
-    # Straight (unrotated) case labels -- the in-panel corner note that used
-    # to occupy this space is now a footnote below the panel instead (it
-    # overlapped the "Only surface-reaching..." text against the topmost
-    # bars), freeing this axis to sit flush.
-    ax.set_xticks(xb); ax.set_xticklabels(LABELS, rotation=0, fontsize=tick_fontsize)
+    # Bare case numbers instead of "Case 1".."Case 5" (explicit user request) -- short enough
+    # at tick_fontsize to no longer need the rotation/shrinking the old "Case N" text required.
+    ax.set_xticks(xb); ax.set_xticklabels(CASE_NUMS, rotation=0, fontsize=tick_fontsize)
     ax.tick_params(axis="y", labelsize=tick_fontsize)
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylabel(r"$\log_{10}(\eta_E)$", fontsize=fontsize, labelpad=4)
-    # Sits in the x-label slot but at the shared bottom legend's font size
-    # (well below the other panels' axis-label size) so it reads as a note,
-    # not as this panel's actual x-axis label.
-    ax.set_xlabel("Only surface-reaching runs shown", fontsize=18, style="italic", labelpad=6)
+    ax.set_xlabel("Cases", fontsize=tick_fontsize, labelpad=8)
+    # Moved off set_xlabel (now "Cases" above) onto a plain ax.text call, placed a bit further
+    # down so it still reads as a footnote rather than this panel's actual x-axis label. Kept
+    # at a size well below the other panels' axis-label size for the same reason -- this is a
+    # full sentence, not a short label, and at anything much above 32 its centered width
+    # (measured via page.search_for on the rendered PDF) exceeds the gap back to (a)'s legend.
+    ax.text(0.5, -0.34, "Only landed runs shown (full outcomes in (a))",
+            transform=ax.transAxes, ha="center", va="top", fontsize=32, color="red")
 
 
-def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
-    """FoV-margin time series, Case 5, all 5 controllers -- the
-    mechanism-explaining panel: why each baseline fails."""
+def _draw_fov_3d(ax, fontsize=16, tick_fontsize=14, zoom=1.18, elong=1.8):
+    """3-D visibility panel, Case 5, all 5 controllers -- x axis is time t
+    (2026-09-16: swapped from z, so the long axis is the one that actually
+    spans a wide range; the box no longer needs to stay cube-shaped), y/z
+    axes are the FoV-normalized marker centre [Phi^-1 {}^C r-tilde]_y,
+    [Phi^-1 {}^C r-tilde]_x (each in [-1,1] iff inside the buffered
+    visibility set S_vis = {r-tilde : ||Phi^-1 r-tilde||_inf <= 1}).
+    Replaces the 2026-09-16 2-D 'min_k h_k(t)' line chart per explicit user
+    objection ("this is not how CBF works"): a single min-combined scalar
+    line implies one scalar CBF was analyzed, when the QP/theorem impose
+    h_x>=0 and h_y>=0 as two separate per-axis constraints. Plotting the
+    normalized position directly (not a barrier value) makes both axes'
+    constraint satisfaction independently visible from the same curve, with
+    no min() anywhere in the plotted quantity itself.
+
+    The safe box [-1,1]x[-1,1] (in y,z) is drawn as a wireframe prism
+    extruded along the time axis (4 edges + t=0/t=t_max rims) -- a
+    controller's curve exiting the box at some t is exactly a visibility
+    violation at that instant, on whichever axis it crosses."""
+    t_max = 0.0
     for name in CTRLS:
         run = RUNS[(CASE5, name)]
         N = METRICS[(CASE5, name)]["N"]
-        margin = _fov_margin(run, N)            # may trim further than N -- see docstring
-        t = run.data.tRange[:len(margin)]
-        ax.plot(t, margin, color=CTRL_COLORS[name], lw=1.4, label=CTRL_DISPLAY[name])
-    ax.set_ylim(bottom=min(-0.05, ax.get_ylim()[0]))
-    ax.set_xlabel("$t$ [s]", fontsize=fontsize, labelpad=4)
-    ax.set_ylabel("normalized FoV margin", fontsize=fontsize, labelpad=4)
-    ax.tick_params(labelsize=tick_fontsize)
-    ax.grid(alpha=0.3)
+        rx, ry, _ = _fov_margin(run, N)      # may trim further than N -- see docstring
+        nx = rx / PHI_MAX[0]                 # [Phi^-1 r-tilde]_x
+        ny = ry / PHI_MAX[1]                 # [Phi^-1 r-tilde]_y
+        t = run.data.tRange[:len(nx)]
+        t_max = max(t_max, float(t[-1]) if len(t) else 0.0)
+        # lw bumped from 2.2: at print scale (this panel's curves get shrunk far more
+        # than the other panels', since FIG_W=19in vs a ~3.5in column), a steeply-dipping
+        # segment (verified continuous -- no NaNs, uniform 0.01s dt) can visually alias
+        # into a dotted/beaded look at the thinner effective stroke width; 3.2 keeps it
+        # solid without visibly thickening the shallower parts of the curve.
+        ax.plot(t, ny, nx, color=CTRL_COLORS[name], lw=5.0, label=CTRL_DISPLAY[name], zorder=3)
+
+    # Pin all three axes to exactly the safe box's own extent -- [0, t_max] in time,
+    # [-1, 1] in y/z -- matplotlib's default 5% autoscale margin otherwise extends
+    # the axis panes' actual corners past that on EVERY axis, so the rims/edges below
+    # (drawn exactly at t_max / +-1) land short of the panes' real corners, visibly
+    # detached from the box outline there (seen most clearly on the z-axis corner,
+    # where the "1.0" gridline sits past the drawn rim). This margin mismatch, not
+    # the per-artist depth sorting, was the real source of the "broken" look.
+    ax.set_xlim3d(0, t_max)
+    ax.set_ylim3d(-1, 1)
+    ax.set_zlim3d(-1, 1)
+
+    # Safe-box wireframe: 4 edges (t=0 to t=t_max) + the two end rims.
+    corners = [(1, 1), (-1, 1), (-1, -1), (1, -1), (1, 1)]  # (ny, nx) pairs
+    cy = [c[0] for c in corners]; cx = [c[1] for c in corners]
+    ax.plot([0] * 5, cy, cx, color="k", lw=1.3, ls="--", alpha=0.6, zorder=1)
+    ax.plot([t_max] * 5, cy, cx, color="k", lw=1.3, ls="--", alpha=0.6, zorder=1)
+    # The 4 long edges connecting the rims: previously drawn as ONE artist visiting all
+    # 4 corners in sequence (t sweeping 0->t_max->0->t_max->...), which mplot3d's
+    # per-artist (not per-fragment) depth sorting assigns a SINGLE averaged depth to --
+    # so the whole zig-zagging artist popped fully in front of or behind the controller
+    # curves inconsistently, reading as visibly broken/discontinuous. Fixed by giving
+    # each of the 4 edges its OWN artist (2 points, one unambiguous depth each) instead.
+    for cy_i, cx_i in corners[:4]:
+        ax.plot([0, t_max], [cy_i, cy_i], [cx_i, cx_i], color="k", lw=1.3, ls="--", alpha=0.6, zorder=1)
+
+    # x labelpad bumped 38 -> 65 (explicit user request) -- same tick-vs-label crowding as
+    # y/z below, now that the x tick pad also grew to 22.
+    ax.set_xlabel(r"$t$ [s]", fontsize=fontsize, labelpad=65)
+    # y/z labelpad and tick pads bumped hard (explicit user request) -- at this fontsize AND
+    # this viewing angle (elev=22, azim=-58), the y/z tick numbers and axis labels crowd into
+    # each other and into the shared box corner much more aggressively than a linear
+    # pad-vs-fontsize scaling would suggest; two earlier, smaller bumps (14->28 label / 1->10
+    # tick / 16->30 z-tick) were each insufficient and had to be redone larger.
+    ax.set_ylabel(r"$\,^\mathcal{C}\tilde{r}_y$", fontsize=fontsize, labelpad=48)
+    ax.set_zlabel(r"$\,^\mathcal{C}\tilde{r}_x$", fontsize=fontsize, labelpad=72)
+    # z labelpad must clear the z TICK pad (50, below) by a wide margin -- label/tick pads
+    # both offset from the same axis spine independently, so a label pad merely close to (or
+    # smaller than) the tick pad puts the label BETWEEN the spine and the pushed-out ticks.
+    ax.tick_params(pad=22, labelsize=tick_fontsize)
+    # z-axis ticks need MORE pad than x/y: at this viewing angle the z=1 tick label
+    # sits right at the shared box corner with the y=1 tick label, and the two
+    # overlap into unreadable garbled text there -- push z's labels further out.
+    ax.tick_params(axis="z", pad=50)
+    ax.locator_params(axis="x", nbins=4)
+    ax.locator_params(axis="y", nbins=4)
+    ax.locator_params(axis="z", nbins=4)
+    ax.view_init(elev=22, azim=-58)
+    # Elongate the time axis explicitly -- matplotlib doesn't stretch a 3-D
+    # box just because the x data range is wider; box_aspect is the actual
+    # rendered-shape control. elong:1:1 keeps y/z (both [-1,1]) square to
+    # each other while giving time some visual length.
+    ax.set_box_aspect((elong, 1, 1), zoom=zoom)
 
 
 # ============================================================================
@@ -394,79 +519,104 @@ def _draw_fov_margin(ax, fontsize=16, tick_fontsize=14):
 #   baselines fail, not just that they do; (d) relative touchdown energy --
 #   soft-landing quality as a severity measure, not a binary pass/fail.
 # ============================================================================
-#   Layout 2026-09-11, rewritten for simplicity: every panel is placed
-#   directly by an explicit vertical "stack" of inch-height constants
-#   (title space -> axes -> gap -> title space -> axes -> ... -> legend),
-#   with the figure's total height DERIVED as the sum of that stack --
-#   instead of the previous chain of gridspec-then-patch adjustments (three
-#   different title conventions to hand-align, a fixed magic fig.text y that
-#   had to be "re-verified" whenever anything above it moved, and leftover
-#   canvas below the last row with no mechanism to reclaim it). Column
-#   positions (X only) are unaffected by any of this and are reused verbatim
-#   from the old gridspec's computed values.
+#   Layout: every panel is placed directly by an explicit vertical "stack" of
+#   inch-height constants (title space -> axes -> gap -> title space -> axes
+#   -> ... -> legend), with the figure's total height DERIVED as the sum of
+#   that stack. Column X-positions and every axes box below are pinned to
+#   fixed ABSOLUTE INCH values (comments say which), converted to figure
+#   fractions via division by FIG_W/FIG_H at the point of use -- so changing
+#   FIG_W/FIG_H (e.g. trimming canvas margin) never rescales a box, it only
+#   changes how much blank margin surrounds the fixed-size content.
 #
-#   Fontsize note (2026-09-11): included at \columnwidth same as multi_init's
+#   Fontsize note: included at \columnwidth same as multi_init's
 #   Circular_combined.pdf (figsize width 10.5in, title/label fontsize 20) --
-#   this canvas is 12.5in wide, so the same fontsize numbers print
-#   10.5/12.5 = 0.84x smaller here. Every fontsize below is multiplied by
-#   12.5/10.5 * (20/16) = 1.488 (the old titles were 16pt, not 20pt, so the
-#   multiplier corrects both the width mismatch and the original undersize)
-#   to land at multi_init's effective on-page size.
-PANEL_TITLE_FS = 24   # shared across all four panel subtitles (16 x 1.488)
+#   this canvas is narrower, so the same fontsize numbers would print
+#   smaller here; PANEL_TITLE_FS etc. below are pre-scaled to land at
+#   multi_init's effective on-page size.
+PANEL_TITLE_FS = 52  # -> ~8.6pt printed at FIG_W=21.0's ~0.1671 embed scale, matching
+                     # Circular_combined.pdf's panel-title size (explicit user request);
+                     # TOP_MARGIN/TITLE_H below were widened (2026-09-16) to fit this without
+                     # the suptitle/row-1-title overlap that blocked this same value at first.
+TITLE_X_SHIFT  = 0.8   # inches -- shifts all four panel subtitles left (explicit user request),
+                        # nothing else (axes/plots/legend/suptitle positions are untouched)
+FIG_W = 22.3    # canvas width -- bounded by the suptitle (one line) needing this much room;
+                # bumped 21.3 -> 22.3 (2026-09-16) after (d)'s z labelpad had to grow to 72
+                # (to clear its own tick pad, see _draw_fov_3d) and started clipping off the
+                # right edge.
+                # bumped 21.0 -> 21.3 (2026-09-16) after moving (b) right also dragged (d)'s
+                # title (tied to the same AX3D_X0 reference) to within ~0.12in of the right
+                # edge; note growing FIG_W here shrinks the print scale slightly (all native
+                # pt targets above/below were computed at the 21.0 scale and are now a hair
+                # under their stated printed-pt targets -- not worth re-deriving for ~1.4%).
+                # every plotted panel fits comfortably inside ~18.6in. Bumped 19.0 -> 19.6
+                # (2026-09-16) to clear (d)'s z-label overflow, then 19.6 -> 21.0 (2026-09-16,
+                # same day) when the font-size pass toward matching Circular_combined.pdf's
+                # printed sizes made the suptitle and the bottom controller legend both run off
+                # the right edge at 19.6in -- growing native font size without growing FIG_W
+                # only makes text overflow its own canvas, it doesn't print bigger by itself
+                # (printed_pt = native_pt * \columnwidth/(FIG_W*72), so FIG_W has to grow with
+                # the widest single-line content, here the suptitle/legend row).
 
-# Column X-positions (left, width), as fractions of figure width -- taken
-# from a plain 2-column gridspec (width_ratios=[1.0, 1.25], wspace=0.28,
-# left=0.13, right=0.98); unaffected by anything in the vertical stack below.
-COL0_X0, COL0_W = 0.13000, 0.33138
-COL1_X0, COL1_W = 0.56577, 0.41423
-# 3-D axes pad heavily inside their own bbox; widen/left-shift column 1's
-# box so the rendered cube actually fills it.
-AX3D_X0, AX3D_W = COL1_X0 - 0.03, COL1_W + 0.05
+# Column X-positions (left, width), in inches -- from a plain 2-column
+# gridspec (width_ratios=[1.0, 1.25], wspace=0.28, left=0.13, right=0.98)
+# at a 21.5in reference width, converted to absolute inches once here.
+COL0_X0, COL0_W = 3.75, 7.12467  # X0 bumped from 2.795 (2026-09-16, then 3.45 -> 3.75 once
+                                  # "PBVS-AEDO" -- the widest row label -- still clipped its
+                                  # first letter at 3.45): (a)'s row labels
+                                  # ("PBVS-PPC" etc, at the bumped tick_fontsize matching
+                                  # Circular_combined.pdf) ran off the canvas's left edge
+COL1_X0, COL1_W = 12.164055, 8.905945
+# (b)'s box: shifted/narrowed from column 1 to open a gap from (a) on its
+# left (a 2-D bar-chart panel doesn't need column 1's full width) while
+# holding its right edge fixed; capped short of aligning box edges because
+# (a)'s S/H/A legend (legend_ncol=3) extends past ax_hm's own right edge.
+AX3D_X0, AX3D_W = 13.084055, 6.540945  # X0 bumped +1.0in (explicit user request, 2026-09-16)
+                                        # to move (b) right; FIG_W=21.0 leaves ample margin
+                                        # (right edge lands at 19.625in of 21.0)
 
 # Vertical stack, top to bottom, in inches from the figure's top edge.
-# Row 1 has UNEQUAL heights by design (user request): (a) shrunk, (b) grown
-# as large as its column width comfortably supports -- (b) is NOT resized to
-# close the gap under (a). One removable white space was TOP_MARGIN (blank
-# canvas above the row-1 titles): comparison_combined_circular.pdf's
-# reference layout (make_comparison_plots.py) puts its suptitle almost flush
-# with the figure's top edge (y=0.99 of a 5in-tall figure, ~0.05in of
-# margin) instead of a separate fixed margin -- shrunk to match that here.
-#
-# A second, larger one turned out to be inside (b) itself: matplotlib's
-# Axes3D refuses to render taller than it is wide, so assigning
-# THREED_AX_H > AX3D_W's inch width doesn't make the rendered cube any
-# bigger -- verified numerically that 5.80in and 6.60in assigned heights
-# produce the IDENTICAL 5.80x5.80in rendered content; the extra height was
-# pure dead space between the title and the plot. THREED_AX_H is set to
-# match AX3D_W below for exactly this reason: (b) looks identical, the gap
-# inside it is gone, and the figure is shorter overall.
-TOP_MARGIN    = 0.43     # bumped from 0.05: makes room for AX3D_SHIFT_UP below (see note there)
-TITLE_H       = 0.45     # space reserved above each row for its subtitle
-HM_AX_H       = 4.42     # panel (a) axes height -- grown to close the gap between (a)+legend
-                          # and row 2 (capped below THREED_AX_H=5.80in per user instruction:
-                          # (a) must not end up taller than (b))
-HM_LEGEND_H   = 0.55     # room for (a)'s S/H/A legend, which hangs below its axes box
-THREED_AX_H   = AX3D_W * 12.5   # panel (b) axes height, matched to its own width (see note above)
-# (b)'s title (set_title(y=0.95), see below) sits INSET within its own box,
-# well below the box's top edge -- unlike (a), whose title is placed by
-# _panel_title in a reserved strip ABOVE its box. To land both titles at the
-# same absolute height, (b)'s whole box is shifted up by the empirically
-# measured gap between the two (0.831in, from comparing rendered title
-# y-positions) -- TOP_MARGIN above was increased so this shift doesn't push
-# the box off the top of the figure.
-AX3D_SHIFT_UP = 0.831
-ROW_GAP       = 0.60     # gap between row 1's lowest content and row 2's title
-ROW2_AX_H     = 3.58     # panels (c)/(d) PLOT-AREA height (excludes x-tick/xlabel text below it); reduced from 4.47
-ROW2_XLABEL_H = 0.75     # room for (c)/(d)'s x-tick labels + xlabel, which sit below ROW2_AX_H
-LEGEND_GAP    = 0.15
-LEGEND_H      = 0.45     # provisional -- corrected below from the actual render
-BOTTOM_MARGIN = 0.10
+# Row 1 has UNEQUAL heights by design: (a) and (b) are both 2-D panels sized
+# to match each other; row 2's (c)/(d) are square 3-D boxes sized
+# independently below (ROW2_AX_H).
+TOP_MARGIN    = 1.63     # blank canvas above the row-1 titles (scaled 1.25x from 1.30, matching
+                         # the font-size bump below, so PANEL_TITLE_FS=48 still clears the suptitle)
+TITLE_H       = 0.80     # space reserved above each row for its subtitle (scaled w/ PANEL_TITLE_FS)
+HM_AX_H       = 3.80     # panel (a) axes height
+HM_LEGEND_H   = 2.00     # room for (a)'s "Cases" x-label + 2-row S/H/A legend, both of which
+                         # hang below its axes box (bumped 2026-09-16 for the 2-row legend +
+                         # new x-label; was 0.94 for a single-row legend with no x-label)
+ROW1_B_H      = 3.80     # panel (b) axes height, matched to (a)'s
+ROW_GAP       = 0.94     # gap between row 1's lowest content and row 2's box top (scaled 1.25x) -- (c)/(d) use
+                          # the INSET set_title(y=0.95) convention (see _c_p/_d_p below), which
+                          # sits inside the box rather than in a reserved strip above it, so this
+                          # only needs to clear row 1's legend/footnote text, not a title too.
+ROW2_BOX_W    = 6.540945  # panel (c)'s ORIGINAL square-box side -- still used below for every
+                          # WIDTH-related calc (AX_M_W, and (d)'s width/X0 centering), since only
+                          # HEIGHT changes here.
+ROW2_H_INCREASE = 2.225   # inches -- (c) grows by this on BOTH height and width (square, explicit
+                          # user request, so its width also becomes ROW2_BOX_W + increase); (d)
+                          # grows by the SAME amount on height ONLY, width held fixed (explicit
+                          # user request) -- so (d)'s box is no longer square. Bumped from 1.0 to
+                          # 2.225 (explicit user request) to bring (c)/(d)'s rendered 3-D plot size,
+                          # AFTER \includegraphics[width=\columnwidth] scaling in the manuscript, up
+                          # to match multi_init/Circular_combined.pdf's 3-D panel: measured via
+                          # rendered non-white content bbox in each PDF x each PDF's own embedded
+                          # scale factor (0.18352 here vs 0.2955 there) -- circular's (a) panel is
+                          # ~1.52in tall printed, this panel's (c) was only ~1.31in at increase=1.0.
+ROW2_C_H      = ROW2_BOX_W + ROW2_H_INCREASE  # (c)'s box height AND width (aspect preserved)
+ROW2_D_H      = ROW2_BOX_W + ROW2_H_INCREASE  # (d)'s box HEIGHT only; its width stays ROW2_BOX_W-derived
+ROW2_XLABEL_H = 0.50     # room for (c)/(d)'s x-tick labels + xlabel, which sit below the row-2 boxes (scaled 1.25x)
+LEGEND_GAP    = 0.06     # gap between (c)/(d)'s x-labels and the shared bottom controller legend (scaled 1.25x)
+LEGEND_H      = 2.10     # bumped from 0.90 (2026-09-16): the bottom legend wrapped to 2 rows
+                         # (ncol 5 -> 3) to fit the bumped _LEG_FS within FIG_W -- needs roughly
+                         # double the single-row height reserved here
+BOTTOM_MARGIN = 0.15     # scaled 1.25x
 
 row1_top    = TOP_MARGIN + TITLE_H
-ax3d_top    = row1_top - AX3D_SHIFT_UP
-row1_bottom = max(row1_top + HM_AX_H + HM_LEGEND_H, ax3d_top + THREED_AX_H)
-row2_top    = row1_bottom + ROW_GAP + TITLE_H
-row2_bottom = row2_top + ROW2_AX_H
+ax3d_top    = row1_top
+row1_bottom = max(row1_top + HM_AX_H + HM_LEGEND_H, ax3d_top + ROW1_B_H)
+row2_top    = row1_bottom + ROW_GAP
+row2_bottom = row2_top + max(ROW2_C_H, ROW2_D_H)
 legend_top  = row2_bottom + ROW2_XLABEL_H + LEGEND_GAP
 FIG_H       = legend_top + LEGEND_H + BOTTOM_MARGIN
 
@@ -476,73 +626,160 @@ def _y0_frac(top_in, height_in):
     return (FIG_H - top_in - height_in) / FIG_H
 
 
-def _panel_title(ax, text):
+def _panel_title(ax, text, extra_shift=0.0):
     """Panel subtitle centered above ax, a fixed 0.10in above its top edge --
-    used for ALL FOUR panels so they share one positioning rule (replaces
-    three different prior conventions: a hand-tuned absolute fig.text y for
-    (a), an axes-fraction y for the 3-D panel (b), and set_title(y=1.02-1.03)
-    for (c)/(d)). Equal axes top edges (guaranteed by the stack above, since
-    (a) and (b) both start at row1_top) now trivially give aligned titles --
-    PROVIDED the axes' get_position(original=True) is used: Axes3D silently
-    shrinks its box to preserve aspect and reports that shrunk "active" box
-    from plain get_position(), which drifts further from the assigned box
-    the more its assigned height deviates from its width (this is what threw
-    (a)/(b) out of alignment once (b)'s height was made very different from
-    (a)'s). original=True returns the box we actually assigned, for both 2-D
-    and 3-D axes alike."""
+    shared by every RESERVED-STRIP-style panel ((a)/(b); (c)/(d) use the
+    inset convention instead, see _inset_title). Uses
+    get_position(original=True): Axes3D silently shrinks its box to
+    preserve aspect and reports that shrunk "active" box from plain
+    get_position(), which would throw off alignment between panels whose
+    assigned height/width ratios differ; original=True returns the box we
+    actually assigned, for both 2-D and 3-D axes alike. extra_shift (inches)
+    adds an additional per-panel leftward nudge on top of TITLE_X_SHIFT
+    (explicit user request: (a)/(c) only, not (b)/(d))."""
     p = ax.get_position(original=True)
-    ax.figure.text((p.x0 + p.x1) / 2, p.y1 + 0.10 / FIG_H, text,
+    ax.figure.text((p.x0 + p.x1) / 2 - (TITLE_X_SHIFT + extra_shift) / FIG_W, p.y1 + 0.10 / FIG_H, text,
                     ha="center", va="bottom", fontsize=PANEL_TITLE_FS)
 
 
-fig = plt.figure(figsize=(12.5, FIG_H))
+def _inset_title(ax, text, x_ref_center, extra_shift=0.0):
+    """Panel subtitle for a 3-D panel, INSET near its box's own top edge
+    rather than in a reserved strip above it (matches make_comparison_plots.py's
+    3-D panel convention; needs less vertical margin than _panel_title,
+    letting row 2 sit closer to row 1). Placed via fig.text at figure-
+    fraction coordinates rather than ax.set_title(x=,y=): set_title's x/y
+    are fractions of get_position(), and for Axes3D that's the "active" box
+    (see _panel_title's docstring), which moves independently of the
+    assigned box whenever box_aspect/zoom changes -- fig.text off
+    get_position(original=True) is immune to that. x_ref_center is the
+    FIGURE-fraction x to center on (so (c)/(d)'s titles can be laterally
+    aligned with (a)/(b) above them, even though the box pairs have
+    different widths/positions)."""
+    p = ax.get_position(original=True)
+    ax.figure.text(x_ref_center - (TITLE_X_SHIFT + extra_shift) / FIG_W, p.y1 - 0.05 * (p.y1 - p.y0), text,
+                    fontsize=PANEL_TITLE_FS, ha="center", va="top")
 
-ax_hm = fig.add_axes([COL0_X0, _y0_frac(row1_top, HM_AX_H), COL0_W, HM_AX_H / FIG_H])
-ax3d  = fig.add_axes([AX3D_X0, _y0_frac(ax3d_top, THREED_AX_H), AX3D_W, THREED_AX_H / FIG_H],
+
+fig = plt.figure(figsize=(FIG_W, FIG_H))
+
+ax_hm = fig.add_axes([COL0_X0 / FIG_W, _y0_frac(row1_top, HM_AX_H), COL0_W / FIG_W, HM_AX_H / FIG_H])
+ax3d  = fig.add_axes([AX3D_X0 / FIG_W, _y0_frac(ax3d_top, ROW1_B_H), AX3D_W / FIG_W, ROW1_B_H / FIG_H])
+
+# (c)/(d): square 3-D boxes (side ROW2_AX_H), centred under columns 0/1 then
+# shifted left by ROW2_SHIFT_LEFT -- COL0_W/COL1_W are narrower than what
+# plain centring would want once paired with the square box, so centring
+# alone leaves a visible empty margin on the left and clips (d)'s right-side
+# tick/axis labels against the figure edge; shifting both boxes left the
+# same amount fixes both.
+ROW2_SHIFT_LEFT = 1.8244  # inches -- reduced from 2.6125 to compensate for ROW2_H_INCREASE's
+                          # 2026-09-16 jump (1.0 -> 2.225in): (c)'s box grew ~1.23in in width, which
+                          # (being centred-then-shifted) pushed its left edge to x0=-0.79in (clipped
+                          # off the canvas) at the old shift value -- re-solved so x0 lands back at
+                          # ~0 (flush against the left margin, matching the pre-resize intent) net of
+                          # AX_M_EXTRA_LEFT below.
+AX_M_EXTRA_LEFT = 0.45    # inches -- additional (c)-only leftward push (explicit user request,
+                          # bumped 0.15 -> 0.45 on 2026-09-16 using margin freed by FIG_W's
+                          # growth since this was first tuned) to bring (c) flush against the
+                          # figure's left margin
+AX_M_W = ROW2_C_H  # square: width grows with height
+AX_M_X0 = COL0_X0 + (COL0_W - AX_M_W) / 2.0 - ROW2_SHIFT_LEFT - AX_M_EXTRA_LEFT
+ax_m  = fig.add_axes([AX_M_X0 / FIG_W, _y0_frac(row2_top, ROW2_C_H), AX_M_W / FIG_W, ROW2_C_H / FIG_H],
                       projection="3d")
-ax_m  = fig.add_axes([COL0_X0, _y0_frac(row2_top, ROW2_AX_H), COL0_W, ROW2_AX_H / FIG_H])
-ax_ke = fig.add_axes([COL1_X0, _y0_frac(row2_top, ROW2_AX_H), COL1_W, ROW2_AX_H / FIG_H])
+
+# (d): same square-box centring as (c), narrowed (2.15in) and shifted
+# further left (2.99in net) to clear (a)'s legend/etc -- then WIDENED
+# rightward only (left edge fixed) to fill the empty space up to the
+# figure's right margin (explicit user request): its RENDERED 3-D content
+# (not just its assigned box) overspills the box by ~0.37in on the left
+# (a box_aspect/zoom side effect), so a bit of that leftward shift is given
+# back as clearance from (c) once widened; _D_ELONG/_D_ZOOM below are tuned
+# to fill the resulting wider box while keeping the same rendered HEIGHT as
+# (c).
+AX_KE_EXTRA_RIGHT = 2.0   # inches -- additional (d)-only rightward push (explicit user request,
+                          # bumped 0.5 -> 0.8 -> 2.0 on 2026-09-16: the box's own content
+                          # (curves/z-label, measured below its title row) had ~1.67in of
+                          # margin to FIG_W's edge, plenty of room for this). Was dropped to
+                          # 0.0 (from 0.15) when (d)'s box
+                          # grew and started clipping "C~r_x" off the page; FIG_W's later bump to
+                          # 19.6in (to fix that clipping at the source) freed ~0.6in of margin, enough to
+                          # move (d) right again without reintroducing the clip.
+                          # to bring (d) flush against the figure's right margin
+_ax_ke_center = COL1_X0 + COL1_W / 2.0 - ROW2_SHIFT_LEFT
+_ax_ke_w_narrow = ROW2_BOX_W - 2.15
+AX_KE_X0 = (_ax_ke_center - _ax_ke_w_narrow / 2.0 - 2.99 - 0.5   # left edge, held fixed as width
+                          # grows; extra 0.5in shift added when (d)'s height was increased --
+                          # the taller box's changed 3-D perspective pushed the z-label right
+                          # enough to clip against the figure edge, so this recovers margin
+            + AX_KE_EXTRA_RIGHT)
+AX_KE_W = 8.68  # unchanged (explicit user request: (d)'s height grows, its width does not)
+ax_ke = fig.add_axes([AX_KE_X0 / FIG_W, _y0_frac(row2_top, ROW2_D_H), AX_KE_W / FIG_W, ROW2_D_H / FIG_H],
+                      projection="3d")
 
 # Category legend dropped here (redundant with the caption's S/H/A key and
 # collided with the shared bottom controller-color legend); kept only on the
 # standalone comparison_outcome_heatmap.pdf.
-_draw_heatmap(ax_hm, cell_fontsize=19, tick_fontsize=16,
-              show_legend=True, legend_ncol=3, legend_anchor="auto-left", legend_fontsize=15,
+# Font sizes below match multi_init/Circular_combined.pdf's printed sizes (explicit user
+# request): labels ~8.0pt, ticks ~6.8pt, legend ~7.1pt, at FIG_W=21.0's ~0.1671 \columnwidth
+# embed scale (native_pt = target_pt / 0.1671). An earlier attempt at this same target with
+# FIG_W still at 19.6 was rejected because the suptitle and bottom legend ran off the page --
+# see FIG_W's comment above for why growing native font size alone doesn't fix that.
+_LBL_FS, _TICK_FS, _LEG_FS, _TITLE_FS = 48, 41, 42, 52
+_draw_heatmap(ax_hm, cell_fontsize=43, tick_fontsize=_TICK_FS,
+              show_legend=True, legend_ncol=2, legend_anchor="auto-left", legend_fontsize=36,
+              # Re-added (2026-09-16) as a 2-row legend (ncol=2: S/H on row 1, A on row 2,
+              # explicit user request) -- a single-row 3-column layout at any fontsize close to
+              # matching Circular_combined.pdf's sizing was too wide for the (a)-(b) column gap
+              # and drove into (b)'s own plot area; wrapping to 2 rows keeps the font size while
+              # roughly halving the widest row's horizontal footprint.
               show_title=False)
-_draw_3d(ax3d, fontsize=25, ticksize=19)
-_draw_fov_margin(ax_m, fontsize=24, tick_fontsize=21)
-_draw_energy(ax_ke, fontsize=24, tick_fontsize=21)
+_draw_energy(ax3d, fontsize=_LBL_FS, tick_fontsize=_TICK_FS)      # (b): Relative Touchdown Energy
+_draw_3d(ax_m, fontsize=_LBL_FS, ticksize=_TICK_FS)               # (c): Landing Trajectories
+# _D_ELONG (box_aspect's time-axis:y:z ratio) and _D_ZOOM were both tuned by
+# rendering and comparing (d)'s rendered height against (c)'s: (i) matplotlib's
+# Line3D.get_window_extent() is NOT reliable in this matplotlib version (huge
+# nonsense extents, insensitive to box_aspect/zoom) so it can't be used to
+# measure this directly; (ii) proj3d.proj_transform + ax.transData applied to
+# the safe-box's fixed corner coordinates IS reliable and was used instead to
+# solve for the _D_ZOOM that makes (d)'s projected vertical span match (c)'s.
+_D_ELONG = 1.3   # reduced from 1.5 (explicit user request)
+_D_ZOOM = 0.9779  # re-tuned (same proj3d.proj_transform + ax.transData calibration method as
+                 # before) to hold (d)'s rendered height at (c)'s after elong dropped 1.5 -> 1.3
+                 # before) to hold (d)'s rendered height at (c)'s after elong dropped 2.0 -> 1.5
+_draw_fov_3d(ax_ke, fontsize=_LBL_FS, tick_fontsize=_TICK_FS, zoom=_D_ZOOM, elong=_D_ELONG)  # (d): Marker Visibility
 
-# Titles placed after all four panels are drawn (order doesn't actually
-# matter for alignment -- see _panel_title's original=True note above --
-# but keeping them together here is clearer than interleaving draw/title
-# calls per panel).
-_panel_title(ax_hm, "(a) Closed-Loop Outcome")
-# (b) is the one exception to the shared _panel_title helper: matching
-# comparison_combined_circular.pdf's 3-D panel exactly, its title is placed
-# WITH plain axes-relative set_title(y=0.95) instead of _panel_title's
-# fixed pad above the box. A 3-D perspective view always leaves a naturally
-# empty region near the top of its box (regardless of box aspect -- this is
-# separate from the box-aspect fix above); the reference figure's tight
-# look isn't a gap-free render, it's this empty region being used to hold
-# the title text itself rather than reserving extra blank space above the
-# box for it. Trade-off: (b)'s title baseline no longer matches (a)'s
-# exactly (it now sits inset within (b)'s own box), same as the reference.
-ax3d.set_title("(b) Landing Trajectories, Case 5", fontsize=PANEL_TITLE_FS,
-                x=0.55, y=0.95)
-_panel_title(ax_m, "(c) FoV Margin, Case 5")
-_panel_title(ax_ke, "(d) Relative Touchdown Energy")
+_panel_title(ax_hm, "(a) Closed-Loop Outcome", extra_shift=1.15)
+_panel_title(ax3d, "(b) Relative Touchdown Energy", extra_shift=-0.1)
+# extra_shift values above/below widened (2026-09-16) after the font-size bump toward
+# Circular_combined.pdf's sizes made the wider title TEXT overlap across the (a)/(b) and
+# (c)/(d) column gap -- measured via PDF text search (page.search_for), not eyeballed.
+_inset_title(ax_m, "(c) Landing Trajectories, Case 5", (COL0_X0 + COL0_W / 2.0) / FIG_W, extra_shift=1.0)
+_inset_title(ax_ke, "(d) Marker Visibility, Case 5", (AX3D_X0 + AX3D_W / 2.0) / FIG_W, extra_shift=-0.75)
 
 # Legend anchored just below row 2 (upper-center at legend_top), not at the
 # absolute figure bottom -- ties its position to the content above it
 # directly, instead of relying on a separately-sized blank canvas below.
-# Single row (ncol=5): with the short "Proposed"/"Baseline A-D" labels this
-# fits the canvas width comfortably.
-handles, labels = ax3d.get_legend_handles_labels()
-fig.legend(handles, labels, loc="upper center", ncol=5,
-           bbox_to_anchor=(0.5, _y0_frac(legend_top, 0.0)),
-           frameon=False, fontsize=18, handlelength=1.6, columnspacing=1.6, handletextpad=0.5)
+# 2 rows x 3 cols (last cell empty): single-row ncol=5 fit at the old, smaller
+# _LEG_FS, but at the bumped size (matching Circular_combined.pdf) it ran off
+# both edges of the canvas -- wrapping to 2 rows keeps the per-label font size
+# instead of shrinking it. Handles/labels come from ax_m (Landing
+# Trajectories), the only row-2 panel that plots+labels all 5 CTRLS --
+# _draw_energy only labels REACHED_CTRLS (2 of 5).
+handles, labels = ax_m.get_legend_handles_labels()
+# VISTA is CTRLS[0] (ax_m plots/labels in CTRLS order) -- moved to the end per explicit user
+# instruction, baselines keeping their original relative order ahead of it.
+handles, labels = handles[1:] + handles[:1], labels[1:] + labels[:1]
+LEGEND_UP_SHIFT = 0.5  # inches -- moves the legend up off legend_top (explicit user request);
+                       # leaves a bit of extra blank margin at the very bottom of the figure
+                       # rather than reworking the row2_bottom/ROW2_XLABEL_H/LEGEND_GAP chain.
+ctrl_legend = fig.legend(handles, labels, loc="upper center", ncol=3,
+           bbox_to_anchor=(0.5, _y0_frac(legend_top - LEGEND_UP_SHIFT, 0.0)),
+           frameon=False, fontsize=_LEG_FS, handlelength=1.6, columnspacing=1.6, handletextpad=0.5)
+for line in ctrl_legend.get_lines():
+    line.set_linewidth(3.0)
 
+fig.suptitle("Closed-Loop Comparison of VISTA with Baselines",
+             fontsize=53, y=0.985)  # -> ~8.9pt printed, matching Circular_combined.pdf's own
+                                    # fig.suptitle() size (explicit user request)
 safe_savefig(fig, f"{OUT}/comparison_qual_combined.pdf", pad_inches=0.05)
 plt.close(fig)
 
