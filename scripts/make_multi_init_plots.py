@@ -29,13 +29,46 @@ import scipy.io as sio
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from mpl_toolkits.mplot3d import Axes3D  # noqa
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
+# FONT NOTE (2026-09-16, ported from PX4_Gazebo/tools/plot_landing_summary.py):
+# matplotlib's built-in 'cm' mathtext fontset (BakomaFonts) never bundled a
+# bold-italic Computer Modern math font (cmmib10) -- its internal _fontmap only
+# has cal/rm/tt/it/bf/sf/ex, no 'bfit'. Every \boldsymbol on a Latin letter in
+# this script (the 3-D legend/axis labels, image-plane Delta_max annotations)
+# silently fell back to STIXGeneral-BoldItalic instead of genuine CM, diverging
+# from the manuscript's actual embedded font (real Type1 CMMIB10, from
+# amsmath/bm -- confirmed via ICRA_manuscript.pdf's font list). Fixed by
+# switching to mathtext.fontset="custom" with every slot pinned explicitly,
+# using fonts/lmmib10.ttf (a from-scratch TrueType conversion, via fontTools
+# t1Lib + Cu2QuPen, of the real lmmib10.pfb -- Latin Modern Math Italic Bold,
+# the actively-maintained metrically-compatible clone of cmmib10 shipped by
+# every TeX distro) for the 'bfit' slot, registered at runtime via
+# fm.fontManager.addfont(). Also forces pdf.fonttype=42 (embed real TrueType
+# outlines) instead of the default Type 3 (redrawn glyph paths) -- that
+# combination is what caused "a number is out of range" PDF-viewer errors
+# during the same fix on plot_landing_summary.py; see that file's FONT NOTE
+# for the full debugging history.
+_LMMIB10_TTF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "lmmib10.ttf")
+if os.path.exists(_LMMIB10_TTF):
+    fm.fontManager.addfont(_LMMIB10_TTF)
+
 plt.rcParams.update({
+    "figure.dpi": 600,
+    "savefig.dpi": 600,
+    "pdf.fonttype": 42,
     "font.family": "serif",
     "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
-    "mathtext.fontset": "cm",
+    "mathtext.fontset": "custom",
+    "mathtext.rm": "cmr10",
+    "mathtext.it": "cmmi10",
+    "mathtext.bf": "cmb10",
+    "mathtext.bfit": "LMMathBoldItalic10" if os.path.exists(_LMMIB10_TTF) else "cmmi10",
+    "mathtext.cal": "cmsy10",
+    "mathtext.sf": "cmss10",
+    "mathtext.tt": "cmtt10",
     "axes.formatter.use_mathtext": True,
     "font.size": 9,
     "axes.labelsize": 9,
@@ -61,7 +94,16 @@ TRAJ_TITLE = {"Static": "Static Target", "Linear": "Linear Target Trajectory",
               "Sinusoidal": "Sinusoidal Target Trajectory",
               "Lissajous": "Lissajous Target Trajectory",
               "Circular": "Circular Target Trajectory"}
-RUN_COLORS = ["C0", "C1", "C2", "C3", "C4"]
+# Okabe-Ito colorblind-safe palette (same family already used for
+# MULT_COLORS in make_comparison_multi_speed_plots.py) -- higher
+# perceptual contrast and colorblind accessibility than the default
+# matplotlib tab10 C0-C4 cycle, same blue/orange/green/red/purple
+# intuition so it does not break continuity with earlier figures.
+RUN_COLORS = ["#0072B2",   # IC1 blue
+              "#E69F00",   # IC2 orange
+              "#009E73",   # IC3 bluish green
+              "#D55E00",   # IC4 vermillion
+              "#CC79A7"]   # IC5 reddish purple
 
 PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
 SOFT_V_REL_MPS   = 0.20    # soft-landing 3-D relative-speed threshold
@@ -366,7 +408,7 @@ def plot_image_plane(traj):
 
         # End quad (long-dash, IC color) — uses the back-searched last sample
         ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
-        ic_label = (rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
+        ic_label = (rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$,"
                     rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
         h, = ax.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
                      label=ic_label)
@@ -462,7 +504,7 @@ def plot_combined(traj):
     # gridspec with a tight left margin shifts subplot 1 further left
     # (covering the empty space) and a slightly wider wspace prevents the
     # 3-D panel's z-label from overlapping the image-plane panel.
-    fig = plt.figure(figsize=(10.5, 6.0))
+    fig = plt.figure(figsize=(11.8, 8.2))
     # 3-D subplot needs a wider bbox than the image-plane subplot because
     # matplotlib leaves ~25-30 % internal horizontal padding around the
     # rendered cube. Width ratio 1.5:1.0 keeps the visible cube comparable
@@ -483,8 +525,8 @@ def plot_combined(traj):
         n = _land_idx(d) or _idx_of(d)
         X = d.X_DS[:, :n]
         ic = X[:3, 0]
-        ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=1.3,
-                 label=rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
+        ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=2.2,
+                 label=rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$")
         ax3.scatter(X[0, 0], X[1, 0], -X[2, 0],
                     color=RUN_COLORS[k], marker="o", s=35)
         _scatter_outcome(ax3, X[0, -1], X[1, -1], -X[2, -1],
@@ -501,21 +543,20 @@ def plot_combined(traj):
         draw_landing_corridor(ax3, xt[0], xt[1], xt[2],
                               label="Target corridor")
 
-    ax3.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)
-    ax3.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=20)
-    ax3.set_zlabel("altitude [m]", labelpad=2, fontsize=20)
+    ax3.set_xlabel(r"$\,^\mathcal{I}x_\mathrm{b}$ [m]", labelpad=12, fontsize=27)
+    ax3.set_ylabel(r"$\,^\mathcal{I}y_\mathrm{b}$ [m]", labelpad=12, fontsize=27)
+    ax3.set_zlabel(r"$\,^\mathcal{I}z_\mathrm{b}$ [m]", labelpad=2, fontsize=27)
     ax3.locator_params(axis="x", nbins=4)
     ax3.locator_params(axis="y", nbins=4)
     ax3.locator_params(axis="z", nbins=4)
-    ax3.tick_params(pad=1, labelsize=18)
-    ax3.set_title("3-D View", fontsize=20, y=0.97)
+    ax3.tick_params(pad=1, labelsize=23)
+    ax3.set_title("(a) 3-D View", fontsize=29, y=0.97)
     ax3.view_init(elev=22, azim=-58)
 
     # =========================================================================
     # Bottom: image plane
     # =========================================================================
-    ic_colors = ["C0", "C1", "C2", "C3", "C4"]
-    corner_styles = ["-", "--", "-.", ":"]
+    ic_colors = RUN_COLORS  # same per-IC palette as the 3-D panel above
 
     def _closed_quad(px, py):
         """Return (x, y) for ax.plot() depicting the marker outline. N==4:
@@ -584,35 +625,46 @@ def plot_combined(traj):
         P = d.P_DS[:, _cnp_cols(d.P_DS), :n_valid]
         c = ic_colors[k]
         ic = run.data.X_DS[:3, 0]
-        for i in range(P.shape[1]):
-            axI.plot(P[0, i, :], P[1, i, :], color=c, lw=0.7, alpha=0.5,
-                     ls=corner_styles[i % len(corner_styles)])
-        sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
-        axI.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
-        ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
-        ic_label = (rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
+        # Marker-CENTRE trajectory (mean of the 4 arm tips at every sample) --
+        # replaces the old per-corner traces (one line x 4 corners x 5 ICs,
+        # meaningful for the legacy 4-point quad where each corner was itself
+        # a tracked feature). With the cross+stub marker only the centre is a
+        # theory-relevant quantity (Delta_c/image_feature.m centroid), so the
+        # 4 individual arm-tip paths are no longer informative and were pure
+        # clutter. Fixed 2026-09-15.
+        cxt = P[0, :4, :].mean(axis=0)
+        cyt = P[1, :4, :].mean(axis=0)
+        ic_label = (rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$,"
                     rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
-        h, = axI.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
+        h, = axI.plot(cxt, cyt, color=c, lw=2.0, alpha=0.85, zorder=3,
                       label=ic_label)
         ic_handles.append(h)
+        # Start/end marker shapes (orientation at t=0 and touchdown) kept,
+        # unrelated to the per-corner-trace simplification above; no legend
+        # needed -- position along the trajectory line already identifies
+        # which is which.
+        sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
+        axI.plot(sx, sy, color=c, lw=2.0, alpha=0.4, ls="-", zorder=3)
+        ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+        axI.plot(ex, ey, color=c, lw=2.2, ls="-", zorder=4)
 
-    style_handles = []
+    # Desired-marker shape (thick gray). Given a label + appended to
+    # ic_handles so it fills the 6th (otherwise-empty) legend cell of the
+    # 3-row x 2-col grid (5 ICs + DESIRED = 6, exact fit). Re-added
+    # 2026-09-16 at user request.
     if desired_quad is not None:
         dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
-        h_des, = axI.plot(dxq, dyq, color="k", lw=2.0, ls="-", zorder=1,
-                          alpha=0.45, label="desired")
-        style_handles.append(h_des)
-    h_start, = axI.plot([], [], color="gray", lw=1.2, alpha=0.4, label="start")
-    h_end,   = axI.plot([], [], color="gray", lw=1.4, ls=(0, (5, 2)), label="end")
-    style_handles += [h_start, h_end]
+        h_des, = axI.plot(dxq, dyq, color="k", lw=3.0, ls="-", zorder=1,
+                          alpha=0.45, label="DESIRED")
+        ic_handles.append(h_des)
 
-    axI.set_xlabel(r"$\,^\mathcal{C}\hat{x}$ [px]", fontsize=20)
-    axI.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]", fontsize=20, labelpad=-6)
+    axI.set_xlabel(r"$\,^\mathcal{C}\hat{x}$ [px]", fontsize=27)
+    axI.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]", fontsize=27, labelpad=-6)
     axI.set_xlim(-160, 160)
     axI.set_ylim(-120, 120)
     axI.set_aspect("equal", adjustable="box")
-    axI.tick_params(labelsize=18)
-    axI.set_title("Image-Plane View", fontsize=20, y=1.03)
+    axI.tick_params(labelsize=23)
+    axI.set_title("(b) Image-Plane View", fontsize=29, y=1.03)
 
     # Inset on the converged region (unchanged from the standalone plot)
     if desired_quad is not None:
@@ -631,15 +683,14 @@ def plot_combined(traj):
         axins.set_xlim(cx - half, cx + half)
         axins.set_ylim(cy - half, cy + half)
         axins.set_aspect("equal")
-        axins.tick_params(labelsize=10, pad=1)
+        axins.tick_params(labelsize=18, pad=1)
         axins.locator_params(axis="x", nbins=3)
         axins.locator_params(axis="y", nbins=3)
         dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
-        axins.plot(dxq, dyq, color="k", lw=1.5, ls="-", zorder=1, alpha=0.45)
+        axins.plot(dxq, dyq, color="k", lw=2.4, ls="-", zorder=1, alpha=0.45)
         for k in range(len(results)):
             ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
-            axins.plot(ex, ey, color=ic_colors[k], lw=1.2, ls=(0, (5, 2)),
-                       zorder=4)
+            axins.plot(ex, ey, color=ic_colors[k], lw=2.0, ls="-", zorder=4)
         mark_inset(axI, axins, loc1=2, loc2=4, fc="none", ec="0.6", lw=0.6)
 
     # =========================================================================
@@ -649,25 +700,26 @@ def plot_combined(traj):
     #   - Merged IC legend at the bottom-center of the figure, 2 columns x
     #     3 rows (5 IC entries, last cell empty).
     # =========================================================================
-    style_legend = axI.legend(handles=style_handles, loc="lower right",
-                              fontsize=18, ncol=1, framealpha=0.9)
-    axI.add_artist(style_legend)
-
     # 2-row IC legend (5 entries -> 2 rows x 3 cols, last cell empty),
     # fontsize 18, anchored at the figure bottom.
-    fig.legend(handles=ic_handles, loc="lower center", ncol=3,
-               fontsize=16, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
-               handlelength=1.4, columnspacing=0.7, handletextpad=0.5)
+    ic_legend = fig.legend(handles=ic_handles, loc="lower center", ncol=2,
+               fontsize=24, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
+               handlelength=1.6, columnspacing=1.2, handletextpad=0.6)
+    # Legend line swatches thickened independently of the plotted lines
+    # (the centre-trajectory lines feeding this legend are lw=1.1 for
+    # in-panel clarity at that density; the legend swatch can be bolder).
+    for line in ic_legend.get_lines():
+        line.set_linewidth(3.0)
 
     fig.suptitle(f"Landing for Multiple Initial Conditions for {TRAJ_CASE[traj]}",
-                 fontsize=24, y=0.99)
+                 fontsize=30, y=0.97)
 
     # Margins are FRACTIONS of figure height — they shrink the subplot
     # proportionally as figsize shrinks. Use small fractions so the suptitle
     # (~0.5 in) and the 2-row IC legend (~0.7 in) get exactly what they need
     # and the subplot fills the rest. At figsize=(11, 6.5) this yields a
     # subplot region ~5.1 in tall.
-    fig.subplots_adjust(bottom=0.17, top=0.93)
+    fig.subplots_adjust(bottom=0.27, top=0.92)
     pos3 = ax3.get_position()
     ax3.set_position([pos3.x0 - 0.1, pos3.y0,
                       pos3.width, pos3.height])
