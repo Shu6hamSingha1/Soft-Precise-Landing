@@ -59,11 +59,11 @@
 %% ══════════════════════════════════════════════════════════════════════════
 \begin{document}
 
-\title{VISTA: Metric-Scale-Free Coupled Visual Control for Soft-Precise Landing under Visibility Constraints}
+\title{VISTA: Metric-Scale-Free Visual Control for Soft-Precise Landing under Visibility Constraints}
 
 \maketitle
 \begin{abstract}
-This paper presents Visibility-Integrated Soft-Touchdown Adaptive Sliding-Mode Control (VISTA), a monocular visual-control framework for soft-precise landing on unpredictably moving platforms. Image-position and image-velocity regulation are intrinsically coupled through the monocular visual dynamics. The lateral image dynamics depend on both lateral and vertical image velocity, while regulation of the vertical component provides the mechanism for soft touchdown without metric depth. VISTA exploits this structure through a metric-scale-free architecture that couples image-position and image-velocity errors within a prescribed-performance sliding manifold. Depth-normalized relative velocity is recovered directly from optical flow, enabling simultaneous lateral alignment and vanishing relative touchdown velocity without metric target-depth, metric UAV position/velocity, or target-velocity estimation. Image-derived yaw regulation closes the orientation-alignment loop without an absolute-heading measurement, while a visibility-constrained barrier conditions the commanded body lean to preserve target visibility. Inertial measurements for virtual-camera compensation and attitude realization. Lyapunov analysis establishes uniform ultimate boundedness of the coupled visual dynamics, preservation of the prescribed visual-error envelopes under the derived coupling condition, and conditional visibility invariance. Simulations achieve soft-precise touchdown for all \(25\) tested initial-condition/motion combinations and all \(20\) runs over a \(\pm40\%\) target-speed sweep; four representative visual landing baselines do not achieve the same combined capability.
+This paper presents Visibility-Integrated Soft-Touchdown Adaptive Sliding-Mode Control (VISTA), a monocular visual-control framework for soft-precise landing on unpredictably moving platforms. Image-position and image-velocity regulation are intrinsically coupled through the monocular visual dynamics. The lateral image dynamics depend on both lateral and vertical image velocity, while regulation of the vertical component provides the mechanism for soft touchdown without metric depth. VISTA exploits this structure through a metric-scale-free architecture that couples image-position and image-velocity errors within a prescribed-performance sliding manifold. Depth-normalized relative velocity is recovered directly from optical flow, enabling simultaneous lateral alignment and vanishing relative touchdown velocity without metric target-depth, metric UAV position/velocity, or target-velocity estimation. Image-derived yaw regulation closes the orientation-alignment loop without an absolute-heading measurement. A visibility-constrained barrier conditions the commanded body lean to preserve target visibility. Inertial measurements for virtual-camera compensation and attitude realization. Lyapunov analysis establishes uniform ultimate boundedness of the coupled visual dynamics, preservation of the prescribed visual-error envelopes under the derived coupling condition, and conditional visibility invariance. Simulations achieve soft-precise touchdown for all $\boldsymbol{25}$ tested initial-condition/motion combinations and all $\boldsymbol{20}$ runs over a $\boldsymbol{\pm40\%}$ target-speed sweep, while four representative visual landing baselines do not achieve the same combined capability.
 \end{abstract}
 
 \section{INTRODUCTION}
@@ -180,7 +180,7 @@ Define the translational and angular image velocities as
     \boldsymbol w \triangleq \boldsymbol\omega_{\mathrm t} - \dot\psi_{\mathrm b}\hat{\boldsymbol e}_z,
     \label{image velocities: equation}
 \end{equation}
-where $\boldsymbol v_{\mathrm{rel}}\in\mathbb R^3$ denote the target translational velocity relative to the UAV expressed in $\mathcal V$, $\boldsymbol\omega_{\mathrm t}$ is the unknown target angular velocity
+where $\boldsymbol v_{\mathrm{rel}}\in\mathbb R^3$ denotes the target translational velocity relative to the UAV expressed in $\mathcal V$, $\boldsymbol\omega_{\mathrm t}$ is the unknown target angular velocity
 and $\dot\psi_{\mathrm b}$ is the UAV yaw rate.
 
 For the nominal level-platform geometry of Assumption~\ref{asm:depth_geometry}, the optical flow of each virtual-image feature satisfies $\dot{\hat{\boldsymbol{r}}}_i = L_{s,i}^\text{t}\boldsymbol{\nu} + L_{s,i}^\text{r}\boldsymbol{w}$, where
@@ -238,7 +238,7 @@ where $\boldsymbol d_\nu$ denotes the lumped image-space disturbance, including 
 The corresponding image-orientation dynamics are
 \begin{equation}
     \dot{\alpha} = -\omega_{\mathrm{u}} + d_{\alpha}, \qquad
-    d_{\alpha} \triangleq \boldsymbol l_\alpha^\top \boldsymbol\omega_{\mathrm t} + (\omega_{\mathrm{u}} - \dot{\psi}_{\mathrm{b}}).
+    d_{\alpha} \triangleq \boldsymbol l_\alpha^\top \boldsymbol\omega_{\mathrm t} + (\omega_{\mathrm{u}} - \dot{\psi}_{\mathrm{b}}),
     \label{uncertain image orientation dynamics: equation}
 \end{equation}
 where $\omega_{\mathrm{u}}$ is the commanded yaw-rate, and $d_{\alpha}$ collects the target-induced image-orientation motion and yaw-rate realization error.
@@ -364,7 +364,7 @@ Then, the coupled sliding dynamics can be written as
 Define the uncertainty regressor $\mathcal R_\nu \triangleq \begin{bmatrix} - \boldsymbol\eta_\nu & d_{\nu,0} I_3 \end{bmatrix} \in\mathbb R^{3\times4}$ and the lumped uncertainty vector $\boldsymbol\delta_\nu \triangleq \underline{\beta}^{-1} \begin{bmatrix} \left(\frac{\beta(t)}{\beta_0} - 1\right) & d_{\nu,0}^{-1} \boldsymbol d_\nu^\top \end{bmatrix}^\top\in\mathbb R^4$, where $\beta_0 = 1~\mathrm{m}^{-1}$ and $d_{\nu,0}=1~\mathrm{s}^{-2}$ are fixed reference scales used to normalize the gain- and disturbance-dependent terms.
 Then, the sliding dynamics can be written as
 \begin{equation}
-    \dot{\boldsymbol\sigma} = -\beta(t)\mathcal G_\nu\left(\boldsymbol a_{\mathrm u} - \frac{\boldsymbol\eta_\nu}{\beta_0} \right) + \underline{\beta}\,\mathcal G_\nu\mathcal R_\nu\boldsymbol\delta_\nu,
+    \dot{\boldsymbol\sigma} = -\beta(t)\mathcal G_\nu\left(\boldsymbol a_{\mathrm u} - \frac{\boldsymbol\eta_\nu}{\beta_0} \right) + \underline{\beta}\,\mathcal G_\nu\mathcal R_\nu\boldsymbol\delta_\nu.
     \label{sliding uncertainty dynamics: equation}
 \end{equation}
 By Assumption~\ref{asm:uncertainty}, $\boldsymbol\delta_\nu$ is uniformly bounded; hence, there exists a finite but unknown constant $\tilde d_\nu>0$ such that $\|\boldsymbol\delta_\nu(t)\|_2\leq\tilde d_\nu$.
@@ -396,7 +396,7 @@ Substitution into \eqref{sliding uncertainty dynamics: equation} gives
     \centering
     \includegraphics[scale=0.4]{Drafts/ICRA/Arch_1609_6.png}
     \caption{\textbf{Closed-loop VISTA architecture and representative landing response.}
-    Image and inertial sensing provide $\boldsymbol s,\alpha,\boldsymbol\nu, \boldsymbol w$; the coupled controller generates $\boldsymbol a_u$, the visibility CBF conditions its lean, and the virtual-compass loop generates $\psi_d$ for the geometric $SO(3)$ controller. The right panel shows a representative UAV--target trajectory together with the target-relative position norm, indicating landing precision, and the relative-velocity norm, indicating soft-touchdown performance.}
+    Image and inertial sensing provide $\boldsymbol s,\alpha,\boldsymbol\nu, \boldsymbol w$. The coupled controller generates $\boldsymbol a_u$, the visibility CBF conditions its lean, and the virtual-compass loop generates $\psi_d$ for the geometric $SO(3)$ controller. The right panel shows a representative UAV--target trajectory together with the target-relative position norm, indicating landing precision, and the relative-velocity norm, indicating soft-touchdown performance.}
     \label{fig:architecture}
 \end{figure*}
 
@@ -412,7 +412,7 @@ Substitution into \eqref{sliding uncertainty dynamics: equation} gives
 The prescribed visual-error envelopes do not independently guarantee that the measured landing marker remains inside the physical camera FoV. We therefore impose a separate discrete-time visibility barrier on the measured camera-frame marker centre ${}^{\mathcal C}\tilde{\boldsymbol r}$.
 For each $k\in\{1,2\}$, define the barrier function
 \begin{equation}
-    h_k({}^{\mathcal C}\tilde{\boldsymbol r}) = 1 - \left| \left[ \Phi^{-1} {}^{\mathcal C}\tilde{\boldsymbol r} \right]_k \right|
+    h_k({}^{\mathcal C}\tilde{\boldsymbol r}) = 1 - \left| \left[ \Phi^{-1} {}^{\mathcal C}\tilde{\boldsymbol r} \right]_k \right|,
     \label{cbf barrier: equation}
 \end{equation}
 so that $h_k\ge0$ for $k\in\{1,2\}$ is equivalent to ${}^{\mathcal C}\tilde{\boldsymbol r}\in\mathcal S_{\mathrm{vis}}$ defined in \eqref{visibility set: equation}.
@@ -430,7 +430,7 @@ The visibility-conditioned command is obtained from
     \begin{aligned}
     \boldsymbol y^\star = \arg\min_{\boldsymbol y\in\mathbb R^2} ~& \frac{1}{2}\|\boldsymbol y-\boldsymbol y_{\mathrm d}\|^2 \\
     \text{s.t.}\quad& \left| \left[ \Phi^{-1}\boldsymbol c_{\mathrm{next}}(\boldsymbol y) \right]_k \right| \le 1,\quad k\in\{1,2\},\\ 
-    &\|\boldsymbol y\|\le y_{\max}.
+    &\|\boldsymbol y\|\le y_{\max},
     \end{aligned}
     \label{cbf qp: equation}
 \end{equation}
@@ -490,7 +490,7 @@ The adaptive law preserves $\boldsymbol\kappa\in\mathbb R_{>0}^3$.
 Using \eqref{closed loop sliding dynamics: equation}, \eqref{adaptive gain law: equation}, $\beta(t)\ge\underline\beta$, and the row-wise uncertainty bound $|(\mathcal R_\nu\boldsymbol\delta_\nu)_k| \le w_{\nu,k}\tilde d_\nu$, we obtain
 \begin{align}
     \dot V \le{}& -\underline\beta\lambda_{\min}(\Gamma)  \|\boldsymbol\sigma\|^2 -\frac{\underline\beta}{2}  \widetilde{\boldsymbol\kappa}^{\top}  \mathcal P\widetilde{\boldsymbol\kappa} + \frac{3}{2} \underline\beta\,\lambda_{\max}(\mathcal P)(\tilde d_\nu)^2 \nonumber\\
-    &\le -\varphi_{1,\nu}V + \frac{3}{2} \underline\beta\,\lambda_{\max}(\mathcal P)(\tilde d_\nu)^2.
+    &\le -\varphi_{1,\nu}V + \frac{3}{2} \underline\beta\,\lambda_{\max}(\mathcal P)(\tilde d_\nu)^2,
     \label{translational Vdot bound: equation}
 \end{align}
 where $\widetilde{\boldsymbol\kappa}^{\top}\mathcal P\boldsymbol\kappa \ge \frac12 \widetilde{\boldsymbol\kappa}^{\top} \mathcal P\widetilde{\boldsymbol\kappa} - \frac12(\tilde d_\nu)^2 \boldsymbol1^\top\mathcal P\boldsymbol1$, and $\boldsymbol1^\top\mathcal P\boldsymbol1 \le 3\lambda_{\max}(\mathcal P)$.
@@ -596,8 +596,8 @@ retuning.
 \centering
 \includegraphics[width=\columnwidth]
 {Figures/generated/multi_init/Circular_combined.pdf}
-\caption{\textbf{Robustness to five initial conditions for Case~5.} (a) UAV/target trajectories: the shaded region is the $0.08$~m precision region. Touchdown markers: $\blacktriangle$ soft-precise and $\times$ aborted. (b) Camera-frame image-plane trajectories: the gray marker is the desired configuration, while the asymmetric stub encodes image orientation.
-The inset magnifies the terminal position and orientation alignment about the desired marker. The legend reports The legend gives the terminal marker-centre offset $\|\delta{}^{\mathcal C}\hat{\boldsymbol r}\|_2$.}
+\caption{\textbf{Robustness to five initial conditions for Case~5.} (a) UAV/target trajectories: the shaded region is the $0.08$~m precision region. Touchdown markers denote $\blacktriangle$ for soft-precise touchdown and $\times$ for aborted runs. (b) Camera-frame image-plane trajectories: the gray marker is the desired configuration, while the asymmetric stub encodes image orientation.
+The inset magnifies the terminal position and orientation alignment about the desired marker. The legend gives the terminal marker-centre offset $\|\delta{}^{\mathcal C}\hat{\boldsymbol r}\|_2$.}
 \label{fig:circular_robustness}
 \end{figure}
 
@@ -623,7 +623,7 @@ VISTA is compared with the performance-constrained PBVS (PBVS--PPC) method~\cite
 \includegraphics[width=\columnwidth]
 {Figures/generated/comparison_qual_combined.pdf}
 \caption{\textbf{Closed-loop comparison from $\mathrm{IC}_2=(2,2,5)$~m.}
-(a) Outcomes over the five target-motion cases (S: soft-precise, H: hard/imprecise, A: aborted).
+(a) Outcomes over the five target-motion cases, where S denotes soft-precise, H denotes hard or imprecise, and A denotes aborted.
 (b) Normalized touchdown energy $\eta_E=(v_f/0.20)^2$: $\log_{10}(\eta_E)<0$ denotes soft touchdown.
 (c) UAV landing trajectories for Case~5. Touchdown markers: $\blacktriangle$ soft-precise, $\Diamond$ precise only, $\bigcirc$ soft only, $\bigtriangledown$ neither, and $\times$ aborted.
 (d) Normalized marker-centre trajectories: $|{}^{\mathcal C}\tilde r_x|=1$ or $|{}^{\mathcal C}\tilde r_y|=1$ is the FoV boundary.}
