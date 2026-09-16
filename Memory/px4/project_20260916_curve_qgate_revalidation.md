@@ -1,6 +1,6 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "CURVED-TARGET re-validation of PLASMC_AU_LEAD_QGATE (2026-09-16), the load-bearing open question. TWO results: (1) ✅ BLOCKER CLEARED — the gate does NOT neuter the curve benefit (gated vs ungated lead: e_mean 0.253 vs 0.250 p=0.72, osc_std p=0.49, both 4/4 ON-PLATFORM; gate transmits ~33% in the tracking window, enough). (2) ⚠ PREMISE CHANGED — the curved-target limit cycle is GONE from the current baseline: no-lead is now 3/4 ON-PLATFORM, e_rot +0.05 (was +1.11), osc_std 0.033 (was 0.06-0.07), vs July's 0/4 at 1.0-1.7 m. AU_LEAD is now a modest refinement (e_mean 0.345->0.250, p=0.0001), not a rescue. Also: my offline pre-check predicting the gate would kill the curve was WRONG by 2x — it divided July 640x480 extents by today's 320x240 frame_min."
+description: "CURVED-TARGET re-validation of PLASMC_AU_LEAD_QGATE (2026-09-16), the load-bearing open question. TWO results: (1) ✅ BLOCKER CLEARED — the gate does NOT neuter the curve benefit (gated vs ungated lead: e_mean 0.253 vs 0.250 p=0.72, osc_std p=0.49, both 4/4 ON-PLATFORM; gate transmits ~33% in the tracking window, enough). (2) ⚠ PREMISE CHANGED — the curved-target limit cycle is GONE from the current baseline: no-lead is now 3/4 ON-PLATFORM, e_rot +0.05 (was +1.11), osc_std 0.033 (was 0.06-0.07), vs July's 0/4 at 1.0-1.7 m. AU_LEAD is now a modest refinement (e_mean 0.345->0.250, p=0.0001), not a rescue. (3) ✅ CAUSE IDENTIFIED: the TWO-TIER VISIBILITY-QP REWRITE killed the cycle — all four env-togglable gain reverts (CBF_DRIFT_TAU=0, P_xy=1.5, P2INF=1.0, XI2=0.7) are NULL (13/13 ON-PLATFORM, no cycle), and the old cone rotated the lateral cmd 0.345-0.473 rad at 100% duty vs the new QP's 0.058-0.106 rad / 0-16% active — the old cone WAS the cycle's amplitude-setting describing-function element. ⇒ AU_LEAD is very likely REDUNDANT. Also: my offline pre-check predicting the gate would kill the curve was WRONG by 2x — it divided July 640x480 extents by today's 320x240 frame_min."
 metadata: 
   node_type: memory
   type: project
@@ -52,12 +52,53 @@ So AU_LEAD is no longer a rescue, it is a **modest refinement of an already-work
 e_mean 0.345 → 0.250 (**−27 %, p=0.0001**, very tight data), ON-PLATFORM 3/4 → 4/4
 (ns at n=4). Real, but nothing like the July 0/4 → 2/3 step.
 
-**NOT yet identified: what fixed it.** Prime suspects, all landed between 07-03 and now:
-the two-tier visibility-projection rewrite (Tier-1 QP replacing the joint-QP/cone stack),
-**`CBF_DRIFT_TAU=0.15` — itself a `τ·d` MOVING-TARGET lead term in the visibility QP**, the
-`PLASMC_YAW_RATE_LAW` bake, `P2INF_X` → 2.5. Worth isolating: whichever one killed the
-cycle is a more fundamental win than AU_LEAD, and if it is `CBF_DRIFT_TAU` then the two
-mechanisms are doing the same job and AU_LEAD may be redundant.
+**✅ IDENTIFIED (same day, isolation sweep): the TWO-TIER VISIBILITY-QP REWRITE killed it.**
+
+Diffed July's vs today's recorded `Control_Params` on the curve → exactly four
+env-togglable lateral-loop changes. Reverted each ONE AT A TIME, no lead, GT-FB Circular
+(`test_data/Rover_Turning/cycle_isolation/`):
+
+| arm | revert | result |
+|---|---|---|
+| D | `CBF_DRIFT_TAU` 0.15→0 | 4/4 ON-PLATFORM, e_rot +0.05…+0.10 — **null** |
+| E | `P_xy` 2.5→1.5 (κ leakage) | 3/3 ON-PLATFORM, e_rot +0.07…+0.08 — **null** |
+| F | `P2INF_xy` 2.5→1.0 (funnel floor) | 3/3 ON-PLATFORM, e_rot +0.03…+0.08 — **null** |
+| G | `XI2_xy` 1.0→0.7 | 3/3 ON-PLATFORM, e_rot +0.05…+0.07 — **null** |
+
+**13/13 ON-PLATFORM, zero cycle in any arm** (e_rot never above +0.10, osc_std 0.029-0.039,
+lat 0.017-0.080 m). None of the gain bakes did it. ⇒ by elimination the cause is the one
+NON-env-togglable change: **the two-tier visibility-projection rewrite** (Tier-1 QP
+replacing the `rho_fov`/`theta_cone`/joint-QP stack).
+
+**POSITIVE mechanism evidence, not just elimination** — cone activity in the 0.8-3.5 m
+tracking window:
+
+| | JULY (old CBF) | TODAY (new QP) |
+|---|---|---|
+| `theta_cone` mean | **0.345-0.473 rad (20-27°)** | **0.058-0.106 rad (3-6°)** — 5-8× smaller |
+| `vis_active` | n/a | **0-16 %** (0 % in 2 of 4 reps) |
+| `rho_fov` | 358, always present | channel gone |
+
+This matches [[project_rover_turning_open]]'s OWN diagnosis of the cycle, which named the
+cone as the amplitude-setting element: *"tau_ia+cone −9° but gain 0.43 (cone active 26-38 %
+of samples — **the DF that caps growth**)"* and *"A·W*² = a_osc ≈ 1.0 m/s² CONSTANT across
+reps → **amplitude is authority-set**"*. A limit cycle needs a nonlinearity to set its
+amplitude; the old chattering cone WAS that nonlinearity. Replace it with a QP that sits
+idle on a clean approach and the describing-function element sustaining the orbit is gone.
+
+⚠ Caveat: `theta_cone(t)`'s computation may itself have changed in the rewrite, so treat
+the 5-8× as corroboration rather than a like-for-like measurement. The decisive evidence is
+the 13/13 null elimination plus the structural replacement. **Gold-standard confirmation
+still available if wanted: a worktree at the pre-rewrite commit** (`d380901c`, the OLD arm
+of the VisProjGate A/B) run on the same curve recipe.
+
+⇒ **AU_LEAD is very likely REDUNDANT.** It was built to damp a cycle that the visibility-QP
+rewrite already removed. It still buys ~27 % tracking error on the curve (e_mean 0.345→0.250),
+but that is a refinement of a solved case, not the rescue it was designed to be — weigh that
+against its complexity (two gate terms, four knobs) before any bake.
+
+(`PLASMC_YAW_RATE_LAW` was never a candidate here: this curve recipe runs heading-hold with
+`YAW_{GAMMA,KAPPA0,OMEGA,N}=0`, so the yaw law is inert.)
 
 ## ⛔ MY OFFLINE PRE-CHECK WAS WRONG — 2× resolution error
 
