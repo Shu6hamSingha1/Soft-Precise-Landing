@@ -1,6 +1,6 @@
 ---
 name: feedback_recurring_analysis_mistakes
-description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics (catch rate without false-positive rate, message without base rate); stale derived docs trusted over source; unverified baselines under concurrent sessions. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
+description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16 (sections 10-15): mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
 metadata:
   node_type: memory
   type: feedback
@@ -39,6 +39,10 @@ comparison. Filter to `t_g[0] <= t <= t_g[-1]`. Prefer the curated `--set` path 
 hand-pairing.
 
 ## 2. PAIRING assumed from directory/file names
+
+> ⚠ See also **§13** — the MIRROR of this one: there the directory NAME was right and the
+> mtime was wrong. Neither is authoritative; cross-check against recorded content.
+
 
 - 2026-09-01: `validate_detector_gt.py`'s own docstring warns the data-dir ↔ `_raw`-dir pairing
   is MANUAL (data dir lags ~13 s).
@@ -161,6 +165,96 @@ source FIRST. If it is gone or default-off for a different reason, the entry is 
 entry will produce the same wrong recommendation for the next session. Historical findings
 (causality, mechanism) can stay valuable while the named fix and next-step are dead — say which
 is which in the stamp.
+
+## 10. MECHANISM inferred from an observational LOG-DIFF, reported as a finding
+
+**2026-09-09→16 session: THREE confident mechanism claims, TWO refuted by the first
+controlled test that touched them.** Each looked strong observationally — matching
+magnitudes, high correlations, agreement with prior campaign analysis — and each was wrong.
+
+- **κ-ratchet HF pump** (AU_LEAD stationary regression). Log-diff evidence: `I_a_raw` peak
+  4.7→14.6, κ peak 0.21→0.41, κ-growth +0.08→+0.37, `corr(lead-delta, κ)` −0.01→+0.42, RATIO
+  clamp pinned at exactly 0.5·|I_a_raw|. **Refuted by a GT-FB A/B** (no regression, κ *decays*
+  in both arms) — all of it was a driven response to amplified sensor noise, not self-excitation.
+  [[feedback_aulead_stationary_regresses]]
+- **"The visibility-QP rewrite killed the curve limit cycle."** Evidence: 4/4 gain reverts null
+  (13/13 clean), old cone rotated the command 0.345-0.473 rad at 100 % duty vs the new QP's
+  0.058-0.106 / 0-16 % active, AND the original campaign had independently named that cone
+  *"the DF that caps growth"*. **Refuted by a worktree at the pre-rewrite commit** — old cone
+  live at July magnitude, still no cycle. [[project_20260916_curve_qgate_revalidation]]
+- The one that SURVIVED its test: "AU_LEAD is a perception-noise amplifier" → the QGATE fix
+  worked. Note what distinguishes it — it was framed as a prediction and then tested.
+
+**The check:** a log-diff yields a HYPOTHESIS. Before writing it as a finding, name the
+controlled experiment that would falsify it, and run that. Correlated magnitudes in one arm
+are not a mechanism; only an intervention is.
+
+## 11. OUT-OF-REPO state — a worktree reconstructs the CODE, not the EXPERIMENT
+
+**2026-09-16:** bisecting Jul→Sep for what killed the curve cycle. Endpoint validation first:
+the **exact July commit `edb546f0`** that produced 27/27 cycling reps was re-run on a worktree
+**today → NO-CYCLE (median |e_rot| 0.13 vs +0.58…+1.10)**. Same commit, opposite behaviour ⇒
+the cause is outside git, and a bisect would have falsely converged on the earliest commit.
+
+This project's behaviour depends on state git does not hold: the **camera SDF**
+(`~/PX4-Autopilot/.../mono_cam/model.sdf` — 640×480→320×240 on 2026-08-27), Gazebo world and
+marker assets, PX4 version, host load.
+
+**The check:** before any bisect or "commit X changed behaviour" claim, **verify the old
+commit still reproduces the old behaviour.** If it doesn't, stop — the answer is not in the
+history.
+
+## 12. n=25 deltas quoted without the BASELINE'S OWN SPREAD
+
+**2026-09-09→12:** three independent runs of the IDENTICAL perception baseline (no config
+change whatsoever) gave **20/25, 19/25, 17/25** — pooled 56/75 = 0.747. **Run-to-run spread is
+3/25 (12 pct pts) with nothing changed.** I reported "18/25 beats the 17/25 baseline" as an
+improvement; Fisher p = **1.000**.
+
+Resolution at n=25: ≤8/25 is unambiguous; ~13/25 is marginal (p≈0.05); ≥16/25 is
+indistinguishable from baseline.
+
+**The check:** run ≥2 baseline repeats before believing any gate/knob result, and quote a
+Fisher p, never a bare count delta. Also beware the sibling error: slicing to the ICs that
+worked (an "IC1-4 recovered" that was 13/25 overall, still p=0.046 below baseline).
+[[feedback_session_20260909_12_audit]]
+
+## 13. mtime on archived test_data is NOT the run date
+
+**2026-09-16:** built an `e_rot` timeline dated by file mtime; it showed the curve cycle still
+alive on 2026-08-07, narrowing the search window to Aug 7→Sep 9. Those directories are named
+**`Fri Jul  3 ... 2026`** — July runs whose mtime a later copy had bumped. Re-dating from the
+directory NAME collapsed the window back to the original Jul 3→Sep 9 (no moving-target data
+exists in between at all).
+
+**The check:** parse the run timestamp out of the directory name (`%a %b %d %H-%M-%S %Y`);
+use mtime only as a fallback and say so. Note this is the MIRROR of §2 — there the names lied
+and mtime was right; here mtime lied and the name was right. **Neither is authoritative;
+cross-check against recorded content** (`Control_Params`, `Img_Params`) whenever the date matters.
+
+## 14. PIXEL-domain quantities compared across the 2026-08-27 resolution change
+
+**2026-09-16:** predicted from archived July reps that the AU_LEAD quality gate would transmit
+**<1.5 %** and kill the curve — by dividing July-era `MARKER_EXTENT_PX` by **today's**
+`frame_min=240`. July ran 640×480 → `frame_min=480`. True July fill was 246/480 = **0.51**
+(gate OPEN), not 1.02 (gate closed). **Off by exactly 2×**, and the live run measured 0.33-0.56.
+
+**The check:** any px quantity (`MARKER_EXTENT_PX`, centre, fill fractions, `rho_fov`, cal
+matrices) must be renormalised across 640×480→320×240. Read `Img_Params.txt` from the run
+itself. GT-derived metrics (`e_mean`, `e_rot`, `osc_std`, touchdown lat) are
+resolution-independent and safe.
+
+## 15. Inherited DEFAULTS are not a controlled variable on a shared worktree
+
+**2026-09-09:** my GT-FB A/B ran arms 27 min apart without pinning `CBF_DRIFT_TAU`. A peer
+session re-baked its default **between them** (`6701d143` 21:40 →0; arm A 22:13; `827933b5`
+22:27 →0.15; arm B 22:40), so **arm A ran 0.0 and arm B ran 0.15** — and I had told the peer
+the harness pinned it. It didn't. One arm of that A/B is permanently confounded.
+
+**The check:** pin EVERY non-default env var explicitly in the harness, and verify from the
+run's own `Control_Params.resolved` afterwards — not from what you believe the default is.
+Related harness bug from the same thread: `env NAME=VAL -u OTHER` silently runs `-u` as the
+COMMAND; all `-u` flags must precede every `NAME=VALUE`. That silently no-op'd a whole arm.
 
 ## Also worth screening for
 
