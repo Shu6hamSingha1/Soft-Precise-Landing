@@ -1,10 +1,70 @@
 ---
 name: project_rover_turning_open
-description: "TURNING-rover (Circular r=0.8, wz=0.48) thread: yaw ramp windup SOLVED (Omega_d FF); k_r RESOLVED (HD_KR=0 = wrong reference, rejected; DHD_SRC falsified c3-noise surgically; defaults stand). CYCLE MECHANISM CORRECTED 2026-07-03: W*=1.3-1.7 rep-scattered (locked-1.7+harmonics was an FFT-bin artifact), A*W^2 = 1 m/s^2 const (cone-clamp-set amplitude, duty 26-38%), actuation phase only -25..-55 (NOT -120; method artifact), fuel = anti-position command + ANY lag pumps a rotating error (P_cyc>0 7/9, sign predicted by chi vs W*tau 9/9); damping quadrature destroyed in the barrier chain (drift branch chi=-1.5 instead of +90; switch 0.47 share at +7). Exit sized +25-40deg at 1.3-1.7 rad/s: PLASMC_AU_LEAD approved 07-03, under test."
+description: "⛔ TITLE IS STALE — THE CURVE IS NO LONGER OPEN (re-stamped 2026-09-17). Sep 2026 GT-FB Circular lands ~30/33 on-platform at 1-9 cm; the rotating limit cycle this whole file characterises is GONE, and its disappearance is NOT explained by anything in this file (nor by any repo commit — see project_20260916_curve_qgate_revalidation). AU_LEAD and CBF_DRIFT_TAU, the two 'exits' this file sized, are both no longer binding. The July DIAGNOSTIC CONTENT below (cycle structure, stage/branch budgets, yaw ramp windup SOLVED via Omega_d FF, k_r RESOLVED, HD_KR/DHD_SRC falsifications, TERMINAL_COMMIT=0 bake) remains valid as a record of that era; the PROGNOSIS ('structural at the current actuation phase', 'remaining exits: AU_LEAD or platform size') is REFUTED."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3c2f4c67-05c1-4e6f-966b-0e62018fc8a7
+---
+
+## ⛔⛔ RE-STAMPED 2026-09-17 — THE CURVE IS NO LONGER OPEN. Read this before anything below.
+
+The September 2026 data contradicts this file's central prognosis. Everything below is kept
+as an accurate record of the **July 2026 era**; do not act on its conclusions.
+
+**1. The curve lands now.** GT-FB Circular (~0.5 m/s, heading-hold, `TERMINAL_COMMIT=0`),
+pooled across `Rover_Turning/{cycle_isolation,qgate_revalidation}`, `XirXi2_RoverGTFB/moving_base`
+and `RoverCross_GTFB_Circular`: **~30/33 on-platform at xy 1-9 cm**, `min_rel_z` 0.490-0.504 m
+(genuine pad landings). July's best was 2/3 and its typical arm was 0/3 at 1-8 m; July's
+`yawhold_arm_n3` shows `min_rel_z=0.089` — it descended past the pad to near true ground,
+i.e. landed *beside* it. Same trajectory family, same harness.
+
+**2. The limit cycle is gone, and NOT because of anything in this file.** Primary
+investigation: [[project_20260916_curve_qgate_revalidation]] (peer session). Key results:
+- The pre-visibility-rewrite code (`d380901c`) **already has no cycle** — `e_rot` +0.05..+0.21
+  vs July's +1.11. So the two-tier visibility-QP rewrite did NOT kill it (that claim was
+  raised and RETRACTED, `e592376d`).
+- Running the **exact July commit `edb546f0` today** also gives NO cycle (median |e_rot| 0.13,
+  n=2) vs that same commit's own archived July data (+0.58..+1.10, 27/27 cycle reps).
+  **⇒ Same commit, cycle in July, no cycle today: the cause is OUTSIDE the git repo.** A commit
+  bisect would falsely converge on the earliest commit — do not attempt one (`e7882829`).
+- Peer's leading hypothesis is the out-of-repo camera SDF (640×480/fx=270 → 320×240/fx=135 on
+  2026-08-27), via "less image work ⇒ less latency ⇒ smaller Wτ ⇒ flips the χ>Wτ pump condition".
+
+**⚠ My measurement constrains that hypothesis (2026-09-17, this session).** These are **GT-FB**
+runs, so a camera change can only reach the control loop via CPU contention / loop rate, not via
+the feature path. **The logged control-loop timing is essentially unchanged across the eras:**
+
+| era | ctrl rate (median) | dt p95 |
+|---|---|---|
+| July cycling (`yawhold_arm_n3`, `aulead_sweep`, n=9) | 94.4 Hz | 18.3-18.7 ms |
+| Sep `d380901c` worktree (n=4) | 100.0 Hz | 18.5 ms |
+| Sep HEAD (`qgate A_base`, `cycle_isolation D_tau0`, n=8) | 100.0 Hz | 18.0 ms |
+
+The loop was **not** starved in July (identical p95 tail). So the simple "slower loop ⇒ more
+lag" route is not supported by the control-side timing; if the camera SDF is the cause it must
+act through some other path under GT-FB. **The cause remains UNIDENTIFIED — treat it as open.**
+
+**3. What the visibility rewrite DID do: kill the TAIL, not the cycle.** Same-harness worktree
+A/B on the curve — old stack is **bimodal** (lat 0.018-5.90 m, `e_mean` sd **0.691**) vs new
+(sd **0.006**); on-platform 1/4 vs 3-4/4. This replicates the stationary "NEW wins the TAIL"
+finding from [[project_20260909_visibility_projection_wire_in]] on a moving target.
+
+**4. Both "exits" this file sized are no longer binding.**
+- **`PLASMC_AU_LEAD`** — `qgate_revalidation` n=4/arm: no-lead 3/4, lead-ungated 4/4,
+  lead+qgate 4/4. Equivalent. The elaborate ω_z=0.9/ω_p=3.5/ratio-0.5 tuning below solved a
+  problem that no longer binds. (Also [[feedback_aulead_stationary_regresses]], risk RESOLVED.)
+- **`CBF_DRIFT_TAU`** — `cycle_isolation/D_tau0` (τ=0, reactive-only) gave the tightest numbers
+  in the whole dataset (**4/4 at 1.5-3.1 cm**), slightly better than τ=0.15. ⚠ τ=0.15 was baked
+  on rover *sensor-exit* grounds, not xy, so judge it by CBF behaviour
+  ([[feedback_dont_judge_cbf_by_sp]]) — but the landing evidence does not support τ>0 on the curve.
+
+**5. Still genuinely open / untested at current HEAD:** the **speed wall** (July: reliable
+≤1.09 m/s, binds at 1.56 m/s via a ~0.9-1.0 s servo lag — [[project_rover_speed_sweep]]) has
+NOT been re-tested since; all September curve data is ~0.5 m/s. Everything here is also
+**GT-FB only** — perception-mode moving-rover remains blocked on the detector
+([[project_20260901_rover_cross_perception_diagnosis]]). n=3-4/arm, no n≥5 IC-swept curve gate.
+
 ---
 
 **TURNING-rover landing (Circular r=0.8, wz=0.48 rad/s ≈ 27°/s, 0.38 m/s tangential,
