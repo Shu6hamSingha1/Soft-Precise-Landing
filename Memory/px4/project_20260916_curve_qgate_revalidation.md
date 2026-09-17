@@ -90,7 +90,59 @@ stationary parity already established. Remaining before any bake: this is still 
 (real rover perception is separately broken -- cluster A/B, 0/5), and n is still modest for
 the landing-rate side specifically.
 
-## What SURVIVES
+## ⛔⛔ NEW, SEPARATE FINDING (2026-09-17, same day): the r=0.8 QGATE result above was on
+## the WRONG WORLD -- and the right world exposes a controller/perception problem that has
+## NOTHING to do with AU_LEAD
+
+Per [[feedback_recurring_analysis_mistakes]] §18: `scripts/run_rover_landing.sh` defaults
+to `WORLD=rover ROVER_MODEL=rover_aruco` (plain ArUco), `MARKER_TYPE` unset. **None of the
+r=0.8 curve harnesses in this file set `WORLD`/`ROVER_MODEL`/`MARKER_TYPE`, so the entire
+"r=0.8 QGATE RE-RUN RESULT" table above was measured on the ArUco rover, not cross-marker**
+-- the project's live default and the actual target scenario.
+
+Re-ran the identical recipe with `WORLD=rover_cross ROVER_MODEL=rover_cross
+MARKER_TYPE=cross` explicitly, n=5/arm (`test_data/Rover_Turning/qgate_revalidation_r08_cross/`).
+Every rep confirmed on the genuine curve (Kasa fit `r_fit` 0.84-0.92 m).
+
+| arm | n | landed | lat mean | lat max | terminal peak `|I_a_xy|` |
+|---|---|---|---|---|---|
+| A base (no lead) | 5 | **1/5** | 0.548 | 1.323 | **6.24** |
+| B ungated lead | 5 | **1/5** | 0.625 | 1.590 | 6.69 |
+| C gated lead | 5 | **1/5** | 0.627 | 1.246 | 6.44 |
+
+vs the (wrong-world) ArUco reference: A 6/6 (peak 2.42), B 6/8 (peak 4.02), C 7/7 (peak 1.95).
+
+**All three arms land at roughly the same ~1/5 rate on cross-marker, ~2.5-3x hotter terminal
+command in every arm INCLUDING the one with AU_LEAD entirely off.** Since arm A has no lead
+active and still fails this badly, **the degradation is not in AU_LEAD or the gate — it is
+in the shared control/perception path on the moving cross-marker rover.** `min_alt` on
+failures is 0.20-0.34 m, well under the 0.5 m platform height -- the drone is descending
+PAST the platform, not just missing laterally (the classic "landed beside the pad" failure
+signature this project has seen before on stationary cross-marker work).
+
+**Ruled out: marker-mount-height mismatch.** `rover_cross/model.sdf`'s own header comment
+says it is a direct port of `rover_aruco`'s geometry -- IDENTICAL `landing_platform` pose
+(0,0,0.30) and `marker_visual` pose (0,0,0.201), same 0.5 m total mount height.
+`PLASMC_GT_MARKER_DZ` (launcher auto-exports 0.5) is correct for both; this is not a
+GT-feedback depth-offset bug.
+
+**Live candidate mechanisms (unconfirmed, not yet chased):** under `PLASMC_GT_FEEDBACK=1`
+only `s`/`h`/`h_z`/`yaw`/`w_z` are synthetic. `MARKER_EXTENT_PX` stays LIVE regardless, and
+feeds touchdown-detection-v2, terminal-commit-taper triggers, and any extent-based
+visibility/CBF gating -- all of which see REAL cross-marker detection, whose statistics
+this project has separately documented as materially noisier than ArUco's (cross-marker
+tracked-point correspondence noise ~2.5x ArUco's, per
+[[feedback_cross_marker_texture_history]] and the wider cross-marker perception thread).
+A moving rover adds self-motion + target-motion flow on top of that.
+
+**This blocks answering "does AU_LEAD/QGATE work on the real turning target" at all** --
+you cannot isolate the lead's effect when the baseline itself is failing 4/5. **Before any
+further AU_LEAD work on cross-marker, this needs its own investigation**: compare
+`MARKER_EXTENT_PX` traces and touchdown-detector firing between the ArUco and cross-marker
+runs (both already on disk, no new SITL needed for a first pass), then decide whether the
+fix is perception-side (extent/detection tuning for the moving cross-marker case) or
+requires adapting the extent-based gating logic for cross-marker's different detection
+profile.
 
 ## What SURVIVES
 - **All stationary work is unaffected** — the AU_LEAD stationary regression, the GT-FB
