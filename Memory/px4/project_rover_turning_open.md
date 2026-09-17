@@ -68,11 +68,28 @@ finding from [[project_20260909_visibility_projection_wire_in]] on a moving targ
   count**; the τ=0.15 arm's own count was never placed beside it. **The bake's stated rationale is
   unevidenced — a gap in justification, NOT a defect in the value** (n=2/cell, per-rep median exit
   rate 0.00% in both conditioned arms, duration-confounded). Not a call to flip the default.
-  A *better* justification exists and is recorded there: `τ·d` is structurally the translational
-  term the depth-free predictor drops (`c_next = r + L_e Δy` keeps only the rotational response;
-  shortfall ≈ `gT²/(6Z)`, 0.6% at Z=5 m → 6% at Z=0.5 m, **always under-predicting = unsafe
-  direction**), and τ should equal the attitude-realization horizon, measured ~144 ms (IQR
-  112-288) — which applies to stationary targets too, not just moving ones.
+  **Justification for the VALUE τ=0.15 (scope-corrected 2026-09-17 by its own author, see
+  [[project_20260917_visibility_predictor_residual]] `647ffec1`):** τ is the **plant's
+  attitude-realization horizon**, measured ~144 ms (IQR 112-288) — a **plant property, not a
+  scenario property**, so calling `CBF_DRIFT_TAU` "the moving-target lead" is mis-framed;
+  it applies to stationary targets too (self-motion flow is the point there, not noise).
+  ⚠ **Claim the benefit SMALL:** `τ·d` reduces predictor residual on 54.1% of frames, mean 9.9%
+  (p50 0.0194→0.0169), and **does NOT improve the safety-relevant tail** (over-buffer rate
+  1.235%→**1.319%**, i.e. marginally worse). The `gT²/(6Z)` translational shortfall is exact but
+  SMALL against the total residual (0.6% at Z=5 m, 6% at Z=0.5 m) — noise and unmodelled dynamics
+  dominate, which is why correcting it buys only ~10%. An earlier framing of mine here
+  ("`τ·d` is the translational term the predictor drops", implying it closes the gap) **overstated
+  it** and is superseded by this line. Also retracted by its author: the undefined horizon is NOT
+  a safety hole for the ROTATIONAL term — the QP bounds the centre at the fully-realized lean and
+  the realized path travels the segment `c→c_next`, so box convexity keeps intermediates inside.
+  ⚖ **Provenance:** I independently re-derived the sensor-exit table above with its committed
+  scanner (exact match). This predictor-residual measurement I have **NOT** re-derived — no tool
+  was committed with it, so it is recorded on its author's evidence, not verified here.
+  ⭐ **Higher-value target than τ (same measurement):** the buffer `b=0.15` covers the bulk but
+  not the tail — residual p95 0.084 vs per-axis buffer [0.133, 0.178], but **p99 0.194 and p99.9
+  0.307 both EXCEED it**, over-buffer on 1.2% of frames (consistent with the independently
+  measured 0.27% buffered-set exits / 0% sensor exits). A residual-sized buffer now has a number
+  behind it. Put effort there, not on τ.
 
 **5. Still genuinely open / untested at current HEAD:** the **speed wall** (July: reliable
 ≤1.09 m/s, binds at 1.56 m/s via a ~0.9-1.0 s servo lag — [[project_rover_speed_sweep]]) has
