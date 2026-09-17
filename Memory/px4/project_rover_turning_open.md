@@ -54,10 +54,25 @@ finding from [[project_20260909_visibility_projection_wire_in]] on a moving targ
 - **`PLASMC_AU_LEAD`** — `qgate_revalidation` n=4/arm: no-lead 3/4, lead-ungated 4/4,
   lead+qgate 4/4. Equivalent. The elaborate ω_z=0.9/ω_p=3.5/ratio-0.5 tuning below solved a
   problem that no longer binds. (Also [[feedback_aulead_stationary_regresses]], risk RESOLVED.)
-- **`CBF_DRIFT_TAU`** — `cycle_isolation/D_tau0` (τ=0, reactive-only) gave the tightest numbers
-  in the whole dataset (**4/4 at 1.5-3.1 cm**), slightly better than τ=0.15. ⚠ τ=0.15 was baked
-  on rover *sensor-exit* grounds, not xy, so judge it by CBF behaviour
-  ([[feedback_dont_judge_cbf_by_sp]]) — but the landing evidence does not support τ>0 on the curve.
+- **`CBF_DRIFT_TAU`** — `cycle_isolation/D_tau0` (τ=0, reactive-only) gave the tightest LANDING
+  numbers in the dataset (4/4 at 1.5-3.1 cm), slightly ahead of τ=0.15.
+  ⛔ **CORRECTED 2026-09-17 (same day): do NOT read that as evidence against τ>0 — I made
+  exactly the mistake I cited.** xy/SP is the wrong metric for a CBF
+  ([[feedback_dont_judge_cbf_by_sp]]); I flagged that and then drew an xy-based conclusion anyway.
+  The same-metric (CBF-behaviour) evidence is [[project_20260909_visibility_projection_wire_in]]'s
+  2026-09-17 audit block (`e9a3d081`, third session), **which I independently re-derived with its
+  own committed scanner `tools/scan_vis_safeset.py` — all 8 figures reproduce exactly**:
+  sensor-exit frames off-vs-lead = raw 236 (2.24%) vs 182 (2.10%) [≥400-frame: 2.33% vs 2.31%,
+  a wash]; conditioned 46 (0.47%) vs 117 (1.36%) [≥400-frame: 0.50% vs **1.50%, lead worse**].
+  ⇒ The "278 centre-off-sensor frames / 24 rover reps" figure the bake cites is a **τ=0-arm-only
+  count**; the τ=0.15 arm's own count was never placed beside it. **The bake's stated rationale is
+  unevidenced — a gap in justification, NOT a defect in the value** (n=2/cell, per-rep median exit
+  rate 0.00% in both conditioned arms, duration-confounded). Not a call to flip the default.
+  A *better* justification exists and is recorded there: `τ·d` is structurally the translational
+  term the depth-free predictor drops (`c_next = r + L_e Δy` keeps only the rotational response;
+  shortfall ≈ `gT²/(6Z)`, 0.6% at Z=5 m → 6% at Z=0.5 m, **always under-predicting = unsafe
+  direction**), and τ should equal the attitude-realization horizon, measured ~144 ms (IQR
+  112-288) — which applies to stationary targets too, not just moving ones.
 
 **5. Still genuinely open / untested at current HEAD:** the **speed wall** (July: reliable
 ≤1.09 m/s, binds at 1.56 m/s via a ~0.9-1.0 s servo lag — [[project_rover_speed_sweep]]) has
