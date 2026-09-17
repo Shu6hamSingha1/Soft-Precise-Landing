@@ -221,3 +221,32 @@ lighting, or renderer setting), ros_gz_bridge health, whether any residual state
 recent SDF experimentation (peer 29's temporary 640x480 restore — SDF file itself reads
 correct 320x240, but check for cached/stale Gazebo model resources), PX4 firmware/parameter
 drift. This blocks all landing-outcome gating, not just this thread.
+
+---
+
+## CORRECTION 2026-09-18: the "perception-collapse environment drift" diagnosis above was WRONG — it was the wrong marker type, not drift
+
+Root-caused fully. **Not an environment mystery.** `scripts/run_ic_validation.sh` never sets
+`WORLD`/`MARKER_TYPE`, and both default to `"aruco"` (`controller.py:73`,
+`run_landing.sh:23`) — a claim to the contrary in the 2026-09-03 rename commit's own message
+does not match the code. So the 2026-09-17 IC1-5 gate and my same-day OLD-vs-NEW A/B both
+silently ran **ArUco**, not cross-marker. Confirmed definitively from `Img_Data.npy`'s own
+keys: `Centroid Map Raw`/`Ring Opt Flow Ang Vel`/`Alpha Map Raw` (ArUco, `img_data.py`) vs.
+the Sep-12 baseline's `FEATURE_IS_VISIBLE`/`Detection Status`/`Fail Reason`/`MARKER_EXTENT_PX`
+(cross-marker, `cross_marker_perception.py`). ArUco's sensor cal is documented (CLAUDE.md) as
+stale for 320x240 since 2026-07-17 — exactly sufficient to explain the marker-alive collapse,
+identically in both controller code versions, with zero need for any environment drift.
+
+This is the SAME defect as [[feedback_recurring_analysis_mistakes]] §18 (rover launcher,
+found by another session ~1 hour before this one), on the stationary path — now §19.
+
+**Retracted:** the suggestion that this "smells related to the still-unexplained... curve-
+cycle mystery" ([[project_20260916_curve_qgate_revalidation]]). No evidence connects them;
+that was a guess based on both being "unexplained today," not a shared mechanism. Do not
+carry that link forward.
+
+**Still true and NOT retracted:** the OLD-vs-NEW same-day A/B was the right move and did its
+job — it correctly stopped a false regression from being pinned on `96271ba6`, even though it
+took one more step (comparing `Img_Data.npy` keys) to find why both arms failed. The `96271ba6`
+axis fix remains uncontaminated by any of this: still not landing-quality gated, re-running
+now with `WORLD=cross_marker MARKER_TYPE=cross` set explicitly.

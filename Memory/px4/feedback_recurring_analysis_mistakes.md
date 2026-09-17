@@ -1,6 +1,6 @@
 ---
 name: feedback_recurring_analysis_mistakes
-description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16/17 (sections 10-18): rover launcher defaults to ArUco not cross-marker (WORLD/ROVER_MODEL/MARKER_TYPE silently unset for a whole session's curve tests); harness stale-directory false-success (a crashed rep silently re-read the prior rep's output); the STIMULUS changed -- verify the scenario the test drives, not just the code (ROVER_TRAJ=Circular silently stopped driving a circle and cost a whole session); mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
+description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16/17/18 (sections 10-19): STATIONARY and ROVER launchers both default to ArUco not cross-marker (WORLD/MARKER_TYPE, and ROVER_MODEL for the rover one, silently unset -- the canonical IC2-5 gate script run_ic_validation.sh included -- verify via Img_Data.npy's own KEYS, not the launch command: FEATURE_IS_VISIBLE/Fail Reason/MARKER_EXTENT_PX = cross-marker, Centroid Map Raw/Ring Opt Flow*/Alpha Map* = ArUco); harness stale-directory false-success (a crashed rep silently re-read the prior rep's output); the STIMULUS changed -- verify the scenario the test drives, not just the code (ROVER_TRAJ=Circular silently stopped driving a circle and cost a whole session); mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
 metadata:
   node_type: memory
   type: feedback
@@ -369,3 +369,45 @@ its own set of harnesses.
 - 2026-08-25: a correctly-worded HARD RULE buried mid-file (`WORLD=cross_marker
   MARKER_TYPE=cross`) was violated across an entire session once a command pattern got
   copy-pasted. Rules need to fire at the point of action, not sit in a file.
+
+## 19. STATIONARY launcher also defaults to ArUco, not cross-marker — sibling to §18
+
+Continues §18 (rover launcher, `4ba07bb8`, found ~1 hour earlier the same day by another
+session). The identical defect exists on the **stationary** path:
+
+- `src/controller.py:73`: `MARKER_TYPE = os.environ.get("MARKER_TYPE", "aruco")` — default
+  is literally `"aruco"`.
+- `scripts/run_landing.sh:23`: `WORLD="${WORLD:-aruco}"` — same default, unchanged since WORLD
+  became overridable (2026-08-11).
+- The 2026-09-03 rename commit (`99367421`) **asserts in its own message** "WORLD/MARKER_TYPE
+  are env-driven and the standing rule makes every run cross-marker" — that claim does not
+  match the code and never has. It is the origin of the false belief.
+- `scripts/run_ic_validation.sh` — the canonical IC2-5 gate script — **never sets
+  WORLD/MARKER_TYPE**. Every run through it silently uses ArUco unless the caller's shell
+  happens to have them exported.
+
+**Cost this time:** an IC1-5 gate for a genuine code fix (`96271ba6`) came back 0/25 precise
+and looked like a catastrophic regression. A same-day OLD-vs-NEW A/B (correctly following
+§10's "validate the bisect endpoint" rule) showed OLD failed identically — which is what
+correctly stopped the fix from being blamed, but the *actual* cause (wrong marker/detector,
+not environment drift) required one more level of digging: comparing `Img_Data.npy` KEYS
+between the "good" and "bad" bundles. `FEATURE_IS_VISIBLE`/`Detection Status`/`Fail
+Reason`/`MARKER_EXTENT_PX` are logged only by `cross_marker_perception.py`; `Centroid Map
+Raw`/`Ring Opt Flow Ang Vel`/`Alpha Map Raw` only by `img_data.py` (ArUco). The "good" Sep-12
+baseline had the former; the "bad" Sep-17 runs had the latter — proving the marker/detector
+itself differed, not just the environment. ArUco's sensor cal is documented in CLAUDE.md as
+NOT recalibrated for 320x240 (stale since 2026-07-17 at 640x480/fx=270) — exactly enough to
+explain a marker-alive collapse identical in both code versions.
+
+**Check, added to the standing checklist:** for ANY stationary landing run, gate script
+included, verify `WORLD=cross_marker MARKER_TYPE=cross` is actually set — don't trust a
+launcher's rename-commit comment or a script's filename. Fastest verification is NOT to grep
+the launch command (a shell export won't show there) but to **check the resulting
+`Img_Data.npy`'s own keys**: `FEATURE_IS_VISIBLE`/`Fail Reason`/`MARKER_EXTENT_PX` = cross-
+marker; `Centroid Map Raw`/`Ring Opt Flow*`/`Alpha Map*` = ArUco. This is authoritative
+because it's recorded by whichever module actually ran, unlike an env var that may have been
+set in a shell you can't see.
+
+**Fix needed** (not yet done): `scripts/run_ic_validation.sh` should set
+`WORLD=cross_marker MARKER_TYPE=cross` explicitly rather than relying on caller-shell state,
+matching the fix direction `4ba07bb8` recommends for the rover launcher.
