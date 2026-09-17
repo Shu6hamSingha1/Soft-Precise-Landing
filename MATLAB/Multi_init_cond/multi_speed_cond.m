@@ -1,8 +1,10 @@
 %% MULTI SPEED CONDITION TEST
 %
-% Single baseline initial condition [0,0,-5] m, symmetric speed-multiplier
-% sweep across all four moving trajectories under both the clean and the
-% realistic disturbance configs (mirrors multi_Init_Var.m).
+% Single baseline initial condition [2,2,-5] m (IC2, matching the baseline
+% comparison study's IC -- switched from IC1=[0,0,-5] 2026-09-17 for
+% consistency with Comparison/InitVar.m's speed sweep), symmetric
+% speed-multiplier sweep across all four moving trajectories under both the
+% clean and the realistic disturbance configs (mirrors multi_Init_Var.m).
 %
 %   mults      : [0.6, 0.8, 1.0, 1.2, 1.4]
 %   Trajectory : Linear, Sinusoidal, Lissajous, Circular  (Static has no speed knob)
@@ -32,8 +34,8 @@ VDF_OVERRIDE.theta_per_axis = true;
 trajList = ["Linear", "Sinusoidal", "Lissajous", "Circular"];
 mults    = [0.6, 0.8, 1.0, 1.2, 1.4];
 
-% Single deterministic baseline IC
-p0 = [0, 0, -5];
+% Single deterministic baseline IC (IC2, matches Comparison/InitVar.m)
+p0 = [2, 2, -5];
 q0 = [1; 0; 0; 0];  q0 = q0 / norm(q0);
 v0 = zeros(3,1);
 w0 = zeros(3,1);
