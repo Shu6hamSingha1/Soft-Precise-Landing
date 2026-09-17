@@ -169,6 +169,61 @@ hypotheses checked, one confirmed-real divergence, cause still open.**
   compared); (c) the chase-cam starving the PERCEPTION thread specifically even though
   control-loop rate is unaffected.
 
+**⭐⭐⭐ FOLLOW-UP (same day): read `gt_feedback.py` in full, and found the likely real
+cause -- GT `/pose` TIMESTAMP JITTER, reconnecting the chase-cam hypothesis I closed too
+fast.**
+
+`gt_feedback.py` has NO `MARKER_TYPE` branch anywhere -- confirmed genuinely marker-agnostic
+(only `np.cross()` calls and comments match "cross"). Its entire output is a pure function
+of `(uav_pose, target_pose, t)` + a handful of env constants (`GT_CAM_DZ`, `GT_MARKER_DZ`,
+`GT_Z_REG`, `GT_ALPHA_SIGN`), all identical between the two launcher invocations. Also
+checked the `landing_platform` joint in both SDFs: `type='fixed'` to `base_link` in BOTH
+`rover_aruco` and `rover_cross` -- no independent platform motion. So if GT-FB's *inputs*
+are geometrically sane (confirmed above via the clean `r_fit`), the divergence must be in
+the RAW POSE STREAM's timing, not the marker, the geometry, or the GT-FB math.
+
+**Checked raw `Ground_Truth.npy` `Time` spacing directly (existing data, both worlds,
+A_base, n=5-6 each):**
+
+| world | `dt<=0` samples | rate |
+|---|---|---|
+| ArUco (`rover`) | 25-46 / ~1290 | **~2-3%** |
+| Cross (`rover_cross`) | **172-258 / ~1200-1400** | **~15-21%** |
+
+**7-10x more duplicate/backward-timestamp pose samples on `rover_cross`.** `gt_feedback.py`'s
+velocity/yaw-rate estimator (`_slope`, a causal least-squares fit over a short time window
+of these SAME timestamps, feeding `h` and `w_z`) is exactly the kind of regression a burst
+of near-identical `t` values can corrupt (near-zero `denom = t@t` -> amplified slope noise).
+Also target GT position accel (double-diff of the raw log, a crude but telling proxy) is
+~3-4x noisier on cross (median 35-42 vs ArUco's 10-13, spikes to ~4600 vs ~1360) despite
+near-identical median speed and dead-flat z/roll/pitch -- consistent with timestamp jitter
+amplified by differentiation, not real rover dynamics.
+
+**This reconnects the chase-camera hypothesis I ruled out too quickly above.** I checked
+`rover_cross.sdf`'s 1920x1440 chase-cam (recording-only, shared Gazebo render thread) against
+the CONTROL LOOP's own clock (steady 100 Hz both worlds) and called it closed. But the
+CONTROL loop and the GAZEBO POSE-PUBLISH cycle are separate clocks -- the control loop is
+paced by PX4/the Python timer, while `/world/$WORLD/pose/info` is paced by Gazebo's own
+sim/render step. A heavier render load can stutter the LATTER while leaving the FORMER
+untouched, which is exactly the asymmetry observed: clean control-loop rate, dirty pose
+timestamps. **Not yet directly proven** (would need e.g. reverting the cross-marker chase-cam
+back to 640x480 and re-measuring the `dt<=0` rate -- one SITL rep, cheap, not yet run) but
+it is now the best-supported single hypothesis, with a mechanism, a smoking-gun numeric
+signature, and a documented precedent (the SDF's OWN 2026-08-26 comment already predicted
+this exact risk and asked for a re-validation that never happened).
+
+**How to apply / next step:** before touching AU_LEAD further on cross-marker, (1) confirm
+by reverting `rover_cross.sdf`'s chase-cam to 640x480 (or disabling `CHASE_CAM` entirely if
+it's gated) and re-measuring the `Ground_Truth.npy` `dt<=0` rate on a few reps; (2) if
+confirmed, either fix the render-load asymmetry (lower the chase-cam resolution back down,
+or move it off the shared thread if Gazebo Harmonic supports that) or make `gt_feedback.py`'s
+`_slope` estimator robust to duplicate/near-duplicate timestamps (dedupe on `t` before the
+regression -- note `feedback_gt_noise_uniform_dt` already documents a "double-diff amplifies
+stair-stepped input" cousin bug from the target-acceleration estimator this file's own
+`__init__` comment says was removed for unrelated reasons; the fix pattern -- dedup on pose
+CHANGE / stamp, not on control-tick count -- may already exist elsewhere in the codebase and
+be reusable here).
+
 **This blocks answering "does AU_LEAD/QGATE work on the real turning target" at all** --
 you cannot isolate the lead's effect when the baseline itself is failing 4/5. **Before any
 further AU_LEAD work on cross-marker, this needs its own investigation**: compare
