@@ -1,6 +1,6 @@
 ---
 name: feedback_recurring_analysis_mistakes
-description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16/17 (sections 10-16): the STIMULUS changed -- verify the scenario the test drives, not just the code (ROVER_TRAJ=Circular silently stopped driving a circle and cost a whole session); mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
+description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16/17 (sections 10-17): harness stale-directory false-success (a crashed rep silently re-read the prior rep's output); the STIMULUS changed -- verify the scenario the test drives, not just the code (ROVER_TRAJ=Circular silently stopped driving a circle and cost a whole session); mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
 metadata:
   node_type: memory
   type: feedback
@@ -313,6 +313,23 @@ that means EITHER out-of-repo state OR **a mis-placed anchor** — I picked the 
 date (`--before "2026-07-03 23:59"` → `edb546f0` at 23:30) which sat **11 hours AFTER** the
 12:13 change, then concluded "not in the repo". Anchor to the DATA's own timestamp (the run
 directories were named `Fri Jul  3 11-14…11-48`, i.e. pre-noon), not to the end of the day.
+
+## 17. Harness infers "run succeeded" from a POST-RUN directory listing alone
+
+**2026-09-17:** a multi-rep A/B harness detected the newest output directory with
+`d=$(ls -dt "$out"/*/ | head -1)` AFTER each rep and treated any non-empty result as success.
+One rep's SITL launch crashed on attempt 1 (non-retriable, no output written) — but the
+directory query still returned the PREVIOUS rep's still-newest directory, so the harness
+silently re-analyzed old data under the new rep's label. Two "reps" printed identical numbers
+before this was noticed.
+
+**The check:** snapshot the newest-directory query BEFORE the run starts, and after the run
+compare the new query against that snapshot — `before=$(ls -dt ... | head -1)` pre-run,
+`[ "$d" = "$before" ]` post-run means NO new data, not `[ -z "$d" ]` alone (which only catches
+the case of zero directories ever having existed, not a failed run that left old ones behind).
+Same family as §2/§13 (don't trust a directory listing without a positive freshness check) but
+the failure mode is different: not stale content pairing, but a harness that can't tell "this
+rep produced nothing" from "this rep succeeded."
 
 ## Also worth screening for
 

@@ -1,6 +1,6 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "⛔ READ THE TOP BANNER FIRST. 2026-09-17: EVERY curve result in this file ran on a NON-CURVE. `ROVER_TRAJ=Circular` has not driven a real circle since commit b816fea0 (2026-07-03 12:13) changed ROVER_CIRCLE_R 0.8m->10m; measured target paths are a 9.4-12.1 m radius / 11-24 deg arc vs July's 0.86 m / 234 deg. DECISIVE: today's HEAD with ROVER_CIRCLE_R=0.8 gives median|e_rot|=0.70 (r_fit 0.88 m) = CYCLE RETURNS, in July's +0.58..+1.10 band, one rep missing by 7.20 m. ⇒ The curved-target limit cycle is ALIVE on current HEAD — never fixed, never re-tested. OVERTURNED: "cycle is gone", "AU_LEAD is redundant", "the QGATE does not neuter the curve" (p=0.72, measured on a straight path — question is OPEN again), and "the cause is not in the repo" (it IS b816fea0; my July anchor was picked by date and landed 11 h AFTER the change). SURVIVES: all stationary work (AU_LEAD regression, GT-FB refutation, KAPPA_DZ, 2-term QGATE) — no rover involved. To exercise the cycle you MUST set ROVER_CIRCLE_R=0.8; the default r=10 is a gentle-arc test."
+description: "⛔ READ THE TOP BANNER FIRST. 2026-09-17: EVERY curve result in this file ran on a NON-CURVE. `ROVER_TRAJ=Circular` has not driven a real circle since commit b816fea0 (2026-07-03 12:13) changed ROVER_CIRCLE_R 0.8m->10m; measured target paths are a 9.4-12.1 m radius / 11-24 deg arc vs July's 0.86 m / 234 deg. DECISIVE: today's HEAD with ROVER_CIRCLE_R=0.8 gives median|e_rot|=0.70 (r_fit 0.88 m) = CYCLE RETURNS, in July's +0.58..+1.10 band, one rep missing by 7.20 m. ⇒ The curved-target limit cycle is ALIVE on current HEAD — never fixed, never re-tested. OVERTURNED: "cycle is gone", "AU_LEAD is redundant", "the QGATE does not neuter the curve" (p=0.72, measured on a straight path — question is OPEN again), and "the cause is not in the repo" (it IS b816fea0; my July anchor was picked by date and landed 11 h AFTER the change). SURVIVES: all stationary work (AU_LEAD regression, GT-FB refutation, KAPPA_DZ, 2-term QGATE) — no rover involved. To exercise the cycle you MUST set ROVER_CIRCLE_R=0.8; the default r=10 is a gentle-arc test PRELIMINARY r=0.8 re-run (2026-09-17, n=3-4/arm, IN PROGRESS): the gate suppresses the ungated lead's terminal peak |I_a_xy| (mean 1.58 vs 3.14, back near baseline 1.64) while keeping its tracking benefit (e_mean 0.347 vs 0.345 vs baseline 0.457) -- matches the July raw-lead detonation frontier. All arms landed 4/4 or 3/3 this run (unlike July baseline 0/4) so landing-rate is NOT yet a claim; top-up to n>=7-8/arm in progress. Also found+fixed a harness bug: a crashed rep silently re-read the prior rep's stale output dir (feedback_recurring_analysis_mistakes sec 17)."
 metadata: 
   node_type: memory
   type: project
@@ -48,6 +48,44 @@ radius change.
   are all **uninformative about the cycle** — every one ran on a non-curve. (The camera test
   remains a valid negative for the camera *specifically*, and the `d380901c` tail-variance
   observation stands as a tail/robustness result, just not a cycle result.)
+
+## ⭐ PRELIMINARY r=0.8 QGATE RE-RUN (2026-09-17, small n, IN PROGRESS)
+
+Re-ran the 3-arm A/B with `ROVER_CIRCLE_R=0.8` pinned explicitly (the actual cycle stimulus).
+Every rep verified on the genuine curve (Kasa fit `r_fit` 0.86-0.91 m, swept 270-281 deg).
+Bundles `test_data/Rover_Turning/qgate_revalidation_r08/{A_base,B_ungated,C_gated}`.
+
+| arm | n | landing | touchdown lat | tracking e_mean | e_rot | osc_std | terminal peak `\|I_a_xy\|` |
+|---|---|---|---|---|---|---|---|
+| A base (no lead) | 4 | 4/4 ON-PLATFORM | 0.082 | 0.457 | +0.69 | 0.034 | mean 1.64, max 1.80 |
+| B ungated lead | 4 | 4/4 ON-PLATFORM | 0.103 | **0.345** | +0.69 | 0.028 | **mean 3.14, max 4.03** |
+| C gated lead | 3 | 3/3 ON-PLATFORM | 0.086 | **0.347** | +0.71 | 0.029 | mean 1.58, max 1.87 |
+
+**Coherent, matching the July frontier this file already documented:** `e_rot` ~+0.69-0.71 in
+ALL THREE arms including baseline (the rotating cycle is present regardless of the lead — it
+is a tracking-error signature, not solely a pass/fail determinant at this n). AU_LEAD cuts
+tracking error ~24% in both lead arms. The UNGATED lead pays the terminal-command cost the
+July campaign found (raw lead peaked 65-1639 m/s^2, ratio=1.0 re-admitted instability) — peak
+`|I_a_xy|` nearly 2x baseline. **The GATE suppresses that terminal spike back to baseline
+levels (1.58 vs 1.64) while keeping the tracking benefit (0.347 vs 0.345)** — i.e. doing
+exactly its intended job at the REAL curve, unlike the uninformative r=10 result above.
+
+⚠ **NOT YET A FINDING — n=3-4/arm, ALL FOUR arms landed 4/4 or 3/3 this run**, unlike July's
+baseline 0/4 and the earlier single r08_confirm run (1/3 missed by 7.2 m). Session-to-session
+variance on this exact scenario is real and already documented (July: "coin-flip Circular
+landings", "χ-vs-Wτ margin fluctuating rep to rep") — do not read 100% landing here as
+"solved". The terminal-peak-command separation is the more trustworthy signal (continuous,
+not binary). **Top-up run in progress (N=4 more/arm) to reach n>=7-8/arm before any claim.**
+
+**⚠ Harness bug found and fixed mid-run:** C_gated rep4's SITL launch crashed on attempt 1
+(`rc=1`, not classified retriable) and produced NO output directory, but the harness's
+`d=$(ls -dt "$out"/*/ | head -1)` fallback silently RE-READ rep3's still-newest directory
+instead of detecting the missing rep — rep3 and rep4 printed IDENTICAL numbers. Fixed with a
+before/after directory snapshot (`before=$(ls -dt ... | head -1)` captured pre-run, compared
+against post-run `$d`) in `scratchpad/curve_qgate_ab_r08.sh`. **General lesson**: any harness
+that infers success by "did a new output directory appear" must snapshot BEFORE the run, not
+just check for non-empty AFTER — an unlucky launch failure can leave the most-recent-directory
+query pointing at a real (older) rep, which silently duplicates data instead of erroring.
 
 ## What SURVIVES
 - **All stationary work is unaffected** — the AU_LEAD stationary regression, the GT-FB
