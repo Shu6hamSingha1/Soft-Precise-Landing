@@ -146,7 +146,8 @@ def load_run(traj, tag=""):
     suffix = f"_{tag}" if tag else ""
     path = f"{DATA_DIR}/{traj}_multi_speed{suffix}.mat"
     m = sio.loadmat(path, squeeze_me=True, struct_as_record=False)
-    return np.atleast_1d(m["results"]), np.atleast_1d(m["mults"]).astype(float)
+    p0 = np.asarray(m["p0"]).flatten() if "p0" in m else None
+    return np.atleast_1d(m["results"]), np.atleast_1d(m["mults"]).astype(float), p0
 
 
 def plot_grid(tag, out_name):
@@ -158,7 +159,7 @@ def plot_grid(tag, out_name):
     colors = MULT_COLORS
 
     for ax, traj in zip(axes, TRAJS):
-        results, mults = load_run(traj, tag)
+        results, mults, p0 = load_run(traj, tag)
         mult_order = np.argsort(mults)
 
         run_N = []
@@ -190,7 +191,14 @@ def plot_grid(tag, out_name):
                     label=rf"$\lambda={mults[i]:.1f}$")
             _scatter_outcome(ax, X[0, -1], X[1, -1], -X[2, -1],
                              c, results[i], s=28, zorder=6)
-        ax.scatter(0, 0, 5, color="k", marker="o", s=30, zorder=7)
+        # Black dot marks the UAV's shared starting IC for this sweep (read
+        # from the .mat's own p0, NOT hardcoded -- this was IC1 [0,0,-5]
+        # until 2026-09-17, when the sweep switched to IC2 [2,2,-5]; a
+        # hardcoded (0,0,5) silently kept showing the old IC1 position).
+        if p0 is not None:
+            ax.scatter(p0[0], p0[1], -p0[2], color="k", marker="o", s=30, zorder=7)
+        else:
+            ax.scatter(0, 0, 5, color="k", marker="o", s=30, zorder=7)
         # Match Circular_combined.pdf 3-D subplot styling.
         ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)
         ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=20)
