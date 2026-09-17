@@ -40,9 +40,14 @@ import os
 import glob
 import numpy as np
 
-CENTER = np.array([120.0, 160.0])      # rotated detection frame (240 wide x 320 tall)
+CENTER = np.array([120.0, 160.0])      # rotated detection frame (240 wide x 320 tall), (cx, cy)
 FOCAL = np.array([135.0, 135.0])
-PHI_PHYS = CENTER / FOCAL
+# AXIS ORDER: marker_tangent applies _SWAP, so c[0] = +(y-cy)/f (spans +-cy/f = 1.185) and
+# c[1] = -(x-cx)/f (spans +-cx/f = 0.889). The physical half-extent in c's own axis order is
+# CENTER REVERSED. src/visibility_projection.fov_limit() uses CENTER/focal unreversed, which
+# transposes the box against the measurement (2026-09-17 finding); this tool uses the true
+# extents so "% over buffer" is the real exceedance rate, not the transposed one.
+PHI_PHYS = CENTER[::-1] / FOCAL
 BUFFER_FRAC = 0.15
 BUF = BUFFER_FRAC * PHI_PHYS           # per-axis margin the residual must fit inside
 M = np.array([[0.0, 1.0], [-1.0, 0.0]])

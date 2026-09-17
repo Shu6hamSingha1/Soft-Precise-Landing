@@ -12,7 +12,7 @@ Reads `vis_c(t)` (marker-centre image tangent, module frame) plus the
 
 Judged per the CBF-behaviour criteria (feedback_dont_judge_cbf_by_sp), NOT by
 landing outcome:
-  exPHYS : frames with |c| past the physical half-extent R/(2f)  -- must be ~0
+  exPHYS : frames with |c| past the physical half-extent (see AXIS ORDER) -- must be ~0
   exPHI  : frames past the buffered set phi = R/(2f)*(1-b)       -- buffer regime
   act%   : Tier-1 activation rate      slkmax : peak Tier-1 slack
   gzmin  : deepest Tier-2 descent scale              dmed/dmax : |d| fed to tau*d
@@ -31,10 +31,20 @@ import glob
 import numpy as np
 
 # 320x240 sensor AFTER the cv2.ROTATE_90_CW detection rotation -> 240 wide x 320 tall,
-# so center = (120, 160); f = 135 px (CLAUDE.md "Camera", verified in the SDF 2026-09-02).
+# so center = (cx, cy) = (120, 160); f = 135 px (CLAUDE.md "Camera", verified 2026-09-02).
 CENTER = np.array([120.0, 160.0])
 FOCAL = np.array([135.0, 135.0])
-PHI_PHYS = CENTER / FOCAL              # physical half-extent, tangent units
+
+# AXIS ORDER -- the trap this tool got wrong in v1 (2026-09-17), see
+# Obsolete/tools/scan_vis_safeset_v1_transposed_phi.py.
+# marker_tangent() applies _SWAP = [[0,1],[-1,0]] to (px - center)/focal, so
+#     c[0] = +(y_px - cy)/f   -> spans +-cy/f = +-1.185   (the 320-tall axis)
+#     c[1] = -(x_px - cx)/f   -> spans +-cx/f = +-0.889   (the 240-wide axis)
+# The physical half-extent IN c's OWN AXIS ORDER is therefore (cy, cx)/f, i.e. CENTER
+# REVERSED. Using CENTER/focal directly (as src/visibility_projection.fov_limit() does)
+# transposes the box against the measurement: it over-tightens axis 0 by 36% and leaves
+# axis 1's barrier (1.007) OUTSIDE the physical edge (0.889), i.e. inert.
+PHI_PHYS = CENTER[::-1] / FOCAL        # physical half-extent in c's axis order
 BUFFER_FRAC = 0.15                     # CBF_BUFFER_FRAC default
 PHI = PHI_PHYS * (1.0 - BUFFER_FRAC)
 

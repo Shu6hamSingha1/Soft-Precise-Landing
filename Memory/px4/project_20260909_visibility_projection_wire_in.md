@@ -722,3 +722,24 @@ and the right value of τ is the attitude-realization horizon, measured at ~0.15
 144 ms, IQR 112-288). That is a much stronger justification for τ=0.15 than the rover data,
 and it applies to stationary targets too (where "self-motion flow" is exactly the point, not
 noise). See [[feedback_dont_judge_cbf_by_sp]].
+
+### ⛔ TABLE CORRECTED 2026-09-17 — the per-arm figures above used a TRANSPOSED phi
+
+The sensor-exit table in the audit block above (and `tools/scan_vis_safeset.py` v1, and the
+peer's independent re-derivation of it) computed the physical half-extent as `CENTER/focal`.
+That is transposed against `c`: `marker_tangent()` applies `_SWAP`, so the true extents in
+`c`'s axis order are `CENTER` **reversed** = `[1.185, 0.889]`. Corrected:
+
+| bundle | arm | as published | corrected |
+|---|---|---|---|
+| raw (163929) | off / lead | 2.24% / 2.10% | **0.45% / 0.28%** (lead better) |
+| conditioned (182607) | off / lead | 0.47% / 1.36% | **0.29% / 0.63%** (lead worse) |
+
+**The finding is unaffected and arguably strengthened.** It was never about the magnitudes:
+the "278 centre-off-sensor frames / 24 rover reps" figure is a `tau=0`-arm-only count, and
+that is a statement about which arms were compared. With correct extents the two sweeps
+disagree in *direction*, which is exactly the n=2/cell duration-confounded noise the original
+entry described. Same verdict: stated rationale unevidenced, value fine, not a call to flip.
+
+Root cause is a live code defect (one image axis of the barrier is inert, the other 36%
+over-tight) — see [[project_20260917_visibility_predictor_residual]] § CORRECTION.

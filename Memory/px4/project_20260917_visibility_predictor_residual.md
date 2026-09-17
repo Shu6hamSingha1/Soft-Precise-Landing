@@ -80,3 +80,60 @@ itself.
 (applies to stationary and moving alike, no scenario framing); claim a ~10% median
 prediction improvement and **no** tail/safety improvement. Do not cite it as closing a
 moving-target gap ([[feedback_dont_judge_cbf_by_sp]]).
+
+---
+
+## CORRECTION 2026-09-17 (same day): `phi` is TRANSPOSED against `c` in the live code
+
+**Found while trying to implement a per-axis buffer.** `marker_tangent()` applies
+`_SWAP = [[0,1],[-1,0]]`; `fov_limit()` does **not** apply it to the intrinsics. So:
+
+    c[0] = +(y_px - cy)/f  -> spans +-cy/f = +-1.185   (the 320-tall axis)
+    c[1] = -(x_px - cx)/f  -> spans +-cx/f = +-0.889   (the 240-wide axis)
+    phi  = CENTER/focal*(1-b) = [0.889, 1.185]*(1-b)   <-- NOT reversed
+
+The physical half-extent in `c`'s own axis order is `CENTER` **reversed**, `[1.185, 0.889]`.
+Consequences, both live:
+- **axis 1 barrier is INERT**: `phi_1 = 1.007` at `b=0.15` is OUTSIDE the physical edge
+  `0.889` -- on that image axis the constraint cannot bind before the marker has left.
+- **axis 0 over-tight by 36%**: `phi_0 = 0.756` against a true edge of `1.185`.
+
+Airtight from `center = _resolution/2 = (120,160)` on the 240-wide x 320-tall rotated frame.
+Data agree asymmetrically: `|c[0]|` reaches 1.504 and exceeds 0.889 on 0.92% of frames;
+`|c[1]|` exceeds it on 0.19% and never passes 1.124.
+
+**Both my tools inherited it** (they mirrored the code). Fixed in `tools/scan_vis_safeset.py`
+and `tools/measure_vis_predictor_residual.py`; v1 copies in `Obsolete/tools/*_v1_transposed_phi.py`.
+
+### What changed in the recorded numbers
+
+| quantity | as first recorded | corrected |
+|---|---|---|
+| IC1-5 sensor exits | 0.00% | **0.00%** (unchanged -- headline survives) |
+| IC1-5 buffered-box exits | 0.27% | **1.11%** |
+| rover raw sweep, off / lead | 2.24% / 2.10% | **0.45% / 0.28%** (lead better) |
+| rover conditioned, off / lead | 0.47% / 1.36% | **0.29% / 0.63%** (lead worse) |
+| residual %>buffer, rot / drift | 1.235% / 1.319% | **1.711% / 1.619%** |
+| per-axis b to cover p99 | [0.218, 0.164] | **[0.164, 0.218]** (I had it backwards) |
+
+Residual *quantiles* are unaffected (norms of residual vectors, independent of `phi`):
+p50 0.0194 / p95 0.0841 / p99 0.1941 / p99.9 0.3074 all stand, as does the 1-step-vs-null
+result and the ~144 ms horizon.
+
+**Two conclusions flip:**
+1. `tau*d` now **slightly improves** the over-buffer tail (1.619% vs 1.711%), where the
+   transposed numbers made it look slightly worse. §3 above overstated the case against it --
+   still only ~10% median, but it is no longer "no tail improvement".
+2. The rover sweeps now **disagree in direction** (raw: lead better; conditioned: lead worse).
+   That is what n=2/cell noise looks like, and it **reinforces** rather than weakens
+   [[project_20260909_visibility_projection_wire_in]]'s one-armed-statistic finding: the
+   same-metric comparison does not support "tau*d closes the moving-target gap" in either
+   direction. The 278-frame figure being a tau=0-arm-only count is unaffected -- that was
+   about which arms were compared, not the extents.
+
+**Fix priority: this outranks both the `y_max=0` degenerate-ball defect and any buffer
+re-sizing** -- a per-axis `b` is meaningless until the box is on the right axes, and one axis
+of the guarantee is currently not running. Preferred fix is to reverse the intrinsics in
+`fov_limit()` (keeps `c` in the frame the `h_xy` identity-map was validated against) rather
+than touching `marker_tangent()`. It is a genuine behaviour change -- it activates a
+previously-inert constraint -- so it needs the IC2-5 gate, with `vis_slack` watched.
