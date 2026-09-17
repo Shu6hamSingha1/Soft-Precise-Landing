@@ -434,64 +434,102 @@ def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
 
 
 def _draw_fov_3d(ax, fontsize=16, tick_fontsize=14, zoom=1.18, elong=1.8):
-    """3-D visibility panel, Case 5, all 5 controllers -- x axis is time t
-    (2026-09-16: swapped from z, so the long axis is the one that actually
-    spans a wide range; the box no longer needs to stay cube-shaped), y/z
-    axes are the FoV-normalized marker centre [Phi^-1 {}^C r-tilde]_y,
-    [Phi^-1 {}^C r-tilde]_x (each in [-1,1] iff inside the buffered
-    visibility set S_vis = {r-tilde : ||Phi^-1 r-tilde||_inf <= 1}).
-    Replaces the 2026-09-16 2-D 'min_k h_k(t)' line chart per explicit user
-    objection ("this is not how CBF works"): a single min-combined scalar
-    line implies one scalar CBF was analyzed, when the QP/theorem impose
-    h_x>=0 and h_y>=0 as two separate per-axis constraints. Plotting the
-    normalized position directly (not a barrier value) makes both axes'
-    constraint satisfaction independently visible from the same curve, with
-    no min() anywhere in the plotted quantity itself.
+    """3-D visibility panel, Case 5 (Circular) from IC2, all 5 controllers, consistent
+    with panel (c) -- x axis is time t, y/z axes are the FoV-normalized camera-frame
+    centroid r_n = Phi^-1 * (C_r_hat)/f = [r_n,x, r_n,y]^T defined in ICRA.tex
+    eq. (normalized camera centroid), i.e. exactly the r_n of the visibility set
+    S_vis = {r_n : ||r_n||_inf <= 1} (ICRA.tex eq. (visibility set)) -- NOT a scalar
+    barrier margin or a PPC/pixel-coordinate plot (explicit user instruction,
+    2026-09-17, keeping the 2026-09-16 3-D-trajectory concept but tying it exactly
+    to the manuscript's r_n notation/limits instead of the prior informal r-tilde
+    labeling). Replaces the pre-2026-09-16 2-D 'min_k h_k(t)' line chart per
+    separate explicit user objection ("this is not how CBF works"): a single
+    min-combined scalar line implies one scalar CBF was analyzed, when the
+    QP/theorem impose |r_n,x|<=1 and |r_n,y|<=1 as two separate per-axis
+    constraints. Plotting r_n directly (not a barrier value) makes both axes'
+    constraint satisfaction independently, visually identical to that
+    inequality -- see the four boundary planes below.
 
-    The safe box [-1,1]x[-1,1] (in y,z) is drawn as a wireframe prism
-    extruded along the time axis (4 edges + t=0/t=t_max rims) -- a
-    controller's curve exiting the box at some t is exactly a visibility
-    violation at that instant, on whichever axis it crosses."""
+    The four FoV boundary planes r_n,x=+-1, r_n,y=+-1 are drawn as lightly
+    transparent Poly3DCollection faces (not just wireframe edges, explicit user
+    request) so the visibility condition |r_n,x|<=1, |r_n,y|<=1 reads visually
+    as "inside this box" -- a controller's curve crossing a plane at some t is
+    exactly a visibility violation at that instant, on whichever axis it crosses.
+    Controllers that abort on an FoV breach are TRUNCATED at the first sample
+    where |r_n,x|>1 or |r_n,y|>1 (not merely left as-is at whatever the sim's own
+    internal break happened to save) and marked there with an 'x', matching the
+    aborted-marker convention from panel (c)/_draw_3d; controllers that land are
+    plotted in full and marked at touchdown with the same soft-precise
+    ('^', filled)/hard-imprecise ('o', hollow) convention as (c). This is what
+    makes PBVS-AEDO's "retains visibility but still not soft-precise" story
+    (touchdown marker safely inside the box) visually distinct from PBVS-PPC/
+    FF-IBVS's "loses visibility" story (breach marker on a boundary plane)."""
     t_max = 0.0
+    curves = {}
     for name in CTRLS:
         run = RUNS[(CASE5, name)]
         N = METRICS[(CASE5, name)]["N"]
+        cat = METRICS[(CASE5, name)]["cat"]
         rx, ry, _ = _fov_margin(run, N)      # may trim further than N -- see docstring
-        nx = rx / PHI_MAX[0]                 # [Phi^-1 r-tilde]_x
-        ny = ry / PHI_MAX[1]                 # [Phi^-1 r-tilde]_y
-        t = run.data.tRange[:len(nx)]
-        t_max = max(t_max, float(t[-1]) if len(t) else 0.0)
+        rnx = rx / PHI_MAX[0]                # r_n,x
+        rny = ry / PHI_MAX[1]                # r_n,y
+        t = run.data.tRange[:len(rnx)]
+        # Explicit FoV-breach truncation: first sample outside the visibility set,
+        # independent of wherever visualControl_comparison.m's own internal break
+        # happened to save its last column (see _fov_margin's BUG FIX docstring) --
+        # this guarantees the plotted curve never crosses a boundary plane and
+        # actually ends exactly ON one, for aborted controllers.
+        breach = np.where((np.abs(rnx) > 1.0) | (np.abs(rny) > 1.0))[0]
+        i_end = int(breach[0]) if len(breach) else len(rnx) - 1
+        t_c, rnx_c, rny_c = t[:i_end + 1], rnx[:i_end + 1], rny[:i_end + 1]
+        curves[name] = (t_c, rnx_c, rny_c, cat)
+        t_max = max(t_max, float(t_c[-1]) if len(t_c) else 0.0)
+
+    for name in CTRLS:
+        t_c, rnx_c, rny_c, cat = curves[name]
+        color = CTRL_COLORS[name]
         # lw bumped from 2.2: at print scale (this panel's curves get shrunk far more
         # than the other panels', since FIG_W=19in vs a ~3.5in column), a steeply-dipping
         # segment (verified continuous -- no NaNs, uniform 0.01s dt) can visually alias
         # into a dotted/beaded look at the thinner effective stroke width; 3.2 keeps it
         # solid without visibly thickening the shallower parts of the curve.
-        ax.plot(t, ny, nx, color=CTRL_COLORS[name], lw=3, label=CTRL_DISPLAY[name], zorder=3)
+        ax.plot(t_c, rny_c, rnx_c, color=color, lw=3, label=CTRL_DISPLAY[name], zorder=3)
+        marker = {"soft-precise": "^", "hard-imprecise": "o", "aborted": "x"}[cat]
+        if cat == "aborted":
+            # Visibility-loss point: exactly the truncation endpoint above, on a boundary plane.
+            ax.scatter(t_c[-1], rny_c[-1], rnx_c[-1], color=color, marker=marker, s=140, zorder=6)
+        elif cat == "hard-imprecise":
+            ax.scatter(t_c[-1], rny_c[-1], rnx_c[-1], facecolors="none", edgecolors=color,
+                       marker=marker, s=110, linewidths=2.2, zorder=6)
+        else:
+            ax.scatter(t_c[-1], rny_c[-1], rnx_c[-1], color=color, marker=marker, s=110, zorder=6)
 
     # Pin all three axes to exactly the safe box's own extent -- [0, t_max] in time,
     # [-1, 1] in y/z -- matplotlib's default 5% autoscale margin otherwise extends
-    # the axis panes' actual corners past that on EVERY axis, so the rims/edges below
-    # (drawn exactly at t_max / +-1) land short of the panes' real corners, visibly
-    # detached from the box outline there (seen most clearly on the z-axis corner,
-    # where the "1.0" gridline sits past the drawn rim). This margin mismatch, not
-    # the per-artist depth sorting, was the real source of the "broken" look.
+    # the axis panes' actual corners past that on EVERY axis, so the boundary planes
+    # below (drawn exactly at t_max / +-1) land short of the panes' real corners,
+    # visibly detached from the box outline there.
     ax.set_xlim3d(0, t_max)
     ax.set_ylim3d(-1, 1)
     ax.set_zlim3d(-1, 1)
 
-    # Safe-box wireframe: 4 edges (t=0 to t=t_max) + the two end rims.
-    corners = [(1, 1), (-1, 1), (-1, -1), (1, -1), (1, 1)]  # (ny, nx) pairs
-    cy = [c[0] for c in corners]; cx = [c[1] for c in corners]
-    ax.plot([0] * 5, cy, cx, color="k", lw=1.3, ls="--", alpha=0.6, zorder=1)
-    ax.plot([t_max] * 5, cy, cx, color="k", lw=1.3, ls="--", alpha=0.6, zorder=1)
-    # The 4 long edges connecting the rims: previously drawn as ONE artist visiting all
-    # 4 corners in sequence (t sweeping 0->t_max->0->t_max->...), which mplot3d's
-    # per-artist (not per-fragment) depth sorting assigns a SINGLE averaged depth to --
-    # so the whole zig-zagging artist popped fully in front of or behind the controller
-    # curves inconsistently, reading as visibly broken/discontinuous. Fixed by giving
-    # each of the 4 edges its OWN artist (2 points, one unambiguous depth each) instead.
-    for cy_i, cx_i in corners[:4]:
-        ax.plot([0, t_max], [cy_i, cy_i], [cx_i, cx_i], color="k", lw=1.3, ls="--", alpha=0.6, zorder=1)
+    # Four FoV boundary planes (r_n,x = +-1, r_n,y = +-1), each spanning the full
+    # [0, t_max] x [-1, 1] extent of the OTHER two axes -- these are 4 of the safe
+    # box's 6 faces (top/bottom, at t=0/t=t_max, aren't FoV limits, so they're
+    # omitted). Lightly transparent (explicit user request) so controller curves
+    # stay visually prominent; a thin edge outline keeps each plane's extent legible
+    # against the white background.
+    _plane_alpha, _plane_fc = 0.14, "0.55"
+    rnx_planes = [1.0, -1.0]   # r_n,x = +-1 -> constant on the z axis here
+    rny_planes = [1.0, -1.0]   # r_n,y = +-1 -> constant on the y axis here
+    for rnx0 in rnx_planes:
+        face = [[(0, -1, rnx0), (0, 1, rnx0), (t_max, 1, rnx0), (t_max, -1, rnx0)]]
+        ax.add_collection3d(Poly3DCollection(face, facecolor=_plane_fc, alpha=_plane_alpha,
+                                              edgecolor="k", linewidth=0.5, zorder=1))
+    for rny0 in rny_planes:
+        face = [[(0, rny0, -1), (0, rny0, 1), (t_max, rny0, 1), (t_max, rny0, -1)]]
+        ax.add_collection3d(Poly3DCollection(face, facecolor=_plane_fc, alpha=_plane_alpha,
+                                              edgecolor="k", linewidth=0.5, zorder=1))
 
     # x labelpad bumped 38 -> 65 (explicit user request) -- same tick-vs-label crowding as
     # y/z below, now that the x tick pad also grew to 22.
@@ -501,8 +539,8 @@ def _draw_fov_3d(ax, fontsize=16, tick_fontsize=14, zoom=1.18, elong=1.8):
     # each other and into the shared box corner much more aggressively than a linear
     # pad-vs-fontsize scaling would suggest; two earlier, smaller bumps (14->28 label / 1->10
     # tick / 16->30 z-tick) were each insufficient and had to be redone larger.
-    ax.set_ylabel(r"$\,^\mathcal{C}\tilde{r}_y$", fontsize=fontsize, labelpad=40)
-    ax.set_zlabel(r"$\,^\mathcal{C}\tilde{r}_x$", fontsize=fontsize, labelpad=50)
+    ax.set_ylabel(r"$r_{\mathrm{n},y}$", fontsize=fontsize, labelpad=40)
+    ax.set_zlabel(r"$r_{\mathrm{n},x}$", fontsize=fontsize, labelpad=50)
     # z labelpad must clear the z TICK pad (50, below) by a wide margin -- label/tick pads
     # both offset from the same axis spine independently, so a label pad merely close to (or
     # smaller than) the tick pad puts the label BETWEEN the spine and the pushed-out ticks.
@@ -781,7 +819,7 @@ _panel_title(ax3d, "(b) Touchdown Energy", extra_shift=-0.1)
 # Circular_combined.pdf's sizes made the wider title TEXT overlap across the (a)/(b) and
 # (c)/(d) column gap -- measured via PDF text search (page.search_for), not eyeballed.
 _inset_title(ax_m, "(c) Landing Trajectories, Case 5", (COL0_X0 + COL0_W / 2.0) / FIG_W, extra_shift=1.0)
-_inset_title(ax_ke, "(d) Marker Visibility, Case 5", (AX3D_X0 + AX3D_W / 2.0) / FIG_W, extra_shift=-0.75)
+_inset_title(ax_ke, "(d) Centroid Visibility, Case 5", (AX3D_X0 + AX3D_W / 2.0) / FIG_W, extra_shift=-0.75)
 
 # Legend anchored just below row 2 (upper-center at legend_top), not at the
 # absolute figure bottom -- ties its position to the content above it
