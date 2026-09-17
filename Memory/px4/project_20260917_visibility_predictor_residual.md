@@ -167,3 +167,57 @@ decision. Reasoning left in-code so it is not retried.
 `vis_active`/`vis_slack` to rise; slack going routinely non-zero is the tripwire). Buffer
 re-sizing deliberately deferred until AFTER the gate: per-axis effective margins change with
 this fix, so `b` must be re-derived on top of it, not alongside.
+
+---
+
+## IC2-5 gate run 2026-09-17 — 0/25 precise: NOT the axis fix, a perception-layer environment collapse
+
+Ran the mandated IC2-5 gate for `96271ba6` (N_REPS=5, HEADLESS=1, cross-marker):
+`test_data/ICValidation/20260917-224720`. Result: **0/25 precise, 0/25 soft**, IC2-5 mean xy
+1.3-1.8 m (vs the Sep-12 bundle used for the residual analysis, `20260912-040029`: 16/25
+precise, xy mostly 0.01-0.15 m). Looked catastrophic at first read.
+
+**Before attributing this to the fix, validated the bisect endpoint** — this project's own
+hard-learned rule ([[feedback_recurring_analysis_mistakes]] §10-15,
+[[project_20260916_curve_qgate_revalidation]]/`e7882829`: "a worktree rebuilds CODE not the
+EXPERIMENT... out-of-repo camera SDF"). Same-day, same-environment, interleaved A/B on IC2
+(5 reps/arm, `git worktree` at `4ba07bb8` = `96271ba6^` for OLD, `LANDING_OUT_BASE` set per
+arm per the `run_visproj_gate.sh` autosave-collision lesson):
+
+| arm | xy_err (5 reps) | precise |
+|---|---|---|
+| OLD (pre-fix code, today) | 2.36, 0.99, 0.87, 1.09, 3.67 | 0/5 |
+| NEW (fixed code, today) | 2.69, 2.71, 2.39, 2.61, 2.31 | 0/5 |
+
+**OLD code fails exactly as badly as NEW, today.** The `96271ba6` fix is NOT implicated.
+
+Root cause traced one level further — **marker-alive rate** (`N Flow Corners > 0` fraction)
+per rep:
+
+| | Sep 12 (good) | Sep 17 OLD | Sep 17 NEW |
+|---|---|---|---|
+| marker-alive % | **100.0%** every rep | 25.9 / 78.6 / 91.9 / 40.8 / 25.5 | 23.6 / 23.9 / 56.1 / 28.6 / 23.5 |
+
+**This is a perception-layer collapse present identically in both code versions.** Something
+in the environment (Gazebo world state, marker rendering, camera plugin, lighting — not yet
+isolated) degraded between 2026-09-12 and 2026-09-17, independent of any `src/` change.
+Camera SDF checked and unchanged (320x240, hfov 1.74) at the time of this test; no other
+SITL/PX4/bridge process was running before either test. Not yet root-caused further — this
+smells related to the still-unexplained out-of-repo state that caused the curve-cycle
+mystery ([[project_20260916_curve_qgate_revalidation]]), possibly the same drift, but that
+is a hypothesis, not established.
+
+**Consequence for the axis fix (`96271ba6`):** cannot be validated as beneficial OR harmful
+under the current environment — no landing-quality signal is trustworthy right now for
+ANY change. The fix's correctness stands on its own terms (mathematical derivation from the
+SDF + validator's independent oracle, 15/15 across 5 seeds) and is NOT reverted. Do not
+re-attempt an IC2-5 landing-quality gate until the marker-alive collapse is diagnosed —
+otherwise every gate from here forward returns the same false "everything is broken" signal
+regardless of what changed.
+
+**Action item, higher priority than any further CBF tuning:** diagnose the marker-alive
+collapse. Suspect areas to check first: Gazebo world/marker model state (a stale spawn,
+lighting, or renderer setting), ros_gz_bridge health, whether any residual state was left by
+recent SDF experimentation (peer 29's temporary 640x480 restore — SDF file itself reads
+correct 320x240, but check for cached/stale Gazebo model resources), PX4 firmware/parameter
+drift. This blocks all landing-outcome gating, not just this thread.
