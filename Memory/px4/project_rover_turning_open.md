@@ -7,7 +7,48 @@ metadata:
   originSessionId: 3c2f4c67-05c1-4e6f-966b-0e62018fc8a7
 ---
 
-## ⛔⛔ RE-STAMPED 2026-09-17 — THE CURVE IS NO LONGER OPEN. Read this before anything below.
+## ⛔⛔⛔ CORRECTION 2026-09-17 (later, same day) — THE RE-STAMP BELOW IS WRONG. THE CURVE IS STILL OPEN.
+
+**The limit cycle is ALIVE on current HEAD. It was never fixed — it was never re-tested.**
+
+`ROVER_TRAJ=Circular` stopped driving a real circle on **2026-07-03 12:13**, commit
+**`b816fea0`**, which set `ROVER_CIRCLE_R` **0.8 m → 10 m** (its own comment: *"only the path
+curvature drops ~12x"*). Measured from the GT `Target Pose`: July **0.86 m radius / 234°
+swept**; every September run **9.4-12.1 m / 11-24°** — a straight line, not a curve.
+
+**Today's HEAD, unmodified, with `ROVER_CIRCLE_R=0.8`** (`test_data/Rover_Turning/r08_confirm/`,
+n=3): **median |e_rot| = 0.70** (+0.47, +0.78, +0.70), `r_fit` 0.88 m — **CYCLE RETURNS**, in
+July's +0.58..+1.10 band, with one rep missing by **7.20 m** (e_mean 1.75, osc_std 0.377).
+
+⇒ Point-by-point against the re-stamp below:
+- **"The curve lands now" — it lands the GENTLE ARC (r=10).** That is the straight-line
+  moving-target case [[project_rover_speed_sweep]] already had solved. At r=0.8 it still fails.
+- **"The limit cycle is gone" — FALSE.** Null stimulus, not null effect.
+- **"The cause is OUTSIDE the git repo" — FALSE.** It is `b816fea0`, in-repo and env-tunable.
+  That conclusion (mine, `e7882829`) came from anchoring the bisect by DATE:
+  `--before "2026-07-03 23:59"` selected `edb546f0` at **23:30, eleven hours AFTER** the 12:13
+  change, so "the July endpoint doesn't reproduce" meant **wrong anchor**, not out-of-repo.
+  The cycling run directories are named `Fri Jul  3 11-14…11-48` — pre-noon.
+- **The camera-SDF hypothesis is separately FALSIFIED** — restoring 640×480/fx=270 on HEAD
+  gives `e_rot` +0.04..+0.07 (no cycle). The peer's loop-timing table below correctly
+  predicted this; it was right for the right reason, and the camera was never the variable.
+- The four gain reverts, the `d380901c` worktree test and the camera test are all
+  **uninformative about the cycle** — every one ran at r=10. (The `d380901c` tail-variance
+  observation stands as a robustness result, not a cycle result.)
+
+**So this file's July-era analysis is NOT superseded — it is the live description of a live
+problem.** The `χ > Wτ` pump mechanism, the branch audit, the `PLASMC_AU_LEAD` exit and the
+bias↔cycle frontier all still stand and still need an answer.
+
+⚠ **To exercise the cycle you MUST set `ROVER_CIRCLE_R=0.8`.** The default r=10 is a
+smooth-tracking test. Both are legitimate experiments; they are not interchangeable, and the
+r=10 comment records the trade (at 0.8 m the Ackermann steering saturates, making target
+motion jerky). Primary record: [[project_20260916_curve_qgate_revalidation]] (top banner),
+method lesson §16 in [[feedback_recurring_analysis_mistakes]].
+
+---
+
+## ⛔ SUPERSEDED RE-STAMP (2026-09-17, earlier) — kept for the audit trail; its factual claims are corrected above
 
 The September 2026 data contradicts this file's central prognosis. Everything below is kept
 as an accurate record of the **July 2026 era**; do not act on its conclusions.

@@ -1,11 +1,70 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "CURVED-TARGET re-validation of PLASMC_AU_LEAD_QGATE (2026-09-16), the load-bearing open question. TWO results: (1) ✅ BLOCKER CLEARED — the gate does NOT neuter the curve benefit (gated vs ungated lead: e_mean 0.253 vs 0.250 p=0.72, osc_std p=0.49, both 4/4 ON-PLATFORM; gate transmits ~33% in the tracking window, enough). (2) ⚠ PREMISE CHANGED — the curved-target limit cycle is GONE from the current baseline: no-lead is now 3/4 ON-PLATFORM, e_rot +0.05 (was +1.11), osc_std 0.033 (was 0.06-0.07), vs July's 0/4 at 1.0-1.7 m. AU_LEAD is now a modest refinement (e_mean 0.345->0.250, p=0.0001), not a rescue. (3) ⛔ CAUSE STILL UNIDENTIFIED. Four env-togglable gain reverts (CBF_DRIFT_TAU=0, P_xy=1.5, P2INF=1.0, XI2=0.7) are ALL NULL (13/13 ON-PLATFORM). I then concluded the visibility-QP rewrite killed it — WRONG: a worktree at the pre-rewrite commit d380901c (old cone verified live at July magnitude, theta_cone 0.358-0.478) shows e_rot +0.05..+0.21, NOT July's +1.11 — the rotating cycle does NOT reproduce on the old code either. What the rewrite DOES do on the curve is eliminate TAIL VARIANCE (old e_mean sd 0.691 / lat 0.018-5.90 m bimodal vs new sd 0.006 / 0.030-0.352), matching the peer's stationary VisProjGate finding; n=4 so no contrast reaches p<0.05. TWO distinct phenomena were conflated. AU_LEAD redundancy stands directionally (the cycle is gone regardless of cause) but NOT on an established mechanism. Also: my offline pre-check predicting the gate would kill the curve was WRONG by 2x — it divided July 640x480 extents by today's 320x240 frame_min."
+description: "⛔ READ THE TOP BANNER FIRST. 2026-09-17: EVERY curve result in this file ran on a NON-CURVE. `ROVER_TRAJ=Circular` has not driven a real circle since commit b816fea0 (2026-07-03 12:13) changed ROVER_CIRCLE_R 0.8m->10m; measured target paths are a 9.4-12.1 m radius / 11-24 deg arc vs July's 0.86 m / 234 deg. DECISIVE: today's HEAD with ROVER_CIRCLE_R=0.8 gives median|e_rot|=0.70 (r_fit 0.88 m) = CYCLE RETURNS, in July's +0.58..+1.10 band, one rep missing by 7.20 m. ⇒ The curved-target limit cycle is ALIVE on current HEAD — never fixed, never re-tested. OVERTURNED: "cycle is gone", "AU_LEAD is redundant", "the QGATE does not neuter the curve" (p=0.72, measured on a straight path — question is OPEN again), and "the cause is not in the repo" (it IS b816fea0; my July anchor was picked by date and landed 11 h AFTER the change). SURVIVES: all stationary work (AU_LEAD regression, GT-FB refutation, KAPPA_DZ, 2-term QGATE) — no rover involved. To exercise the cycle you MUST set ROVER_CIRCLE_R=0.8; the default r=10 is a gentle-arc test."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 878fdadb-dd99-4085-bcf2-e19879f48082
   modified: 2026-09-16T14:33:53.570Z
+---
+---
+
+# ⛔⛔⛔ READ THIS FIRST — 2026-09-17: EVERY CURVE RESULT BELOW WAS RUN ON A NON-CURVE
+
+**`ROVER_TRAJ=Circular` has not driven a real circle since 2026-07-03 12:13.** Commit
+**`b816fea0`** changed `ROVER_CIRCLE_R` **0.8 m → 10 m** (its own comment: *"the small-radius
+circle (0.8 m, ~Ackermann min turn radius) made the TARGET motion jerky (steering saturated)
+… only the path curvature drops ~12x"*). Measured from the GT target paths:
+
+| | fitted radius | arc swept | path length |
+|---|---|---|---|
+| July cycling runs (11:14-11:48, pre-`b816fea0`) | **0.86 m** | **234°** | 3.53 m |
+| every run today (r=10) | **9.4-12.1 m** | **11-24°** | 2.7-4.0 m |
+
+A 12 m-radius 20° arc is a straight line. **The curve stimulus was absent from every
+experiment in this file.**
+
+**DECISIVE CONFIRMATION** — today's HEAD, unchanged, with `ROVER_CIRCLE_R=0.8`
+(`test_data/Rover_Turning/r08_confirm/`, n=3): **`median|e_rot| = 0.70` (+0.47, +0.78,
++0.70), r_fit 0.88 m — CYCLE RETURNS**, in July's +0.58…+1.10 band, with rep 1 reproducing
+the July failure signature (e_mean 1.75, osc_std 0.377, **7.20 m miss**).
+
+**⇒ The curved-target limit cycle is ALIVE on current HEAD. It was never fixed — it was
+never re-tested.** Everything below that says "the cycle is gone" is an artifact of the
+radius change.
+
+## What this OVERTURNS (all of it in this file)
+- ⛔ "The curve limit cycle is GONE from the baseline" — **FALSE.** Alive at r=0.8.
+- ⛔ "AU_LEAD is redundant / a refinement not a rescue" — **UNSUPPORTED.** The cycle it was
+  built to damp is alive; AU_LEAD has not been tested against a real curve since July.
+- ⛔ "The QGATE does not neuter the curve benefit" (e_mean 0.253 vs 0.250, p=0.72) — measured
+  on a near-straight path. **The load-bearing question is OPEN again** and is now cheaply
+  answerable: rerun the 3-arm A/B with `ROVER_CIRCLE_R=0.8`.
+- ⛔ "The cause is NOT in the repository" — **FALSE.** It is `b816fea0`. My July anchor
+  `edb546f0` was picked by date (`--before 2026-07-03 23:59`) and landed at **23:30, eleven
+  hours AFTER** the 12:13 radius change, so the "endpoint doesn't reproduce" signal meant
+  *my anchor was wrong*, not *out-of-repo*. I asserted the latter without excluding the former.
+- ⛔ The 4-arm gain-revert sweep, the `d380901c` worktree test, and the 640×480 camera test
+  are all **uninformative about the cycle** — every one ran on a non-curve. (The camera test
+  remains a valid negative for the camera *specifically*, and the `d380901c` tail-variance
+  observation stands as a tail/robustness result, just not a cycle result.)
+
+## What SURVIVES
+- **All stationary work is unaffected** — the AU_LEAD stationary regression, the GT-FB
+  refutation of the κ-ratchet story, `PLASMC_KAPPA_DZ_*`, and the 2-term `AU_LEAD_QGATE`
+  (18/25 ≈ baseline, IC5 0/5→5/5) were IC1-5 stationary tests with no rover involved.
+  [[feedback_aulead_stationary_regresses]] [[feedback_adaptive_law_noise_behavior]]
+- The statistical calibration (identical baseline spans 17-20/25) stands.
+- Today's "curve lands 3/4" is really the **straight-line moving-target** case, which
+  [[project_rover_speed_sweep]] already records as solved — consistent, not contradictory.
+
+**How to apply:** `ROVER_TRAJ=Circular` at its default r=10 is a GENTLE-ARC test, not a
+curvature test. **To exercise the turning-target limit cycle you must set
+`ROVER_CIRCLE_R=0.8`** (and note the trade the r=10 comment records: at 0.8 m the Ackermann
+steering saturates and target motion is jerky — so 0.8 tests the cycle, 10 tests smooth
+moving-target tracking; they are different experiments and both are legitimate, but they are
+NOT interchangeable). [[project_rover_turning_open]]
+
 ---
 
 **Closes the last load-bearing open item from [[feedback_aulead_stationary_regresses]] /

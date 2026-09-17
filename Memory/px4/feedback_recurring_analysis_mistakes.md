@@ -1,6 +1,6 @@
 ---
 name: feedback_recurring_analysis_mistakes
-description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16 (sections 10-15): mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
+description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16/17 (sections 10-16): the STIMULUS changed -- verify the scenario the test drives, not just the code (ROVER_TRAJ=Circular silently stopped driving a circle and cost a whole session); mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
 metadata:
   node_type: memory
   type: feedback
@@ -255,6 +255,46 @@ the harness pinned it. It didn't. One arm of that A/B is permanently confounded.
 run's own `Control_Params.resolved` afterwards — not from what you believe the default is.
 Related harness bug from the same thread: `env NAME=VAL -u OTHER` silently runs `-u` as the
 COMMAND; all `-u` flags must precede every `NAME=VALUE`. That silently no-op'd a whole arm.
+
+## 16. The STIMULUS changed — "is the experiment even the same?" (the one that ate a whole session)
+
+**2026-09-17, the root cause of an entire multi-hour confusion.** I chased "what killed the
+curved-target limit cycle" through FOUR controlled experiments — a 4-arm gain-revert sweep, a
+pre-rewrite worktree, a 640×480 camera restoration, and an aborted commit bisect — and
+produced three confident mechanism claims, all wrong. **The cycle had not been fixed. It was
+never being driven.**
+
+`ROVER_TRAJ=Circular` stopped driving a circle on **2026-07-03 12:13**, commit **`b816fea0`**:
+`ROVER_CIRCLE_R` **0.8 m → 10 m**, with the code's own comment saying *"only the path
+curvature drops ~12x"*. Measured from the GT target path: July **0.86 m radius / 234° swept**
+vs today **9.4-12.1 m / 11-24°** — a straight line. Restoring `ROVER_CIRCLE_R=0.8` on
+unmodified HEAD brings the cycle straight back (median |e_rot| 0.70, r_fit 0.88 m, one rep
+missing by 7.20 m).
+
+**Every "no cycle" result I had was a null stimulus, not a null effect.** The controller was
+never the variable.
+
+**The check — do this BEFORE any A/B on a dynamic scenario:** measure the STIMULUS from the
+recorded data and confirm it matches the reference experiment. For a moving target that is
+four numbers off `Target Pose`, and it costs seconds:
+- fitted path radius (algebraic circle fit) and **arc swept** (unwrapped angle about the fit
+  centre) — `pathlen / (r_fit · swept) ≈ 1` only tells you the fit is self-consistent, it does
+  NOT tell you the path is curved; a 12 m/20° arc scores 1.0 too. **Read the radius.**
+- target speed and angular rate; check `v ≈ wz·r` closes.
+- ⚠ do NOT use accumulated heading change as the curvature proxy — numerically differentiating
+  a stair-stepped GT pose makes a straight path score a huge "turn" (mine read 50 rad on a
+  straight line and pointed the opposite way).
+
+**The deeper failure:** an experiment is code + parameters + **scenario**. Worktrees and git
+bisect reconstruct the first two. Section 11 says "a worktree rebuilds the CODE, not the
+EXPERIMENT" and I still only checked out-of-repo *assets* (camera SDF) — never the
+*trajectory the test was driving*, which was in-repo the whole time and env-overridable.
+
+**Corollary for endpoint validation (§11):** when a historical endpoint fails to reproduce,
+that means EITHER out-of-repo state OR **a mis-placed anchor** — I picked the July anchor by
+date (`--before "2026-07-03 23:59"` → `edb546f0` at 23:30) which sat **11 hours AFTER** the
+12:13 change, then concluded "not in the repo". Anchor to the DATA's own timestamp (the run
+directories were named `Fri Jul  3 11-14…11-48`, i.e. pre-noon), not to the end of the day.
 
 ## Also worth screening for
 
