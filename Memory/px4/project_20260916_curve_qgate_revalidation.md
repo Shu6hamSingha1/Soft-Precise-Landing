@@ -135,6 +135,40 @@ tracked-point correspondence noise ~2.5x ArUco's, per
 [[feedback_cross_marker_texture_history]] and the wider cross-marker perception thread).
 A moving rover adds self-motion + target-motion flow on top of that.
 
+**⭐ ROOT-CAUSE PASS (2026-09-17, same day, from existing data -- no new SITL): three
+hypotheses checked, one confirmed-real divergence, cause still open.**
+
+- ⛔ RULED OUT: marker-mount-height mismatch (already noted above -- geometrically identical).
+- ⛔ RULED OUT: my own "premature touchdown at z=1.5-2.5m" read was an ARTIFACT of truncating
+  `Control_Data`/`Ground_Truth` arrays to `min(len(...))` before indexing `z[-1]` -- that
+  grabs whichever array is shortest, not the true last sample. Don't do this; index each
+  array by its own length, or explicitly find the true flight-end timestamp.
+- ⛔ RULED OUT (at the control-loop level): the two world SDFs are otherwise identical except
+  `rover_cross.sdf`'s CHASE camera (external recording only, `CHASE_CAM`) was bumped
+  640x480 -> 1920x1440 on 2026-08-26, and that commit's own comment admits Gazebo renders
+  all cameras on one shared thread so a second high-res sensor "CAN still starve the down-cam's
+  frame budget... re-validate the down-cam fps before trusting this" -- that re-validation
+  apparently never happened. Measured control-loop rate is IDENTICAL though (100 Hz, dt_p95
+  16-18 ms, both worlds) -- so it is not starving the CONTROL loop. Not checked: whether it
+  starves the PERCEPTION thread's frame rate specifically (touchdown-detect under GT-FB
+  explicitly does not consume perception extent, so this path likely doesn't explain the
+  divergence, but the image-processing thread itself wasn't measured).
+- ✅ CONFIRMED REAL (from the run logs directly, `[controller] TOUCHDOWN-DETECT (GT)` /
+  `[FC] Impact detected` lines): cross-marker touchdown `|s_e_n|` = **0.67, 2.35, 5.85** (3
+  reps) vs ArUco's **0.39, 0.55** (matched reps) -- a genuine, large lateral tracking
+  divergence at touchdown, not a detection artifact. **2 of 5 cross-marker reps ended in a
+  literal hard IMPACT** (`|a|` 53.2, 61.3 m/s² > the 50 m/s² threshold) rather than a soft
+  touchdown-detect event at all. Both arms' touchdown detector fired via the SAME GT-depth
+  logic (`PLASMC_TOUCHDOWN_LOOM=1`, "perception extent NOT used") -- so whatever differs
+  is upstream of touchdown detection, in the descent tracking itself.
+- **Not yet checked, most likely remaining candidates:** (a) a cross-marker-specific
+  yaw/alpha sign or frame-convention issue in the GT-FB path (this project has a documented
+  history of exactly this bug class, e.g. `feedback_gtfb_wz_sign_bug`) that a stationary-only
+  validation would not have caught; (b) `rover_cross`'s base Ackermann chassis actually
+  differing from `rover_aruco`'s despite the shared `rover_ackermann` include (not directly
+  compared); (c) the chase-cam starving the PERCEPTION thread specifically even though
+  control-loop rate is unaffected.
+
 **This blocks answering "does AU_LEAD/QGATE work on the real turning target" at all** --
 you cannot isolate the lead's effect when the baseline itself is failing 4/5. **Before any
 further AU_LEAD work on cross-marker, this needs its own investigation**: compare
