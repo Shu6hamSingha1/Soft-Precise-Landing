@@ -1,6 +1,6 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "⛔ READ THE TOP BANNER FIRST. 2026-09-17: EVERY curve result in this file ran on a NON-CURVE. `ROVER_TRAJ=Circular` has not driven a real circle since commit b816fea0 (2026-07-03 12:13) changed ROVER_CIRCLE_R 0.8m->10m; measured target paths are a 9.4-12.1 m radius / 11-24 deg arc vs July's 0.86 m / 234 deg. DECISIVE: today's HEAD with ROVER_CIRCLE_R=0.8 gives median|e_rot|=0.70 (r_fit 0.88 m) = CYCLE RETURNS, in July's +0.58..+1.10 band, one rep missing by 7.20 m. ⇒ The curved-target limit cycle is ALIVE on current HEAD — never fixed, never re-tested. OVERTURNED: "cycle is gone", "AU_LEAD is redundant", "the QGATE does not neuter the curve" (p=0.72, measured on a straight path — question is OPEN again), and "the cause is not in the repo" (it IS b816fea0; my July anchor was picked by date and landed 11 h AFTER the change). SURVIVES: all stationary work (AU_LEAD regression, GT-FB refutation, KAPPA_DZ, 2-term QGATE) — no rover involved. To exercise the cycle you MUST set ROVER_CIRCLE_R=0.8; the default r=10 is a gentle-arc test ✅ r=0.8 QGATE RE-RUN RESULT (2026-09-17, combined n=6-8/arm, stimulus verified via Kasa fit): the gate removes the ungated lead's terminal-command risk -- B_ungated had 2/8 real failures incl. a 20.7m fly-away (Ia_xy peak up to 7.59), C_gated 7/7 landed with the LOWEST terminal peak command of all arms (mean 1.95 vs baseline 2.42 vs ungated 4.02, MWU p=0.003 vs ungated) while keeping most of the tracking benefit (e_mean 0.350 vs baseline 0.455). Landing-rate delta (6/8->7/7) not independently significant at this n (Fisher p=0.47) but the continuous terminal-peak metric is. Supports AU_LEAD+QGATE for the turning-target case at the real cycle scale, GT-FB only. Also found+fixed a harness bug: a crashed rep silently re-read the prior rep's stale output dir (feedback_recurring_analysis_mistakes sec 17)."
+description: "⛔ READ THE TOP BANNER FIRST. 2026-09-17: EVERY curve result in this file ran on a NON-CURVE. `ROVER_TRAJ=Circular` has not driven a real circle since commit b816fea0 (2026-07-03 12:13) changed ROVER_CIRCLE_R 0.8m->10m; measured target paths are a 9.4-12.1 m radius / 11-24 deg arc vs July's 0.86 m / 234 deg. DECISIVE: today's HEAD with ROVER_CIRCLE_R=0.8 gives median|e_rot|=0.70 (r_fit 0.88 m) = CYCLE RETURNS, in July's +0.58..+1.10 band, one rep missing by 7.20 m. ⇒ The curved-target limit cycle is ALIVE on current HEAD — never fixed, never re-tested. OVERTURNED: "cycle is gone", "AU_LEAD is redundant", "the QGATE does not neuter the curve" (p=0.72, measured on a straight path — question is OPEN again), and "the cause is not in the repo" (it IS b816fea0; my July anchor was picked by date and landed 11 h AFTER the change). SURVIVES: all stationary work (AU_LEAD regression, GT-FB refutation, KAPPA_DZ, 2-term QGATE) — no rover involved. To exercise the cycle you MUST set ROVER_CIRCLE_R=0.8; the default r=10 is a gentle-arc test ✅ r=0.8 QGATE RE-RUN RESULT (2026-09-17, combined n=6-8/arm, stimulus verified via Kasa fit): the gate removes the ungated lead's terminal-command risk -- B_ungated had 2/8 real failures incl. a 20.7m fly-away (Ia_xy peak up to 7.59), C_gated 7/7 landed with the LOWEST terminal peak command of all arms (mean 1.95 vs baseline 2.42 vs ungated 4.02, MWU p=0.003 vs ungated) while keeping most of the tracking benefit (e_mean 0.350 vs baseline 0.455). Landing-rate delta (6/8->7/7) not independently significant at this n (Fisher p=0.47) but the continuous terminal-peak metric is. Supports AU_LEAD+QGATE for the turning-target case at the real cycle scale, GT-FB only. Also found+fixed a harness bug: a crashed rep silently re-read the prior rep's stale output dir (feedback_recurring_analysis_mistakes sec 17) ⛔⛔ 2026-09-18: the "GT pose timestamp jitter / chase-cam render contention" root cause proposed for the cross-marker divergence is FULLY RETRACTED — physically invalid under Gazebo lockstep sim time, and measured on landing_test.py's own diagnostic recording loop (polling a cached sim-clock value), not the loop that actually feeds gt_feedback.py. Chase-cam resolution is NOT implicated (already validated safe at 1920x1440, project_20260826_chasecam_resolution_bump). Root cause of the cross-marker rover divergence is OPEN again."
 metadata: 
   node_type: memory
   type: project
@@ -169,60 +169,62 @@ hypotheses checked, one confirmed-real divergence, cause still open.**
   compared); (c) the chase-cam starving the PERCEPTION thread specifically even though
   control-loop rate is unaffected.
 
-**⭐⭐⭐ FOLLOW-UP (same day): read `gt_feedback.py` in full, and found the likely real
-cause -- GT `/pose` TIMESTAMP JITTER, reconnecting the chase-cam hypothesis I closed too
-fast.**
+## ⛔⛔ FULL RETRACTION 2026-09-18: the "GT pose timestamp jitter" root cause is WRONG,
+## on TWO independent grounds. Root cause is OPEN again.
 
-`gt_feedback.py` has NO `MARKER_TYPE` branch anywhere -- confirmed genuinely marker-agnostic
-(only `np.cross()` calls and comments match "cross"). Its entire output is a pure function
-of `(uav_pose, target_pose, t)` + a handful of env constants (`GT_CAM_DZ`, `GT_MARKER_DZ`,
-`GT_Z_REG`, `GT_ALPHA_SIGN`), all identical between the two launcher invocations. Also
-checked the `landing_platform` joint in both SDFs: `type='fixed'` to `base_link` in BOTH
-`rover_aruco` and `rover_cross` -- no independent platform motion. So if GT-FB's *inputs*
-are geometrically sane (confirmed above via the clean `r_fit`), the divergence must be in
-the RAW POSE STREAM's timing, not the marker, the geometry, or the GT-FB math.
+Both raised by the user, in sequence, after the finding below was first written:
 
-**Checked raw `Ground_Truth.npy` `Time` spacing directly (existing data, both worlds,
-A_base, n=5-6 each):**
+1. **Gazebo runs LOCKSTEP SIM TIME with PX4**, not wall-clock. "Render load stutters the
+   pose-publish cadence" is not a physically valid mechanism under lockstep -- sim time
+   advances in fixed steps regardless of render speed, so a heavier chase-cam cannot itself
+   create `dt<=0` gaps in the SIM-TIME stream. This also matches
+   [[project_20260826_chasecam_resolution_bump]]: the SAME shared-render-thread mechanism
+   was already tested (via `Img_Data.npy`, a sibling Gazebo-fed stream) across THREE
+   resolution bumps (640x480 -> 1280x960 -> 1920x1440) with zero degradation each time.
 
-| world | `dt<=0` samples | rate |
-|---|---|---|
-| ArUco (`rover`) | 25-46 / ~1290 | **~2-3%** |
-| Cross (`rover_cross`) | **172-258 / ~1200-1400** | **~15-21%** |
+2. **The `dt<=0` values were measured on the WRONG loop.** They come from
+   `Ground_Truth.npy`'s `Time` column, built by `apps/landing_test.py`'s OWN recording loop
+   (`t_c.append(time_node.perf_counter() - start_time)`, `apps/landing_test.py:568`).
+   `time_node.perf_counter()` (`src/gz_subscriber.py:319`) genuinely returns Gazebo sim time
+   (cached from the `/clock` topic callback) -- but that recording loop POLLS this cached
+   value at its OWN wall-clock cadence and appends a row every iteration regardless of
+   whether a new `/clock` message has arrived. A `dt=0` row is therefore just the recorder
+   logging the SAME cached sim-time twice because it polled faster than the clock ticked --
+   a diagnostic-loop artifact, not evidence anything is corrupted. **This is also a
+   DIFFERENT loop entirely from the one that feeds `gt_feedback.py`** (that lives inside
+   `controller.py`'s `Controller` thread, a separate call site never checked) -- so even
+   taken at face value, the measurement said nothing about what GT-FB actually consumes.
 
-**7-10x more duplicate/backward-timestamp pose samples on `rover_cross`.** `gt_feedback.py`'s
-velocity/yaw-rate estimator (`_slope`, a causal least-squares fit over a short time window
-of these SAME timestamps, feeding `h` and `w_z`) is exactly the kind of regression a burst
-of near-identical `t` values can corrupt (near-zero `denom = t@t` -> amplified slope noise).
-Also target GT position accel (double-diff of the raw log, a crude but telling proxy) is
-~3-4x noisier on cross (median 35-42 vs ArUco's 10-13, spikes to ~4600 vs ~1360) despite
-near-identical median speed and dead-flat z/roll/pitch -- consistent with timestamp jitter
-amplified by differentiation, not real rover dynamics.
+**Most likely mundane explanation for the higher duplicate rate on cross-marker** (not yet
+tested): this project's memory already documents cross-marker perception as
+computationally heavier than ArUco's (Hough-line processing, span-rescue, etc. --
+[[feedback_cross_marker_texture_history]] and the wider cross-marker perception thread). If
+that slows the SITL instance's real-time factor (sim time advancing more slowly per
+wall-clock second), `landing_test.py`'s wall-clock-paced polling loop would lap the sim
+clock more often, producing exactly this benign duplicate-row pattern. This would be REAL
+(cross-marker is heavier) but orthogonal to control quality -- not a sign `gt_feedback.py`'s
+own computation is degraded.
 
-**This reconnects the chase-camera hypothesis I ruled out too quickly above.** I checked
-`rover_cross.sdf`'s 1920x1440 chase-cam (recording-only, shared Gazebo render thread) against
-the CONTROL LOOP's own clock (steady 100 Hz both worlds) and called it closed. But the
-CONTROL loop and the GAZEBO POSE-PUBLISH cycle are separate clocks -- the control loop is
-paced by PX4/the Python timer, while `/world/$WORLD/pose/info` is paced by Gazebo's own
-sim/render step. A heavier render load can stutter the LATTER while leaving the FORMER
-untouched, which is exactly the asymmetry observed: clean control-loop rate, dirty pose
-timestamps. **Not yet directly proven** (would need e.g. reverting the cross-marker chase-cam
-back to 640x480 and re-measuring the `dt<=0` rate -- one SITL rep, cheap, not yet run) but
-it is now the best-supported single hypothesis, with a mechanism, a smoking-gun numeric
-signature, and a documented precedent (the SDF's OWN 2026-08-26 comment already predicted
-this exact risk and asked for a re-validation that never happened).
+**⛔ Chase-cam resolution is NOT implicated by anything found here.** Per the user: it has
+already been validated at 1920x1440 with zero measured down-cam impact across two prior
+bumps, and the mechanism proposed for it to matter here doesn't hold under lockstep sim
+time. Do not propose reverting it as a fix for this thread.
 
-**How to apply / next step:** before touching AU_LEAD further on cross-marker, (1) confirm
-by reverting `rover_cross.sdf`'s chase-cam to 640x480 (or disabling `CHASE_CAM` entirely if
-it's gated) and re-measuring the `Ground_Truth.npy` `dt<=0` rate on a few reps; (2) if
-confirmed, either fix the render-load asymmetry (lower the chase-cam resolution back down,
-or move it off the shared thread if Gazebo Harmonic supports that) or make `gt_feedback.py`'s
-`_slope` estimator robust to duplicate/near-duplicate timestamps (dedupe on `t` before the
-regression -- note `feedback_gt_noise_uniform_dt` already documents a "double-diff amplifies
-stair-stepped input" cousin bug from the target-acceleration estimator this file's own
-`__init__` comment says was removed for unrelated reasons; the fix pattern -- dedup on pose
-CHANGE / stamp, not on control-tick count -- may already exist elsewhere in the codebase and
-be reusable here).
+**Root cause of the cross-marker rover's genuine descent-tracking divergence (confirmed
+real via touchdown `|s_e_n|` and hard-impact evidence, still stands) is OPEN.** Remaining
+untested candidates from the earlier pass: a cross-marker-specific yaw/alpha sign or
+frame-convention issue (this project has a documented history of this bug class); the
+`rover_cross` chassis genuinely differing from `rover_aruco`'s despite the shared include
+(not directly compared); something in the LIVE call site that feeds `gt_feedback.py` inside
+`controller.py`'s `Controller` thread specifically (never inspected -- the two ruled-out
+mechanisms above were both about DIAGNOSTIC-loop artifacts, not that call site).
+
+**Lesson for future sessions:** don't chain speculative mechanisms under time pressure --
+two in a row here were wrong for checkable reasons (an existing validation file that should
+have been found first; a simulator timing model that should have been verified before
+building a causal story on it). Slow down and verify a mechanism's PRECONDITIONS (does this
+project even use wall-clock timing here? which loop actually produced this number?) before
+presenting a "likely root cause."
 
 **This blocks answering "does AU_LEAD/QGATE work on the real turning target" at all** --
 you cannot isolate the lead's effect when the baseline itself is failing 4/5. **Before any

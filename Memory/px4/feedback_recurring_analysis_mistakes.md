@@ -360,6 +360,40 @@ applied. Same rule, same enforcement gap, as the stationary `WORLD=cross_marker
 MARKER_TYPE=cross` rule below — but now proven to also bite the MOVING-target launcher and
 its own set of harnesses.
 
+## 20. A mechanism claim needs its PRECONDITIONS verified, not just its correlation
+
+**2026-09-18:** proposed "the moving cross-marker rover's descent divergence is caused by
+GT `/pose` timestamp jitter, itself caused by the chase-camera's heavier render load
+stuttering Gazebo's pose-publish cycle." Both halves were wrong, for checkable reasons,
+and both were caught by the user rather than by a self-check:
+
+1. **Didn't verify the simulator's TIMING MODEL before building a causal story on it.**
+   Gazebo runs LOCKSTEP with PX4 SITL — sim time advances in fixed steps regardless of
+   render speed. "A heavier render load stutters the sim-time stream" is not physically
+   possible under lockstep. The check: before proposing a timing/latency mechanism, confirm
+   whether the relevant clock is wall-clock or lockstepped sim-time — they have different
+   failure classes and a wall-clock mechanism does not transfer.
+2. **Didn't check which LOOP produced the number before trusting it.** The `dt<=0` evidence
+   came from `apps/landing_test.py`'s own diagnostic recording loop (polling a cached
+   `/clock` value at ITS OWN cadence — a repeat row just means it polled faster than the
+   clock ticked), not from the loop inside `controller.py`'s `Controller` thread that
+   actually feeds `gt_feedback.py`. A statistic from a diagnostic/logging path says nothing
+   about the live control path unless you've confirmed they share the same data.
+3. **Didn't search for prior validation of the exact mechanism before proposing it.** The
+   same shared-render-thread hypothesis was ALREADY tested, twice
+   ([[project_20260826_chasecam_resolution_bump]]), via a sibling Gazebo-fed stream
+   (`Img_Data.npy`), with zero effect found across three resolution steps. That file should
+   have been found (it was — by grep — for a different question, minutes earlier in the
+   same session) and cross-checked before re-proposing the same mechanism from a different
+   angle.
+
+**The check:** before presenting a "likely root cause," verify (a) the timing/physics model
+actually permits the mechanism, (b) the data used to support it comes from the code path
+actually in question, and (c) a prior memory file hasn't already tested the same mechanism.
+Two of three failed here on a claim that read as strong (a clean numeric ratio, a plausible
+narrative, a real code comment predicting the risk) — confidence from a good narrative is
+not the same as confidence from a verified mechanism.
+
 ## Also worth screening for
 
 - 2026-09-02: the recorded `_raw`/frames PNGs carry a **drawn debug overlay**
