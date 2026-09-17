@@ -680,3 +680,66 @@ Below ~0.5 m you're <1 s from touchdown so 0.15 s of lead is pointless there
 anyway. `run_drifttau_confirm_gate.sh` kept for the re-check.
 
 **Lesson → [[feedback_dont_judge_cbf_by_sp]].**
+
+---
+
+## UPDATE 2026-09-17 (independent review audit) — the τ=0.15 bake rationale is NOT supported by a same-metric A/B
+
+Re-scanned `vis_c(t)` directly, per arm, on both rover sweeps. Scanner is in-tree and the
+numbers below are reproducible with it:
+`PX4_Gazebo/tools/scan_vis_safeset.py --min-frames 400 'test_data/RoverCBFSweep/*/*/off/*'`
+
+| bundle | arm | reps | frames | sensor-exit frames | buffered-box exits |
+|---|---|---|---|---|---|
+| RoverCBFSweep/20260909-163929 (raw, τ=0.4) | off (τ=0) | 14 | 10552 | 236 (2.24%) | 413 |
+| " | lead | 14 | 8665 | **182 (2.10%)** | 254 |
+| RoverCBFSweep/20260909-182607 (conditioned, τ=0.15) | off (τ=0) | 14 | 9761 | 46 (0.47%) | 80 |
+| " | lead | 14 | 8624 | **117 (1.36%)** | 216 |
+
+Restricting to reps ≥400 frames (kills the 2-3 s deaths) does not change it: raw 2.33% vs
+2.31% (wash), conditioned 0.50% vs **1.50%** (lead worse). Per-rep median exit rate is 0.00%
+in both conditioned arms — the totals are driven by 2-3 reps, n=2/cell.
+
+**The "278 centre-off-sensor frames / 24 rover reps" figure that the bake rests on is a
+τ=0-ARM-ONLY count.** The τ=0.15 arm's own exit count (182 / 117) was never placed next to
+it. On the same metric the lead arm is not better, and in the conditioned sweep it is worse.
+So "τ·d closes the moving-target gap" is **unevidenced**, not disproved — the rover reps are
+still duration-confounded and n=2.
+
+Not a call to flip the default back (τ=0.15 is inert on stationary — 0 sensor exits on the
+IC1-5 gate — and the lead is structurally the right idea, see below). It IS a call to stop
+citing the 278 figure as the comparison, in memory and in the manuscript.
+
+**Related, from the same audit:** `τ·d` is better understood not as a "moving-target lead"
+but as **the translational term the depth-free predictor drops**. `c_next = r + L_e Δy`
+keeps only the rotational (depth-free) response; the true response also has the
+depth-dependent translation. Measured exactly (ramp to lean over horizon T, exact pinhole),
+the shortfall is `≈ gT²/(6Z)` of the predicted displacement — 0.6% at Z=5 m, 6% at Z=0.5 m
+for T=0.15 s, always in the UNSAFE direction (under-prediction). `d` = the de-rotated flow
+IS that translational rate, so `τ·d` completes the first-order prediction without depth —
+and the right value of τ is the attitude-realization horizon, measured at ~0.15 s
+(high-passed lean-command → realized-tilt cross-correlation over the IC1-5 gate, median
+144 ms, IQR 112-288). That is a much stronger justification for τ=0.15 than the rover data,
+and it applies to stationary targets too (where "self-motion flow" is exactly the point, not
+noise). See [[feedback_dont_judge_cbf_by_sp]].
+
+### ⛔ TABLE CORRECTED 2026-09-17 — the per-arm figures above used a TRANSPOSED phi
+
+The sensor-exit table in the audit block above (and `tools/scan_vis_safeset.py` v1, and the
+peer's independent re-derivation of it) computed the physical half-extent as `CENTER/focal`.
+That is transposed against `c`: `marker_tangent()` applies `_SWAP`, so the true extents in
+`c`'s axis order are `CENTER` **reversed** = `[1.185, 0.889]`. Corrected:
+
+| bundle | arm | as published | corrected |
+|---|---|---|---|
+| raw (163929) | off / lead | 2.24% / 2.10% | **0.45% / 0.28%** (lead better) |
+| conditioned (182607) | off / lead | 0.47% / 1.36% | **0.29% / 0.63%** (lead worse) |
+
+**The finding is unaffected and arguably strengthened.** It was never about the magnitudes:
+the "278 centre-off-sensor frames / 24 rover reps" figure is a `tau=0`-arm-only count, and
+that is a statement about which arms were compared. With correct extents the two sweeps
+disagree in *direction*, which is exactly the n=2/cell duration-confounded noise the original
+entry described. Same verdict: stated rationale unevidenced, value fine, not a call to flip.
+
+Root cause is a live code defect (one image axis of the barrier is inert, the other 36%
+over-tight) — see [[project_20260917_visibility_predictor_residual]] § CORRECTION.

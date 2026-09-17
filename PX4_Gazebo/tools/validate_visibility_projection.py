@@ -35,11 +35,19 @@ from visibility_projection import (visibility_project, descent_ease,  # noqa: E4
                                    marker_tangent, fov_limit, condition_drift)
 
 RNG = np.random.default_rng(int(os.environ.get("VVP_SEED", "0")))
+# Intrinsics in the NATURAL PIXEL ORDER (cx, cy) -- the same order controller.py passes
+# (img_data.center = _resolution/2) and the same order marker_tangent() expects.
+# NOTE 2026-09-17: this was [160, 120] (reversed) and SENSOR was CENTER/FOCAL, which is
+# transposed for this geometry: marker_tangent applies _SWAP, so c[0] = (py-cy)/f spans
+# +-cy/f and c[1] = -(px-cx)/f spans +-cx/f, i.e. the extents in c's order are the
+# elementwise quotient REVERSED. The module's fov_limit() carried the SAME transposition,
+# so PHI and SENSOR were wrong CONSISTENTLY and check 1 passed anyway -- which is how the
+# live bug survived "15/15". Both are fixed now; keep them in agreement.
 CENTER = np.array([160.0, 120.0])
 FOCAL = np.array([135.0, 135.0])
 G = 9.81
 PHI = fov_limit(CENTER, FOCAL, 0.15)
-SENSOR = CENTER / FOCAL          # the ACTUAL FoV edge (phi = SENSOR * (1 - buffer))
+SENSOR = (CENTER / FOCAL)[::-1]  # the ACTUAL FoV edge in c's axis order
 _R = []
 
 

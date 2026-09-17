@@ -1,11 +1,11 @@
 ---
 name: feedback_aulead_stationary_regresses
-description: "B4 gate (2026-09-09/12): PLASMC_AU_LEAD regressed stationary cross-marker under PERCEPTION via HF-gain noise amplification (GT-FB clean, confirmed not a control instability). FIXED 2026-09-12 with a 2-term PLASMC_AU_LEAD_QGATE: (1) MARKER_EXTENT_PX fill-fraction (perception quality) + (2) |I_a_raw_xy| magnitude (the IC5 fix — IC5's early command runs ~2x hotter than other ICs, unrelated to extent). Combined result: 18/25 precise, >= the 17/25 ungated baseline, ALL 5 ICs at/above baseline (one unconfirmed IC4 single-rep flake). OPEN before any bake: the magnitude gate may suppress the curved-target use case's sustained |I_a_raw| too (same range) — needs a persistence-aware re-check, not yet done."
+description: "B4 gate (2026-09-09/12): PLASMC_AU_LEAD regressed stationary cross-marker under PERCEPTION via HF-gain noise amplification (GT-FB clean, confirmed not a control instability). FIXED 2026-09-12 with a 2-term PLASMC_AU_LEAD_QGATE: (1) MARKER_EXTENT_PX fill-fraction (perception quality) + (2) |I_a_raw_xy| magnitude (the IC5 fix — IC5's early command runs ~2x hotter than other ICs, unrelated to extent). Combined result: 18/25 precise = INDISTINGUISHABLE from baseline (Fisher p=0.797 vs pooled 56/75; the identical baseline itself spans 17-20/25, so do NOT read it as beating baseline). Extent-only gate 13/25 is still measurably degraded (p=0.046); the magnitude term is provably better ONLY on IC5 (5/5 vs 0/5, p=0.0079). OPEN before any bake: the magnitude gate may suppress the curved-target use case's sustained |I_a_raw| too (same range) — needs a persistence-aware re-check, not yet done."
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: 878fdadb-dd99-4085-bcf2-e19879f48082
-  modified: 2026-09-11T22:55:53.829Z
+  modified: 2026-09-16T14:35:05.868Z
 ---
 
 **B4 (turning-target lateral limit cycle) — the mandatory stationary IC gate for
@@ -21,10 +21,9 @@ Concurrent A/B, `WORLD=cross_marker MARKER_TYPE=cross`, IC1-5 stationary, n=5, H
 - All 50 reps landed; no TL, no crash, no fly-away. The failure is pure terminal
   sloppiness, not instability.
 - Bundles: `test_data/ICValidation/20260909-191246` (A) / `20260909-193638` (B).
-- ⚠ Both arms ran on `CBF_DRIFT_TAU=0.15` (reverted to 0 same day, commit `b731ed22`, after
-  its own gate showed ~3× hard touchdowns on stationary). A/B is matched so the verdict
-  holds; but arm-A ABSOLUTE numbers here are on the degraded tau=0.15 base — re-take the
-  baseline on tau=0 if AU_LEAD is ever revisited.
+- ✅ `CBF_DRIFT_TAU` verified from `Control_Params.resolved`: **every PERCEPTION arm in this
+  whole thread ran 0.15** (P1-A/B, K-A/B/D, Q-A/B/C/D) — matched, no confound. (The GT-FB
+  pair is the exception and IS confounded: A=0.0, B=0.15 — see the GT-FB section.)
 
 ## Mechanism — CONFIRMED perception-noise amplification (GT-FB discriminating test, 2026-09-09)
 
@@ -39,9 +38,14 @@ n=5; bundles `ICValidation/20260909-221339` A / `20260909-224018` B) REFUTES the
 control-side story:**
 - **IC1-4: NO regression.** xy_err 0.013→0.015 m, rel_vel 0.050→0.064, 19/19 vs 20/20
   precise+soft, min_alt identical.
-- **IC5 (GT-FB baseline is a known terminal-divergence fly-away regime): AU_LEAD RESCUES
-  it** — baseline 0/5 precise / mean xy 4.14 m (two 7-8 m fly-aways + 1 TL) → AU_LEAD
-  **5/5 precise, mean xy 0.027 m**. The lead damped a genuine divergence = its design job.
+- **IC5: ⛔ RETRACTED — CONFOUNDED (2026-09-16 audit, [[feedback_session_20260909_12_audit]]).**
+  Observed: GT-FB baseline 0/5 precise / mean xy 4.14 m (two 7-8 m fly-aways + 1 TL) →
+  AU_LEAD arm 5/5 / mean xy 0.027 m. BUT the two GT-FB arms ran **unmatched
+  `CBF_DRIFT_TAU` (A=0.0, B=0.15)** — a peer re-baked the controller default 13 min
+  before arm B started and my harness never pinned it. `CBF_DRIFT_TAU` is an equally
+  plausible cause. **Do NOT cite "AU_LEAD rescues IC5" as evidence for anything.** The
+  IC1-4 half above is unaffected (both arms at ceiling, σ-noise ≈0) and still carries the
+  conclusion.
 - Mechanism signals under GT-FB (IC1-4 pooled, B−A): `I_a_raw` peak +0.01 (was +9.9),
   κ_xy peak +0.003 (was +0.19), κ growth −0.051→−0.052 = **κ DECAYS in both arms** (was
   +0.37), CBF `theta`/`vis_active` ~0 both. Only surviving fingerprint: `I_a` spectral
@@ -82,7 +86,7 @@ terminal extent-saturation noise) rather than the adaptive-law symptom the
 | B AU_LEAD, no gate | 3/25 | 0.116 | 3/20 | 0/5 |
 | **C AU_LEAD + QGATE** | **13/25** | **0.085** | **13/20** (≥ baseline) | **0/5** |
 
-**IC1-4 fully recovered — 13/20 precise vs baseline's 12/20, vs 3/20 without the gate.**
+**IC1-4 recovered — 13/20 precise vs baseline's 12/20, vs 3/20 without the gate.** ⚠ but that is a SELECTIVE SUBSET: on the full 25-rep metric this arm is 13/25, still significantly below the pooled baseline (Fisher p=0.046). Report the full set, not the ICs that worked.
 Gate confirmed engaging correctly in logs (`au_lead_qgate` → 0 in the terminal 3 s on
 every checked rep, extent saturating 300-319 px in both IC2 and IC5). **IC5 (3 m start,
 shortest/steepest descent, ~9 s flight) does NOT recover** (0/5 in both B and C, xy
@@ -124,8 +128,8 @@ degrading kills the lead). `controller.py` `_kappaSolver`-adjacent block, same
 | C extent-only gate | 2/5 | 4/5 | 4/5 | 3/5 | 0/5 | 13/25 |
 | **D extent+magnitude gate** | 3/5 | 4/5 | **5/5** | 1/5 | **5/5** | **18/25** |
 
-**IC5 fully fixed (0/5 → 5/5, mean xy 0.051 m).** IC1-3 hold or improve vs both baseline
-and the extent-only gate. **Total 18/25 now slightly BEATS the 17/25 ungated baseline.**
+**IC5 fully fixed (0/5 → 5/5, mean xy 0.051 m; IC5-specific Fisher p=0.0079, significant — this is the one place the magnitude term is provably better than the extent-only gate; on the pooled 25-rep metric 18/25 vs 13/25 is p=0.244, NOT significant).** IC1-3 hold or improve vs both baseline
+and the extent-only gate. **Total 18/25 = statistically INDISTINGUISHABLE from baseline** (Fisher p=1.000 vs its own-run 17/25; p=0.797 vs the pooled 56/75 baseline) — which IS the success criterion. ⛔ Do NOT read the +1 as an improvement: three identical baseline runs span 17-20/25, so anything under ~3/25 is noise ([[feedback_session_20260909_12_audit]]).
 IC4 dropped to 1/5 (one hard rep, xy 0.49 m/1.41 m/s) — inspected: that rep's flight
 never reached the surface (min_alt 2.43 m, truncated ~5.8 s log) with `MARKER_EXTENT_PX`
 staying tiny (45-124 px) and the magnitude gate mostly OPEN (qg≈0.94 mean) throughout —
@@ -133,21 +137,28 @@ signature does NOT match the AU_LEAD noise-amplification pattern (no terminal ov
 gate barely engaged); looks like an unrelated SITL flake (n=5 is small — retest before
 concluding IC4 regressed).
 
-**⚠ OPEN RISK, not yet checked: the curved-target use case this lead was BUILT for**
-([[project_rover_turning_open]] "BEST CURVED CONFIG") **runs on a SUSTAINED
-`|I_a_raw|`~1.0-1.5 m/s² (the standing centripetal demand) — the SAME range the new
-magnitude gate suppresses.** The magnitude gate cannot distinguish IC5's TRANSIENT early
-spike (decays by frac~0.3-0.4) from the curve's SUSTAINED elevated demand using
-instantaneous magnitude alone. **Must re-validate the curved-target benefit WITH both
-gate terms on before any bake** — if the magnitude gate neuters the lead on the curve,
-it needs to key off persistence/duration (e.g. a short-horizon rolling mean or a
-one-way "still transient" latch) rather than instantaneous `|I_a_raw|`.
+**✅ CURVE RISK RESOLVED 2026-09-16 — it did NOT materialise**
+([[project_20260916_curve_qgate_revalidation]], n=4/arm, campaign recipe verbatim).
+Gated vs ungated lead on the Circular curve is **indistinguishable**: e_mean 0.253 vs
+0.250 (p=0.72), touchdown lat p=0.16, osc_std p=0.49, **both 4/4 ON-PLATFORM**; the gate
+transmits ~33 % through the 0.8-3.5 m tracking window, which is enough. The premise of the
+worry was simply wrong: measured tracking-window `|I_a_raw|` median is **0.44-0.49**, not
+the 1.0-1.5 m/s² this file previously asserted, so the magnitude term sits mostly OPEN
+(0.73) on the curve. No persistence/latch redesign is needed.
 
-**Verdict: stationary gate is now net-positive with BOTH gate terms on (18/25 ≥ 17/25
-baseline, all 5 ICs at or above baseline levels except IC4's unconfirmed single-rep
-flake). Still needs, before any bake:** (1) IC4 retest at higher n to rule out a real
-regression; (2) the curved-target re-validation above — the load-bearing open question;
-(3) a real-rover pass.
+**⚠ But the PREMISE of AU_LEAD itself changed:** the no-lead baseline now *lands* the
+curve (3/4 ON-PLATFORM, lat 0.130 m, **e_rot +0.05 vs July's +1.11**) — the self-sustained
+rotating limit cycle the lead was built to damp is essentially GONE from the current
+stack. AU_LEAD is now a modest refinement (e_mean 0.345→0.250, −27 %, p=0.0001), not a
+rescue. What killed the cycle is unidentified; prime suspect `CBF_DRIFT_TAU=0.15` (itself
+a τ·d moving-target lead in the visibility QP) — if so, AU_LEAD may be redundant.
+
+**Verdict: stationary parity restored with BOTH gate terms on (18/25, p=0.797 vs pooled
+baseline — parity, not an improvement), and the curve benefit survives the gate.
+Remaining before any bake:** (1) IC4 retest at higher n; (2) a real-rover-perception pass
+(all curve validation to date is GT-FB; rover perception itself is still broken);
+(3) decide whether AU_LEAD is worth its complexity now that the baseline lands the curve —
+and first isolate what actually fixed it.
 
 ## Prior "how to apply" (superseded in part by the gate above; kept for the AU_LEAD
 ## mechanics/history it still documents)

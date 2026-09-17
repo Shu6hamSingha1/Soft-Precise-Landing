@@ -1,10 +1,167 @@
 ---
 name: project_rover_turning_open
-description: "TURNING-rover (Circular r=0.8, wz=0.48) thread: yaw ramp windup SOLVED (Omega_d FF); k_r RESOLVED (HD_KR=0 = wrong reference, rejected; DHD_SRC falsified c3-noise surgically; defaults stand). CYCLE MECHANISM CORRECTED 2026-07-03: W*=1.3-1.7 rep-scattered (locked-1.7+harmonics was an FFT-bin artifact), A*W^2 = 1 m/s^2 const (cone-clamp-set amplitude, duty 26-38%), actuation phase only -25..-55 (NOT -120; method artifact), fuel = anti-position command + ANY lag pumps a rotating error (P_cyc>0 7/9, sign predicted by chi vs W*tau 9/9); damping quadrature destroyed in the barrier chain (drift branch chi=-1.5 instead of +90; switch 0.47 share at +7). Exit sized +25-40deg at 1.3-1.7 rad/s: PLASMC_AU_LEAD approved 07-03, under test."
+description: "⚠ THE CURVE IS STILL OPEN — this file is LIVE, not superseded. Its July analysis (chi>Wtau pump, branch audit, bias<->cycle frontier, AU_LEAD exit) describes a problem that still reproduces on current HEAD. ⛔ A 2026-09-17 re-stamp claiming 'the curve is no longer open / the limit cycle is gone' was WRONG and is corrected in-file: ROVER_TRAJ=Circular stopped driving a real circle on 2026-07-03 (commit b816fea0, ROVER_CIRCLE_R 0.8m->10m), so EVERY Sep 2026 'curve' test was a gentle arc. Circle-fit on GT Target Pose, independently verified: July r=0.87-0.88 m / 230-242 deg swept vs Sep r=9.9-13.9 m / 13-28 deg. HEAD + ROVER_CIRCLE_R=0.8 -> cycle RETURNS (median |e_rot| 0.70, July's band, one rep missing by 7.20 m). TO EXERCISE THE CYCLE YOU MUST SET ROVER_CIRCLE_R=0.8; default r=10 is a smooth-tracking test, not interchangeable. Also falsified along the way: the camera-SDF hypothesis and the 'cause is outside the repo' conclusion (both null-stimulus artifacts)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3c2f4c67-05c1-4e6f-966b-0e62018fc8a7
+---
+
+## ⛔⛔⛔ CORRECTION 2026-09-17 (later, same day) — THE RE-STAMP BELOW IS WRONG. THE CURVE IS STILL OPEN.
+
+**The limit cycle is ALIVE on current HEAD. It was never fixed — it was never re-tested.**
+
+`ROVER_TRAJ=Circular` stopped driving a real circle on **2026-07-03 12:13**, commit
+**`b816fea0`**, which set `ROVER_CIRCLE_R` **0.8 m → 10 m** (its own comment: *"only the path
+curvature drops ~12x"*). Measured from the GT `Target Pose`: July **0.86 m radius / 234°
+swept**; every September run **9.4-12.1 m / 11-24°** — a straight line, not a curve.
+
+**Today's HEAD, unmodified, with `ROVER_CIRCLE_R=0.8`** (`test_data/Rover_Turning/r08_confirm/`,
+n=3): **median |e_rot| = 0.70** (+0.47, +0.78, +0.70), `r_fit` 0.88 m — **CYCLE RETURNS**, in
+July's +0.58..+1.10 band, with one rep missing by **7.20 m** (e_mean 1.75, osc_std 0.377).
+
+⇒ Point-by-point against the re-stamp below:
+- **"The curve lands now" — it lands the GENTLE ARC (r=10).** That is the straight-line
+  moving-target case [[project_rover_speed_sweep]] already had solved. At r=0.8 it still fails.
+- **"The limit cycle is gone" — FALSE.** Null stimulus, not null effect.
+- **"The cause is OUTSIDE the git repo" — FALSE.** It is `b816fea0`, in-repo and env-tunable.
+  That conclusion (mine, `e7882829`) came from anchoring the bisect by DATE:
+  `--before "2026-07-03 23:59"` selected `edb546f0` at **23:30, eleven hours AFTER** the 12:13
+  change, so "the July endpoint doesn't reproduce" meant **wrong anchor**, not out-of-repo.
+  The cycling run directories are named `Fri Jul  3 11-14…11-48` — pre-noon.
+- **The camera-SDF hypothesis is separately FALSIFIED** — restoring 640×480/fx=270 on HEAD
+  gives `e_rot` +0.04..+0.07 (no cycle). The peer's loop-timing table below correctly
+  predicted this; it was right for the right reason, and the camera was never the variable.
+- The four gain reverts, the `d380901c` worktree test and the camera test are all
+  **uninformative about the cycle** — every one ran at r=10. (The `d380901c` tail-variance
+  observation stands as a robustness result, not a cycle result.)
+
+**So this file's July-era analysis is NOT superseded — it is the live description of a live
+problem.** The `χ > Wτ` pump mechanism, the branch audit, the `PLASMC_AU_LEAD` exit and the
+bias↔cycle frontier all still stand and still need an answer.
+
+⚠ **To exercise the cycle you MUST set `ROVER_CIRCLE_R=0.8`.** The default r=10 is a
+smooth-tracking test. Both are legitimate experiments; they are not interchangeable, and the
+r=10 comment records the trade (at 0.8 m the Ackermann steering saturates, making target
+motion jerky). Primary record: [[project_20260916_curve_qgate_revalidation]] (top banner),
+method lesson §16 in [[feedback_recurring_analysis_mistakes]].
+
+**✅ INDEPENDENTLY VERIFIED (2026-09-17, `soft-precise-landing-42`, the author of the wrong
+re-stamp).** Circle fit (Kåsa) to GT `Target Pose`, all reps:
+
+| set | r_fit | swept | path len |
+|---|---|---|---|
+| July `yawhold_arm_n3` / `aulead_sweep` / `aulead_commitoff` (n=12) | **0.87-0.88 m** | 230-242° | 3.5-3.7 m |
+| Sep `cycle_isolation` / `qgate_revalidation` / `worktree_d380901c` / `XirXi2` / `RoverCross` (n=18) | **9.9-13.9 m** | 13-28° | 2.9-4.8 m |
+| `r08_confirm` (HEAD + `ROVER_CIRCLE_R=0.8`) | **0.89 m** | 283° | 4.4 m |
+
+`b816fea0` is confirmed directly in the repo (`ROVER_CIRCLE_R` default `10.0`, comment *"only
+the path curvature drops ~12x"*). The overturn is correct; the re-stamp below is wrong.
+
+⛔⛔ **METHOD LESSON — how I let it through, which is the generalizable part.** I *did* check
+trajectory comparability before pooling July with September, and my check reported "comparable".
+It used heading sweep = `unwrap(atan2(dy,dx))` on numerical gradients, which returned 16-26 **rad**
+for the September arms — i.e. it claimed the near-straight paths were turning *more* than July's
+real circles. On a straight path `dy/dx` is dominated by noise, heading jitters, and `unwrap`
+accumulates spurious 2π wraps. **I had flagged that metric as noisy in the same session and then
+let it carry a load-bearing comparability claim anyway.** A circle fit was equally cheap, robust,
+and would have caught this immediately. → *When a comparability check is what licenses pooling two
+datasets, it must be a robust statistic; if you have just called your metric unreliable, you may
+not then lean on it.* Logged as a new instance for [[feedback_recurring_analysis_mistakes]].
+
+
+---
+
+## ⛔ SUPERSEDED RE-STAMP (2026-09-17, earlier) — kept for the audit trail; its factual claims are corrected above
+
+The September 2026 data contradicts this file's central prognosis. Everything below is kept
+as an accurate record of the **July 2026 era**; do not act on its conclusions.
+
+**1. The curve lands now.** GT-FB Circular (~0.5 m/s, heading-hold, `TERMINAL_COMMIT=0`),
+pooled across `Rover_Turning/{cycle_isolation,qgate_revalidation}`, `XirXi2_RoverGTFB/moving_base`
+and `RoverCross_GTFB_Circular`: **~30/33 on-platform at xy 1-9 cm**, `min_rel_z` 0.490-0.504 m
+(genuine pad landings). July's best was 2/3 and its typical arm was 0/3 at 1-8 m; July's
+`yawhold_arm_n3` shows `min_rel_z=0.089` — it descended past the pad to near true ground,
+i.e. landed *beside* it. Same trajectory family, same harness.
+
+**2. The limit cycle is gone, and NOT because of anything in this file.** Primary
+investigation: [[project_20260916_curve_qgate_revalidation]] (peer session). Key results:
+- The pre-visibility-rewrite code (`d380901c`) **already has no cycle** — `e_rot` +0.05..+0.21
+  vs July's +1.11. So the two-tier visibility-QP rewrite did NOT kill it (that claim was
+  raised and RETRACTED, `e592376d`).
+- Running the **exact July commit `edb546f0` today** also gives NO cycle (median |e_rot| 0.13,
+  n=2) vs that same commit's own archived July data (+0.58..+1.10, 27/27 cycle reps).
+  **⇒ Same commit, cycle in July, no cycle today: the cause is OUTSIDE the git repo.** A commit
+  bisect would falsely converge on the earliest commit — do not attempt one (`e7882829`).
+- Peer's leading hypothesis is the out-of-repo camera SDF (640×480/fx=270 → 320×240/fx=135 on
+  2026-08-27), via "less image work ⇒ less latency ⇒ smaller Wτ ⇒ flips the χ>Wτ pump condition".
+
+**⚠ My measurement constrains that hypothesis (2026-09-17, this session).** These are **GT-FB**
+runs, so a camera change can only reach the control loop via CPU contention / loop rate, not via
+the feature path. **The logged control-loop timing is essentially unchanged across the eras:**
+
+| era | ctrl rate (median) | dt p95 |
+|---|---|---|
+| July cycling (`yawhold_arm_n3`, `aulead_sweep`, n=9) | 94.4 Hz | 18.3-18.7 ms |
+| Sep `d380901c` worktree (n=4) | 100.0 Hz | 18.5 ms |
+| Sep HEAD (`qgate A_base`, `cycle_isolation D_tau0`, n=8) | 100.0 Hz | 18.0 ms |
+
+The loop was **not** starved in July (identical p95 tail). So the simple "slower loop ⇒ more
+lag" route is not supported by the control-side timing; if the camera SDF is the cause it must
+act through some other path under GT-FB. **The cause remains UNIDENTIFIED — treat it as open.**
+
+**3. What the visibility rewrite DID do: kill the TAIL, not the cycle.** Same-harness worktree
+A/B on the curve — old stack is **bimodal** (lat 0.018-5.90 m, `e_mean` sd **0.691**) vs new
+(sd **0.006**); on-platform 1/4 vs 3-4/4. This replicates the stationary "NEW wins the TAIL"
+finding from [[project_20260909_visibility_projection_wire_in]] on a moving target.
+
+**4. Both "exits" this file sized are no longer binding.**
+- **`PLASMC_AU_LEAD`** — `qgate_revalidation` n=4/arm: no-lead 3/4, lead-ungated 4/4,
+  lead+qgate 4/4. Equivalent. The elaborate ω_z=0.9/ω_p=3.5/ratio-0.5 tuning below solved a
+  problem that no longer binds. (Also [[feedback_aulead_stationary_regresses]], risk RESOLVED.)
+- **`CBF_DRIFT_TAU`** — `cycle_isolation/D_tau0` (τ=0, reactive-only) gave the tightest LANDING
+  numbers in the dataset (4/4 at 1.5-3.1 cm), slightly ahead of τ=0.15.
+  ⛔ **CORRECTED 2026-09-17 (same day): do NOT read that as evidence against τ>0 — I made
+  exactly the mistake I cited.** xy/SP is the wrong metric for a CBF
+  ([[feedback_dont_judge_cbf_by_sp]]); I flagged that and then drew an xy-based conclusion anyway.
+  The same-metric (CBF-behaviour) evidence is [[project_20260909_visibility_projection_wire_in]]'s
+  2026-09-17 audit block (`e9a3d081`, third session), **which I independently re-derived with its
+  own committed scanner `tools/scan_vis_safeset.py` — all 8 figures reproduce exactly**:
+  sensor-exit frames off-vs-lead = raw 236 (2.24%) vs 182 (2.10%) [≥400-frame: 2.33% vs 2.31%,
+  a wash]; conditioned 46 (0.47%) vs 117 (1.36%) [≥400-frame: 0.50% vs **1.50%, lead worse**].
+  ⇒ The "278 centre-off-sensor frames / 24 rover reps" figure the bake cites is a **τ=0-arm-only
+  count**; the τ=0.15 arm's own count was never placed beside it. **The bake's stated rationale is
+  unevidenced — a gap in justification, NOT a defect in the value** (n=2/cell, per-rep median exit
+  rate 0.00% in both conditioned arms, duration-confounded). Not a call to flip the default.
+  **Justification for the VALUE τ=0.15 (scope-corrected 2026-09-17 by its own author, see
+  [[project_20260917_visibility_predictor_residual]] `647ffec1`):** τ is the **plant's
+  attitude-realization horizon**, measured ~144 ms (IQR 112-288) — a **plant property, not a
+  scenario property**, so calling `CBF_DRIFT_TAU` "the moving-target lead" is mis-framed;
+  it applies to stationary targets too (self-motion flow is the point there, not noise).
+  ⚠ **Claim the benefit SMALL:** `τ·d` reduces predictor residual on 54.1% of frames, mean 9.9%
+  (p50 0.0194→0.0169), and **does NOT improve the safety-relevant tail** (over-buffer rate
+  1.235%→**1.319%**, i.e. marginally worse). The `gT²/(6Z)` translational shortfall is exact but
+  SMALL against the total residual (0.6% at Z=5 m, 6% at Z=0.5 m) — noise and unmodelled dynamics
+  dominate, which is why correcting it buys only ~10%. An earlier framing of mine here
+  ("`τ·d` is the translational term the predictor drops", implying it closes the gap) **overstated
+  it** and is superseded by this line. Also retracted by its author: the undefined horizon is NOT
+  a safety hole for the ROTATIONAL term — the QP bounds the centre at the fully-realized lean and
+  the realized path travels the segment `c→c_next`, so box convexity keeps intermediates inside.
+  ⚖ **Provenance:** I independently re-derived the sensor-exit table above with its committed
+  scanner (exact match). This predictor-residual measurement I have **NOT** re-derived — no tool
+  was committed with it, so it is recorded on its author's evidence, not verified here.
+  ⭐ **Higher-value target than τ (same measurement):** the buffer `b=0.15` covers the bulk but
+  not the tail — residual p95 0.084 vs per-axis buffer [0.133, 0.178], but **p99 0.194 and p99.9
+  0.307 both EXCEED it**, over-buffer on 1.2% of frames (consistent with the independently
+  measured 0.27% buffered-set exits / 0% sensor exits). A residual-sized buffer now has a number
+  behind it. Put effort there, not on τ.
+
+**5. Still genuinely open / untested at current HEAD:** the **speed wall** (July: reliable
+≤1.09 m/s, binds at 1.56 m/s via a ~0.9-1.0 s servo lag — [[project_rover_speed_sweep]]) has
+NOT been re-tested since; all September curve data is ~0.5 m/s. Everything here is also
+**GT-FB only** — perception-mode moving-rover remains blocked on the detector
+([[project_20260901_rover_cross_perception_diagnosis]]). n=3-4/arm, no n≥5 IC-swept curve gate.
+
 ---
 
 **TURNING-rover landing (Circular r=0.8, wz=0.48 rad/s ≈ 27°/s, 0.38 m/s tangential,

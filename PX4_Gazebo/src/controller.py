@@ -306,11 +306,18 @@ class Controller(Thread):
         # consumer (s_e_n, dsn, _hd_rate, dr_bar_e, the CBF's m2) that now receives
         # axis-swapped s/h from the perception pipeline.
         self._p_10 = self._img_node.center[::-1] / self._img_node.focal[::-1]  # (2,)
-        # un-reversed tangent half-FoV -- the frame visibility_projection's `c`/`phi`
-        # live in (its marker_tangent applies its own [y,-x] swap on center/focal
-        # directly). Used only by the drift-off pull-back trigger. Do NOT feed this
-        # to the SMC path -- that uses self._p_10 (reversed) as before.
-        self._p_10_tan = self._img_node.center / self._img_node.focal
+        # Tangent half-FoV in the frame visibility_projection's `c`/`phi` live in.
+        # Used only by the drift-off pull-back trigger (compared against _vis_prev_c).
+        # FIXED 2026-09-17 -- was un-reversed, on the reasoning that "marker_tangent
+        # applies its own [y,-x] swap". That reasoning is backwards and was the same
+        # transposition fixed in visibility_projection.fov_limit(): marker_tangent
+        # swapping `c` is exactly why the half-extent must be swapped TO MATCH it.
+        # Un-reversed, this compared |c[0]| (which spans cy/f = 1.185) against cx/f =
+        # 0.889 and |c[1]| (spans 0.889) against 1.185 -- so the drift-off trigger
+        # fired early on one image axis and could never fire on the other.
+        # Now identical to self._p_10 by construction; kept as a separate name because
+        # it is the CBF-frame quantity and _p_10 is the SMC-frame one.
+        self._p_10_tan = self._img_node.center[::-1] / self._img_node.focal[::-1]
 
         # ════ Outer-loop Virtual Image Point PID  [manuscript: K_rp, K_ri, K_rd] ════
         # DIRECT per-axis control parameters (2026-06-03 cleanup: scale factors on

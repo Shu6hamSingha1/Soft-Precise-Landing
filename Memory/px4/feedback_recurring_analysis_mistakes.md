@@ -1,6 +1,6 @@
 ---
 name: feedback_recurring_analysis_mistakes
-description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics (catch rate without false-positive rate, message without base rate); stale derived docs trusted over source; unverified baselines under concurrent sessions. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
+description: "PRE-FLIGHT CHECKLIST of the analysis mistakes Claude makes REPEATEDLY on this project, each with dated instances and the one check that catches it. Recurring classes: log-to-log time alignment; pairing assumed from directory names; reference-frame/offset (rover rel-z 0.5 MEANS landed); metric sampled at the wrong instant; confounded or non-overlapping comparisons; one-sided metrics; stale derived docs trusted over source; unverified baselines under concurrent sessions. ADDED 2026-09-16/17/18 (sections 10-19): STATIONARY and ROVER launchers both default to ArUco not cross-marker (WORLD/MARKER_TYPE, and ROVER_MODEL for the rover one, silently unset -- the canonical IC2-5 gate script run_ic_validation.sh included -- verify via Img_Data.npy's own KEYS, not the launch command: FEATURE_IS_VISIBLE/Fail Reason/MARKER_EXTENT_PX = cross-marker, Centroid Map Raw/Ring Opt Flow*/Alpha Map* = ArUco); harness stale-directory false-success (a crashed rep silently re-read the prior rep's output); the STIMULUS changed -- verify the scenario the test drives, not just the code (ROVER_TRAJ=Circular silently stopped driving a circle and cost a whole session); mechanism inferred from an observational log-diff and reported as a finding (2 of 3 such claims refuted by the first controlled test); out-of-repo state -- a worktree reconstructs the CODE not the EXPERIMENT, so validate bisect endpoints; n=25 deltas quoted without the baseline own spread (identical baseline spans 17-20/25, so <3/25 is noise); mtime on archived test_data is not the run date; pixel quantities compared across the 640x480->320x240 change; inherited env defaults are not a controlled variable on a shared worktree. ~85 of ~200 memory files record a correction. Run these BEFORE concluding, not after."
 metadata:
   node_type: memory
   type: feedback
@@ -39,6 +39,10 @@ comparison. Filter to `t_g[0] <= t <= t_g[-1]`. Prefer the curated `--set` path 
 hand-pairing.
 
 ## 2. PAIRING assumed from directory/file names
+
+> ⚠ See also **§13** — the MIRROR of this one: there the directory NAME was right and the
+> mtime was wrong. Neither is authoritative; cross-check against recorded content.
+
 
 - 2026-09-01: `validate_detector_gt.py`'s own docstring warns the data-dir ↔ `_raw`-dir pairing
   is MANUAL (data dir lags ~13 s).
@@ -162,6 +166,234 @@ entry will produce the same wrong recommendation for the next session. Historica
 (causality, mechanism) can stay valuable while the named fix and next-step are dead — say which
 is which in the stamp.
 
+## 10. MECHANISM inferred from an observational LOG-DIFF, reported as a finding
+
+**2026-09-09→16 session: THREE confident mechanism claims, TWO refuted by the first
+controlled test that touched them.** Each looked strong observationally — matching
+magnitudes, high correlations, agreement with prior campaign analysis — and each was wrong.
+
+- **κ-ratchet HF pump** (AU_LEAD stationary regression). Log-diff evidence: `I_a_raw` peak
+  4.7→14.6, κ peak 0.21→0.41, κ-growth +0.08→+0.37, `corr(lead-delta, κ)` −0.01→+0.42, RATIO
+  clamp pinned at exactly 0.5·|I_a_raw|. **Refuted by a GT-FB A/B** (no regression, κ *decays*
+  in both arms) — all of it was a driven response to amplified sensor noise, not self-excitation.
+  [[feedback_aulead_stationary_regresses]]
+- **"The visibility-QP rewrite killed the curve limit cycle."** Evidence: 4/4 gain reverts null
+  (13/13 clean), old cone rotated the command 0.345-0.473 rad at 100 % duty vs the new QP's
+  0.058-0.106 / 0-16 % active, AND the original campaign had independently named that cone
+  *"the DF that caps growth"*. **Refuted by a worktree at the pre-rewrite commit** — old cone
+  live at July magnitude, still no cycle. [[project_20260916_curve_qgate_revalidation]]
+- The one that SURVIVED its test: "AU_LEAD is a perception-noise amplifier" → the QGATE fix
+  worked. Note what distinguishes it — it was framed as a prediction and then tested.
+
+**The check:** a log-diff yields a HYPOTHESIS. Before writing it as a finding, name the
+controlled experiment that would falsify it, and run that. Correlated magnitudes in one arm
+are not a mechanism; only an intervention is.
+
+## 11. OUT-OF-REPO state — a worktree reconstructs the CODE, not the EXPERIMENT
+
+**2026-09-16:** bisecting Jul→Sep for what killed the curve cycle. Endpoint validation first:
+the **exact July commit `edb546f0`** that produced 27/27 cycling reps was re-run on a worktree
+**today → NO-CYCLE (median |e_rot| 0.13 vs +0.58…+1.10)**. Same commit, opposite behaviour ⇒
+the cause is outside git, and a bisect would have falsely converged on the earliest commit.
+
+This project's behaviour depends on state git does not hold: the **camera SDF**
+(`~/PX4-Autopilot/.../mono_cam/model.sdf` — 640×480→320×240 on 2026-08-27), Gazebo world and
+marker assets, PX4 version, host load.
+
+**The check:** before any bisect or "commit X changed behaviour" claim, **verify the old
+commit still reproduces the old behaviour.** If it doesn't, stop — the answer is not in the
+history.
+
+## 12. n=25 deltas quoted without the BASELINE'S OWN SPREAD
+
+**2026-09-09→12:** three independent runs of the IDENTICAL perception baseline (no config
+change whatsoever) gave **20/25, 19/25, 17/25** — pooled 56/75 = 0.747. **Run-to-run spread is
+3/25 (12 pct pts) with nothing changed.** I reported "18/25 beats the 17/25 baseline" as an
+improvement; Fisher p = **1.000**.
+
+Resolution at n=25: ≤8/25 is unambiguous; ~13/25 is marginal (p≈0.05); ≥16/25 is
+indistinguishable from baseline.
+
+**The check:** run ≥2 baseline repeats before believing any gate/knob result, and quote a
+Fisher p, never a bare count delta. Also beware the sibling error: slicing to the ICs that
+worked (an "IC1-4 recovered" that was 13/25 overall, still p=0.046 below baseline).
+[[feedback_session_20260909_12_audit]]
+
+## 13. mtime on archived test_data is NOT the run date
+
+**2026-09-16:** built an `e_rot` timeline dated by file mtime; it showed the curve cycle still
+alive on 2026-08-07, narrowing the search window to Aug 7→Sep 9. Those directories are named
+**`Fri Jul  3 ... 2026`** — July runs whose mtime a later copy had bumped. Re-dating from the
+directory NAME collapsed the window back to the original Jul 3→Sep 9 (no moving-target data
+exists in between at all).
+
+**The check:** parse the run timestamp out of the directory name (`%a %b %d %H-%M-%S %Y`);
+use mtime only as a fallback and say so. Note this is the MIRROR of §2 — there the names lied
+and mtime was right; here mtime lied and the name was right. **Neither is authoritative;
+cross-check against recorded content** (`Control_Params`, `Img_Params`) whenever the date matters.
+
+## 14. PIXEL-domain quantities compared across the 2026-08-27 resolution change
+
+**2026-09-16:** predicted from archived July reps that the AU_LEAD quality gate would transmit
+**<1.5 %** and kill the curve — by dividing July-era `MARKER_EXTENT_PX` by **today's**
+`frame_min=240`. July ran 640×480 → `frame_min=480`. True July fill was 246/480 = **0.51**
+(gate OPEN), not 1.02 (gate closed). **Off by exactly 2×**, and the live run measured 0.33-0.56.
+
+**The check:** any px quantity (`MARKER_EXTENT_PX`, centre, fill fractions, `rho_fov`, cal
+matrices) must be renormalised across 640×480→320×240. Read `Img_Params.txt` from the run
+itself. GT-derived metrics (`e_mean`, `e_rot`, `osc_std`, touchdown lat) are
+resolution-independent and safe.
+
+## 15. Inherited DEFAULTS are not a controlled variable on a shared worktree
+
+**2026-09-09:** my GT-FB A/B ran arms 27 min apart without pinning `CBF_DRIFT_TAU`. A peer
+session re-baked its default **between them** (`6701d143` 21:40 →0; arm A 22:13; `827933b5`
+22:27 →0.15; arm B 22:40), so **arm A ran 0.0 and arm B ran 0.15** — and I had told the peer
+the harness pinned it. It didn't. One arm of that A/B is permanently confounded.
+
+**The check:** pin EVERY non-default env var explicitly in the harness, and verify from the
+run's own `Control_Params.resolved` afterwards — not from what you believe the default is.
+Related harness bug from the same thread: `env NAME=VAL -u OTHER` silently runs `-u` as the
+COMMAND; all `-u` flags must precede every `NAME=VALUE`. That silently no-op'd a whole arm.
+
+## 16. The STIMULUS changed — "is the experiment even the same?" (the one that ate a whole session)
+
+**2026-09-17, the root cause of an entire multi-hour confusion.** I chased "what killed the
+curved-target limit cycle" through FOUR controlled experiments — a 4-arm gain-revert sweep, a
+pre-rewrite worktree, a 640×480 camera restoration, and an aborted commit bisect — and
+produced three confident mechanism claims, all wrong. **The cycle had not been fixed. It was
+never being driven.**
+
+`ROVER_TRAJ=Circular` stopped driving a circle on **2026-07-03 12:13**, commit **`b816fea0`**:
+`ROVER_CIRCLE_R` **0.8 m → 10 m**, with the code's own comment saying *"only the path
+curvature drops ~12x"*. Measured from the GT target path: July **0.86 m radius / 234° swept**
+vs today **9.4-12.1 m / 11-24°** — a straight line. Restoring `ROVER_CIRCLE_R=0.8` on
+unmodified HEAD brings the cycle straight back (median |e_rot| 0.70, r_fit 0.88 m, one rep
+missing by 7.20 m).
+
+**Every "no cycle" result I had was a null stimulus, not a null effect.** The controller was
+never the variable.
+
+**The check — do this BEFORE any A/B on a dynamic scenario:** measure the STIMULUS from the
+recorded data and confirm it matches the reference experiment. For a moving target that is
+four numbers off `Target Pose`, and it costs seconds:
+- fitted path radius (algebraic circle fit) and **arc swept** (unwrapped angle about the fit
+  centre) — `pathlen / (r_fit · swept) ≈ 1` only tells you the fit is self-consistent, it does
+  NOT tell you the path is curved; a 12 m/20° arc scores 1.0 too. **Read the radius.**
+- target speed and angular rate; check `v ≈ wz·r` closes.
+- ⚠ do NOT use accumulated heading change as the curvature proxy — numerically differentiating
+  a stair-stepped GT pose makes a straight path score a huge "turn" (mine read 50 rad on a
+  straight line and pointed the opposite way).
+
+**⚠ THE SHARPER FAILURE MODE (peer session, 2026-09-17, worth more than the rest of this
+section): the check EXISTED and was NON-ROBUST — which is more dangerous than skipping it,
+because it manufactured false confidence.** The peer *did* test trajectory comparability
+before pooling July with September. Their metric was heading sweep from
+`unwrap(atan2(dy,dx))` on numerical gradients — and it returned **16-26 rad for the September
+arms**, i.e. it reported the near-straight paths as turning MORE than July's real circles,
+because on a straight path the heading is pure noise and `unwrap` accumulates spurious 2π.
+They had explicitly flagged that metric as noisy earlier in the same session and then let it
+license the pooling anyway. I independently hit the identical trap (50 rad of "turn" on a
+straight line). **A circle fit was equally cheap and would have caught it instantly in both
+cases.**
+
+⇒ "I checked" is not the bar. **A check built on a differentiated noisy signal can invert the
+answer.** For any geometric property, prefer a FIT over an accumulated derivative: circle fit
+(Kåsa) for curvature, total displacement for travel, endpoint angle about a fitted centre for
+sweep. Cross-validated: two sessions, same wrong metric, same wrong conclusion, and one
+cheap robust metric (r_fit: July 0.87-0.88 m vs Sep 9.9-13.9 m, n=30) settled it outright.
+
+**The deeper failure:** an experiment is code + parameters + **scenario**. Worktrees and git
+bisect reconstruct the first two. Section 11 says "a worktree rebuilds the CODE, not the
+EXPERIMENT" and I still only checked out-of-repo *assets* (camera SDF) — never the
+*trajectory the test was driving*, which was in-repo the whole time and env-overridable.
+
+**Corollary for endpoint validation (§11):** when a historical endpoint fails to reproduce,
+that means EITHER out-of-repo state OR **a mis-placed anchor** — I picked the July anchor by
+date (`--before "2026-07-03 23:59"` → `edb546f0` at 23:30) which sat **11 hours AFTER** the
+12:13 change, then concluded "not in the repo". Anchor to the DATA's own timestamp (the run
+directories were named `Fri Jul  3 11-14…11-48`, i.e. pre-noon), not to the end of the day.
+
+## 17. Harness infers "run succeeded" from a POST-RUN directory listing alone
+
+**2026-09-17:** a multi-rep A/B harness detected the newest output directory with
+`d=$(ls -dt "$out"/*/ | head -1)` AFTER each rep and treated any non-empty result as success.
+One rep's SITL launch crashed on attempt 1 (non-retriable, no output written) — but the
+directory query still returned the PREVIOUS rep's still-newest directory, so the harness
+silently re-analyzed old data under the new rep's label. Two "reps" printed identical numbers
+before this was noticed.
+
+**The check:** snapshot the newest-directory query BEFORE the run starts, and after the run
+compare the new query against that snapshot — `before=$(ls -dt ... | head -1)` pre-run,
+`[ "$d" = "$before" ]` post-run means NO new data, not `[ -z "$d" ]` alone (which only catches
+the case of zero directories ever having existed, not a failed run that left old ones behind).
+Same family as §2/§13 (don't trust a directory listing without a positive freshness check) but
+the failure mode is different: not stale content pairing, but a harness that can't tell "this
+rep produced nothing" from "this rep succeeded."
+
+## 18. ROVER launcher defaults to ArUco, not cross-marker — a whole session ran the wrong world
+
+**2026-09-17:** `scripts/run_rover_landing.sh` defaults to `WORLD="${WORLD:-rover}"` and
+`ROVER_MODEL="${ROVER_MODEL:-rover_aruco}"` — the plain ArUco rover — with `MARKER_TYPE`
+unset (ArUco perception). None of that session's curve-validation harnesses
+(`r08_confirm.sh`, `curve_qgate_ab_r08.sh`, `cycle_isolation`, `curve_worktree_confirm.sh`)
+set `WORLD`/`ROVER_MODEL`/`MARKER_TYPE`, so **every rover curve test that session — the
+`ROVER_CIRCLE_R` discovery, the whole QGATE re-validation, the cycle-isolation sweep, the
+`d380901c` worktree test — silently ran on the ArUco rover**, not cross-marker, even though
+the project's live default is cross-marker (`feedback_recurring_analysis_mistakes` §
+"Also worth screening for", 2026-08-25 entry: the same trap already happened once for the
+STATIONARY launcher's `WORLD=cross_marker MARKER_TYPE=cross` rule).
+
+This is subtler than the stationary case: under `PLASMC_GT_FEEDBACK=1` most channels
+(`s`,`h`,`h_z`,`yaw`,`w_z`) are synthetic and marker-agnostic, so a GT-FB run "looks" fine
+regardless of marker — nothing errors, nothing looks obviously wrong. But
+`PLASMC_AU_LEAD_QGATE`'s extent term reads **live** `MARKER_EXTENT_PX` from the real
+perception pipeline REGARDLESS of `PLASMC_GT_FEEDBACK` (GT-FB replaces s/h features, not the
+detector), so any gate/threshold tuned or validated under GT-FB can still be silently
+marker-specific.
+
+**The check:** for ANY rover-scenario run — GT-FB included — explicitly pass `WORLD=rover_cross
+ROVER_MODEL=rover_cross MARKER_TYPE=cross` (the launcher's own header comment names this
+exact triple) unless the ArUco rover is deliberately the target. Grep a harness for these
+three vars before trusting its output; their absence means the launcher default silently
+applied. Same rule, same enforcement gap, as the stationary `WORLD=cross_marker
+MARKER_TYPE=cross` rule below — but now proven to also bite the MOVING-target launcher and
+its own set of harnesses.
+
+## 20. A mechanism claim needs its PRECONDITIONS verified, not just its correlation
+
+**2026-09-18:** proposed "the moving cross-marker rover's descent divergence is caused by
+GT `/pose` timestamp jitter, itself caused by the chase-camera's heavier render load
+stuttering Gazebo's pose-publish cycle." Both halves were wrong, for checkable reasons,
+and both were caught by the user rather than by a self-check:
+
+1. **Didn't verify the simulator's TIMING MODEL before building a causal story on it.**
+   Gazebo runs LOCKSTEP with PX4 SITL — sim time advances in fixed steps regardless of
+   render speed. "A heavier render load stutters the sim-time stream" is not physically
+   possible under lockstep. The check: before proposing a timing/latency mechanism, confirm
+   whether the relevant clock is wall-clock or lockstepped sim-time — they have different
+   failure classes and a wall-clock mechanism does not transfer.
+2. **Didn't check which LOOP produced the number before trusting it.** The `dt<=0` evidence
+   came from `apps/landing_test.py`'s own diagnostic recording loop (polling a cached
+   `/clock` value at ITS OWN cadence — a repeat row just means it polled faster than the
+   clock ticked), not from the loop inside `controller.py`'s `Controller` thread that
+   actually feeds `gt_feedback.py`. A statistic from a diagnostic/logging path says nothing
+   about the live control path unless you've confirmed they share the same data.
+3. **Didn't search for prior validation of the exact mechanism before proposing it.** The
+   same shared-render-thread hypothesis was ALREADY tested, twice
+   ([[project_20260826_chasecam_resolution_bump]]), via a sibling Gazebo-fed stream
+   (`Img_Data.npy`), with zero effect found across three resolution steps. That file should
+   have been found (it was — by grep — for a different question, minutes earlier in the
+   same session) and cross-checked before re-proposing the same mechanism from a different
+   angle.
+
+**The check:** before presenting a "likely root cause," verify (a) the timing/physics model
+actually permits the mechanism, (b) the data used to support it comes from the code path
+actually in question, and (c) a prior memory file hasn't already tested the same mechanism.
+Two of three failed here on a claim that read as strong (a clean numeric ratio, a plausible
+narrative, a real code comment predicting the risk) — confidence from a good narrative is
+not the same as confidence from a verified mechanism.
+
 ## Also worth screening for
 
 - 2026-09-02: the recorded `_raw`/frames PNGs carry a **drawn debug overlay**
@@ -171,3 +403,45 @@ is which in the stamp.
 - 2026-08-25: a correctly-worded HARD RULE buried mid-file (`WORLD=cross_marker
   MARKER_TYPE=cross`) was violated across an entire session once a command pattern got
   copy-pasted. Rules need to fire at the point of action, not sit in a file.
+
+## 19. STATIONARY launcher also defaults to ArUco, not cross-marker — sibling to §18
+
+Continues §18 (rover launcher, `4ba07bb8`, found ~1 hour earlier the same day by another
+session). The identical defect exists on the **stationary** path:
+
+- `src/controller.py:73`: `MARKER_TYPE = os.environ.get("MARKER_TYPE", "aruco")` — default
+  is literally `"aruco"`.
+- `scripts/run_landing.sh:23`: `WORLD="${WORLD:-aruco}"` — same default, unchanged since WORLD
+  became overridable (2026-08-11).
+- The 2026-09-03 rename commit (`99367421`) **asserts in its own message** "WORLD/MARKER_TYPE
+  are env-driven and the standing rule makes every run cross-marker" — that claim does not
+  match the code and never has. It is the origin of the false belief.
+- `scripts/run_ic_validation.sh` — the canonical IC2-5 gate script — **never sets
+  WORLD/MARKER_TYPE**. Every run through it silently uses ArUco unless the caller's shell
+  happens to have them exported.
+
+**Cost this time:** an IC1-5 gate for a genuine code fix (`96271ba6`) came back 0/25 precise
+and looked like a catastrophic regression. A same-day OLD-vs-NEW A/B (correctly following
+§10's "validate the bisect endpoint" rule) showed OLD failed identically — which is what
+correctly stopped the fix from being blamed, but the *actual* cause (wrong marker/detector,
+not environment drift) required one more level of digging: comparing `Img_Data.npy` KEYS
+between the "good" and "bad" bundles. `FEATURE_IS_VISIBLE`/`Detection Status`/`Fail
+Reason`/`MARKER_EXTENT_PX` are logged only by `cross_marker_perception.py`; `Centroid Map
+Raw`/`Ring Opt Flow Ang Vel`/`Alpha Map Raw` only by `img_data.py` (ArUco). The "good" Sep-12
+baseline had the former; the "bad" Sep-17 runs had the latter — proving the marker/detector
+itself differed, not just the environment. ArUco's sensor cal is documented in CLAUDE.md as
+NOT recalibrated for 320x240 (stale since 2026-07-17 at 640x480/fx=270) — exactly enough to
+explain a marker-alive collapse identical in both code versions.
+
+**Check, added to the standing checklist:** for ANY stationary landing run, gate script
+included, verify `WORLD=cross_marker MARKER_TYPE=cross` is actually set — don't trust a
+launcher's rename-commit comment or a script's filename. Fastest verification is NOT to grep
+the launch command (a shell export won't show there) but to **check the resulting
+`Img_Data.npy`'s own keys**: `FEATURE_IS_VISIBLE`/`Fail Reason`/`MARKER_EXTENT_PX` = cross-
+marker; `Centroid Map Raw`/`Ring Opt Flow*`/`Alpha Map*` = ArUco. This is authoritative
+because it's recorded by whichever module actually ran, unlike an env var that may have been
+set in a shell you can't see.
+
+**Fix needed** (not yet done): `scripts/run_ic_validation.sh` should set
+`WORLD=cross_marker MARKER_TYPE=cross` explicitly rather than relying on caller-shell state,
+matching the fix direction `4ba07bb8` recommends for the rover launcher.
