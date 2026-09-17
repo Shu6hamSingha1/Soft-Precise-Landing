@@ -285,6 +285,24 @@ four numbers off `Target Pose`, and it costs seconds:
   a stair-stepped GT pose makes a straight path score a huge "turn" (mine read 50 rad on a
   straight line and pointed the opposite way).
 
+**⚠ THE SHARPER FAILURE MODE (peer session, 2026-09-17, worth more than the rest of this
+section): the check EXISTED and was NON-ROBUST — which is more dangerous than skipping it,
+because it manufactured false confidence.** The peer *did* test trajectory comparability
+before pooling July with September. Their metric was heading sweep from
+`unwrap(atan2(dy,dx))` on numerical gradients — and it returned **16-26 rad for the September
+arms**, i.e. it reported the near-straight paths as turning MORE than July's real circles,
+because on a straight path the heading is pure noise and `unwrap` accumulates spurious 2π.
+They had explicitly flagged that metric as noisy earlier in the same session and then let it
+license the pooling anyway. I independently hit the identical trap (50 rad of "turn" on a
+straight line). **A circle fit was equally cheap and would have caught it instantly in both
+cases.**
+
+⇒ "I checked" is not the bar. **A check built on a differentiated noisy signal can invert the
+answer.** For any geometric property, prefer a FIT over an accumulated derivative: circle fit
+(Kåsa) for curvature, total displacement for travel, endpoint angle about a fitted centre for
+sweep. Cross-validated: two sessions, same wrong metric, same wrong conclusion, and one
+cheap robust metric (r_fit: July 0.87-0.88 m vs Sep 9.9-13.9 m, n=30) settled it outright.
+
 **The deeper failure:** an experiment is code + parameters + **scenario**. Worktrees and git
 bisect reconstruct the first two. Section 11 says "a worktree rebuilds the CODE, not the
 EXPERIMENT" and I still only checked out-of-repo *assets* (camera SDF) — never the
