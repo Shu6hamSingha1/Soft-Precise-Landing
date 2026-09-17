@@ -200,17 +200,20 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % validated omission. Re-add (with its anti-windup) if a real bias-rejection
 % need is demonstrated; do not re-add speculatively.
 P.yaw_rate_law = 1;
-P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP)
-                         % Tested 0.6 (2x) 2026-09-17 against the Circular@IC2@
-                         % lambda=1.4 FoV breach (e_a blows up to 83deg vs its
-                         % validated ~1deg/0.7 rad/s-spin envelope): WORSE, not
-                         % better -- 1.4x breach moved EARLIER (t=6.69->5.31s)
-                         % AND regressed a previously-passing case (1.2x now
-                         % also breaks, t=7.86s). Ruled out: a stiffer yaw
-                         % correction excites the image-position/orientation
-                         % coupling further rather than resolving it; the
-                         % required |e_a| swing under this demand isn't a
-                         % weak-gain artifact. See
+P.yrl_kp       = 0.20;  % k_p (PLASMC_YAW_RL_KP)
+                         % PRIOR=0.3. Grid-searched 2026-09-17 (cb_yrl_kp_sweep.m,
+                         % kp in [0.1,0.5]) against Circular@IC2@{1.2,1.4}x: raising
+                         % kp (tried 0.6 first) made it WORSE (breach earlier +
+                         % regressed 1.2x); LOWERING it is the actual fix --
+                         % monotonic trend, kp<=0.20 lands BOTH 1.2x and 1.4x
+                         % soft-precise (kp=0.25 still fails 1.4x at t=7.95s).
+                         % Counterintuitively max|e_a| is LARGER at low kp
+                         % (92-104deg vs 83deg baseline) -- it's not alignment-
+                         % error magnitude that matters, it's whether the
+                         % correction is aggressive enough to excite the
+                         % image-position/orientation coupling into runaway
+                         % growth. UNVALIDATED beyond Circular -- re-run the
+                         % full 20-cell IC2 speed sweep + 50-cell gate. See
                          % project_ic2_speed_sweep_failure_2026_09_17 memory.
 P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
 P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
