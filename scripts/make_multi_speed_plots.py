@@ -5,8 +5,11 @@ Reads:
   MATLAB/Datasets/MultiInit/<traj>_multi_speed.mat
 
 For each of the four moving trajectories (Linear, Sinusoidal, Circular,
-Lissajous) the sweep is a single IC [0,0,-5] with speed multipliers
-{0.6, 0.8, 1.0, 1.2, 1.4}.
+Lissajous) the sweep is a single IC [2,2,-5] (IC2, switched 2026-09-17 for
+consistency with the Comparison study's IC) with speed multipliers
+{0.6, 0.8, 1.0, 1.2, 1.4}. Circular @ lambda=1.4 exits the camera FoV before
+touchdown under IC2 (marked 'x' by `_classify_outcome`) -- see
+project_ic2_speed_sweep_failure_2026_09_17 memory for the root-cause finding.
 
 Outputs:
   Figures/generated/plasmc_multi_speed_landing.pdf
@@ -232,3 +235,4 @@ def plot_grid(tag, out_name):
 
 if __name__ == "__main__":
     plot_grid(tag="",          out_name="plasmc_multi_speed_landing.pdf")
+    plot_grid(tag="IC1",       out_name="plasmc_multi_speed_landing_IC1.pdf")

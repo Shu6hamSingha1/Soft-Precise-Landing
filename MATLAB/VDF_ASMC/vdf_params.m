@@ -201,6 +201,17 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % need is demonstrated; do not re-add speculatively.
 P.yaw_rate_law = 1;
 P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP)
+                         % Tested 0.6 (2x) 2026-09-17 against the Circular@IC2@
+                         % lambda=1.4 FoV breach (e_a blows up to 83deg vs its
+                         % validated ~1deg/0.7 rad/s-spin envelope): WORSE, not
+                         % better -- 1.4x breach moved EARLIER (t=6.69->5.31s)
+                         % AND regressed a previously-passing case (1.2x now
+                         % also breaks, t=7.86s). Ruled out: a stiffer yaw
+                         % correction excites the image-position/orientation
+                         % coupling further rather than resolving it; the
+                         % required |e_a| swing under this demand isn't a
+                         % weak-gain artifact. See
+                         % project_ic2_speed_sweep_failure_2026_09_17 memory.
 P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
 P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
 
@@ -238,6 +249,14 @@ P.k_az   = 5.0;                         % descent-rate relief gain (PX4 CBF_AZ_C
 P.cbf_two_tier     = true;
 P.cbf_buffer_frac  = 0.15;   % b: FoV-edge buffer, phi = (res/2/f)*(1-b)  (CBF_BUFFER_FRAC)
 P.cbf_vis_rho      = 2000;   % rho: per-axis visibility-slack penalty       (CBF_VIS_RHO)
+                             % Tested 8000 (4x) 2026-09-17 against the Circular@IC2@lambda=1.4
+                             % FoV breach (t=6.69s): NO EFFECT -- bit-identical breach idx/time/
+                             % angles/lean vs rho=2000. Ruled out: the QP's rho-penalty term
+                             % only engages when its one-step-ahead linear prediction c_next
+                             % already shows a violation; for this case that prediction never
+                             % fires early enough for rho's weight to matter, so this is a
+                             % look-ahead-horizon problem, not a penalty-stiffness problem.
+                             % See project_ic2_speed_sweep_failure_2026_09_17 memory.
 P.cbf_gmin         = 0.2;    % g_min: Tier-2 descent-governor floor         (CBF_GMIN)
 P.cbf_treact       = 1.5;    % T_react: Tier-2 reaction horizon [s]         (CBF_TREACT)
 P.cbf_gz_lpf       = 0.7;    % one-pole LPF on g_z so a_z does not step
