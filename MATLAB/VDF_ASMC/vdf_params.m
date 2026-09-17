@@ -262,6 +262,13 @@ P.cbf_treact       = 1.5;    % T_react: Tier-2 reaction horizon [s]         (CBF
 P.cbf_gz_lpf       = 0.7;    % one-pole LPF on g_z so a_z does not step
 P.cbf_drift_tau    = 0.15;   % tau: moving-target lead horizon [s] (PX4 b71a950, flipped 0->0.15);
                              %   0 -> reactive only. d = V_h(1:2), condition_drift'd (below).
+                             % Tested 0.4 and 1.0 (2026-09-17) against the Circular@IC2@lambda=1.4
+                             % FoV breach: NOT a fix -- only delays the breach marginally
+                             % (t=6.69->6.72s at 0.4; ->7.02s at 1.0, a 6.7x tau increase for
+                             % 0.33s of delay), still fails at every tau tried, no other cases
+                             % regressed either. Ruled out along with cbf_vis_rho and yrl_kp --
+                             % see project_ic2_speed_sweep_failure_2026_09_17 memory. Three
+                             % independent single-parameter fixes now tried; none resolve it.
 P.cbf_drift_max    = 0.5;    % radial clamp on the conditioned drift |d| (CBF_DRIFT_MAX)
 P.cbf_drift_lpf_alpha = 0.12;% one-pole LPF coeff in condition_drift (CBF_DRIFT_LPF_ALPHA)
 % Frame knobs -- VERIFY against MATLAB's I_R_C convention before a gate:
