@@ -129,9 +129,25 @@ def condition_drift(h_xy, *, resid=None, resid_gate=0.45, d_max=0.5,
 
 
 def fov_limit(center_px, focal_px, buffer_frac=0.15):
-    """Per-axis FoV-edge tangent half-extent minus the buffer -> phi.
-    ``buffer_frac`` may be a scalar or a per-axis (2,) array."""
-    return ((np.asarray(center_px, float) / np.asarray(focal_px, float))
+    """Per-axis FoV-edge tangent half-extent minus the buffer -> phi, expressed in the
+    SAME axis order as ``c`` (i.e. AFTER ``marker_tangent``'s ``_SWAP``).
+
+    ``buffer_frac`` may be a scalar or a per-axis (2,) array, and is interpreted in
+    ``c``'s axis order (index 0 = the axis ``c[0]`` lives on).
+
+    AXIS ORDER -- fixed 2026-09-17, was transposed.  ``marker_tangent`` applies
+    ``_SWAP = [[0,1],[-1,0]]`` to ``(px - center)/focal``, so
+
+        c[0] = +(y_px - cy)/fy   -> half-extent cy/fy   (the 320-tall axis, 1.185)
+        c[1] = -(x_px - cx)/fx   -> half-extent cx/fx   (the 240-wide axis, 0.889)
+
+    The half-extent in ``c``'s own order is therefore the elementwise quotient
+    ``center/focal`` REVERSED.  Returning it unreversed (the pre-fix behaviour) fitted the
+    box to the wrong axis: phi_1 = 1.007 sat OUTSIDE the physical edge 0.889, so the axis-1
+    barrier could never bind before the marker left the sensor, while axis 0 was 36%
+    over-tight (0.756 against a true edge of 1.185).  See
+    ``project_20260917_visibility_predictor_residual`` for the derivation and the data."""
+    return ((np.asarray(center_px, float) / np.asarray(focal_px, float))[::-1]
             * (1.0 - np.asarray(buffer_frac, float)))
 
 
@@ -253,6 +269,14 @@ def visibility_project(a_d, R, yaw, marker_center_px, center_px, focal_px,
         y_max = np.inf
     else:
         a_cap = float(a_cap)
+        # NOTE (2026-09-17): a_z >= a_cap gives y_max = 0, i.e. NO lean budget -- and that
+        # is CORRECT, not a defect: ||a_star|| = a_z*sqrt(1+||y||^2) already exceeds a_cap
+        # at y = 0, so the feasible set is genuinely empty.  The infeasibility lives in the
+        # a_z the CALLER handed in, and the fix belongs there (clamp |a_d[2]| <= a_cap
+        # before the solve), NOT here: widening the ball to manufacture a budget breaks
+        # deliverability-by-construction (tried, validator checks 10/11 fail).  Measured on
+        # 205 modern reps: |a_z| > A_CAP on 0.40% of frames / 46 reps, all in already-
+        # diverging trajectories.
         y_max = np.sqrt(max(a_cap * a_cap / (a_z * a_z) - 1.0, 0.0)) if a_cap > a_z else 0.0
 
     if marker_center_px is None or abs(float(a_d[2])) < _AZ_MIN:
