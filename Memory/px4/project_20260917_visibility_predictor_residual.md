@@ -137,3 +137,33 @@ of the guarantee is currently not running. Preferred fix is to reverse the intri
 `fov_limit()` (keeps `c` in the frame the `h_xy` identity-map was validated against) rather
 than touching `marker_tangent()`. It is a genuine behaviour change -- it activates a
 previously-inert constraint -- so it needs the IC2-5 gate, with `vis_slack` watched.
+
+### FIXED 2026-09-17 — `96271ba6`, three sites, and why "15/15" never caught it
+
+1. `src/visibility_projection.py` `fov_limit()` — reverse the `center/focal` quotient.
+2. `tools/validate_visibility_projection.py` — **the reason it survived validation.** The
+   validator passed `CENTER=[160,120]` (reversed vs what `controller.py` passes) and set
+   `SENSOR = CENTER/FOCAL`, transposed for its own geometry too. **Module and oracle carried
+   the SAME error**, so they agreed with each other while both disagreed with the real
+   camera. Fixed module + fixed oracle = 15/15 on seeds 0-4; fixed module + old oracle =
+   10/15 (checks 1 and 12 fail). → **An independent validator that shares the code's
+   convention is not independent.** When an oracle hard-codes intrinsics, check them against
+   what the live caller actually passes.
+3. `src/controller.py` `_p_10_tan` — was deliberately un-reversed with the comment
+   "marker_tangent applies its own [y,-x] swap". Backwards: `c` being swapped is *why* the
+   half-extent must be swapped to match. The drift-off pull-back therefore fired early on one
+   image axis and could never fire on the other.
+
+**`y_max=0` "degenerate ball" fix RETRACTED** (was listed as the top defect before this).
+Implementing it failed validator checks 10/11 and the checks are right: at `a_z >= a_cap`,
+`||a*|| = a_z*sqrt(1+||y||^2)` exceeds `a_cap` already at `y=0`, so the feasible set is
+genuinely EMPTY and `y_max=0` is the correct answer. Widening the ball manufactures a lean
+the vehicle cannot deliver and breaks deliverability-by-construction. The infeasibility is in
+the CALLER's `a_z` — a caller-side clamp before the solve is the principled fix, but it
+modifies the vertical channel and breaks the two-tier separation, so it needs its own
+decision. Reasoning left in-code so it is not retried.
+
+**Still open:** IC2-5 gate (the fix activates a previously-inert constraint — expect
+`vis_active`/`vis_slack` to rise; slack going routinely non-zero is the tripwire). Buffer
+re-sizing deliberately deferred until AFTER the gate: per-axis effective margins change with
+this fix, so `b` must be re-derived on top of it, not alongside.
