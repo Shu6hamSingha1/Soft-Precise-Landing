@@ -1,6 +1,6 @@
 ---
 name: project_rover_turning_open
-description: "⛔ TITLE IS STALE — THE CURVE IS NO LONGER OPEN (re-stamped 2026-09-17). Sep 2026 GT-FB Circular lands ~30/33 on-platform at 1-9 cm; the rotating limit cycle this whole file characterises is GONE, and its disappearance is NOT explained by anything in this file (nor by any repo commit — see project_20260916_curve_qgate_revalidation). AU_LEAD and CBF_DRIFT_TAU, the two 'exits' this file sized, are both no longer binding. The July DIAGNOSTIC CONTENT below (cycle structure, stage/branch budgets, yaw ramp windup SOLVED via Omega_d FF, k_r RESOLVED, HD_KR/DHD_SRC falsifications, TERMINAL_COMMIT=0 bake) remains valid as a record of that era; the PROGNOSIS ('structural at the current actuation phase', 'remaining exits: AU_LEAD or platform size') is REFUTED."
+description: "⚠ THE CURVE IS STILL OPEN — this file is LIVE, not superseded. Its July analysis (chi>Wtau pump, branch audit, bias<->cycle frontier, AU_LEAD exit) describes a problem that still reproduces on current HEAD. ⛔ A 2026-09-17 re-stamp claiming 'the curve is no longer open / the limit cycle is gone' was WRONG and is corrected in-file: ROVER_TRAJ=Circular stopped driving a real circle on 2026-07-03 (commit b816fea0, ROVER_CIRCLE_R 0.8m->10m), so EVERY Sep 2026 'curve' test was a gentle arc. Circle-fit on GT Target Pose, independently verified: July r=0.87-0.88 m / 230-242 deg swept vs Sep r=9.9-13.9 m / 13-28 deg. HEAD + ROVER_CIRCLE_R=0.8 -> cycle RETURNS (median |e_rot| 0.70, July's band, one rep missing by 7.20 m). TO EXERCISE THE CYCLE YOU MUST SET ROVER_CIRCLE_R=0.8; default r=10 is a smooth-tracking test, not interchangeable. Also falsified along the way: the camera-SDF hypothesis and the 'cause is outside the repo' conclusion (both null-stimulus artifacts)."
 metadata: 
   node_type: memory
   type: project
@@ -45,6 +45,30 @@ smooth-tracking test. Both are legitimate experiments; they are not interchangea
 r=10 comment records the trade (at 0.8 m the Ackermann steering saturates, making target
 motion jerky). Primary record: [[project_20260916_curve_qgate_revalidation]] (top banner),
 method lesson §16 in [[feedback_recurring_analysis_mistakes]].
+
+**✅ INDEPENDENTLY VERIFIED (2026-09-17, `soft-precise-landing-42`, the author of the wrong
+re-stamp).** Circle fit (Kåsa) to GT `Target Pose`, all reps:
+
+| set | r_fit | swept | path len |
+|---|---|---|---|
+| July `yawhold_arm_n3` / `aulead_sweep` / `aulead_commitoff` (n=12) | **0.87-0.88 m** | 230-242° | 3.5-3.7 m |
+| Sep `cycle_isolation` / `qgate_revalidation` / `worktree_d380901c` / `XirXi2` / `RoverCross` (n=18) | **9.9-13.9 m** | 13-28° | 2.9-4.8 m |
+| `r08_confirm` (HEAD + `ROVER_CIRCLE_R=0.8`) | **0.89 m** | 283° | 4.4 m |
+
+`b816fea0` is confirmed directly in the repo (`ROVER_CIRCLE_R` default `10.0`, comment *"only
+the path curvature drops ~12x"*). The overturn is correct; the re-stamp below is wrong.
+
+⛔⛔ **METHOD LESSON — how I let it through, which is the generalizable part.** I *did* check
+trajectory comparability before pooling July with September, and my check reported "comparable".
+It used heading sweep = `unwrap(atan2(dy,dx))` on numerical gradients, which returned 16-26 **rad**
+for the September arms — i.e. it claimed the near-straight paths were turning *more* than July's
+real circles. On a straight path `dy/dx` is dominated by noise, heading jitters, and `unwrap`
+accumulates spurious 2π wraps. **I had flagged that metric as noisy in the same session and then
+let it carry a load-bearing comparability claim anyway.** A circle fit was equally cheap, robust,
+and would have caught this immediately. → *When a comparability check is what licenses pooling two
+datasets, it must be a robust statistic; if you have just called your metric unreliable, you may
+not then lean on it.* Logged as a new instance for [[feedback_recurring_analysis_mistakes]].
+
 
 ---
 
