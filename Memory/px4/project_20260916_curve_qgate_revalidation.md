@@ -1,6 +1,6 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "⛔ 2026-09-18: ALL ArUco-rover curve results from 2026-09-16/17 (the r=0.8 and r=10 QGATE A/Bs, the cycle-isolation sweep, the d380901c worktree test, the camera-resolution test) were DELETED at user instruction -- ArUco is an obsolete approach for the moving-rover scenario, and those results are misleading now that cross-marker is the only live path. What SURVIVES: (1) ROVER_CIRCLE_R default 0.8m->10m (commit b816fea0, 2026-07-03) is a code-level fact independent of marker -- ROVER_TRAJ=Circular at its default is a gentle arc, NOT a curve; set ROVER_CIRCLE_R=0.8 for the real turning-target case. (2) The cross-marker rover (WORLD=rover_cross MARKER_TYPE=cross) genuinely fails ~1/5 at r=0.8 regardless of AU_LEAD (confirmed real, data kept). (3) Two proposed root causes for that failure are RETRACTED (GT pose-jitter/chase-cam -- physically invalid under lockstep sim time, wrong loop measured; yaw/alpha-sign convention -- already resolved 2026-09-09, baked into current code). (4) NEW LEAD (2026-09-18, from a Windows/MATLAB session's independent same-day work): MATLAB just found PLASMC_YAW_RL_KP=0.3 (the yaw-rate-law's default gain, PX4's default too) destabilizes Circular tracking via an image-position/orientation coupling runaway at elevated target speed; fixed by lowering to 0.02. PX4's cross-marker rover run resolved YAW_RATE_LAW=True, YAW_RL_KP=0.3 -- the exact unstable value -- because the yaw-rate-law is MARKER_TYPE=cross-gated and my 'heading-hold' recipe only zeroed the (inactive) ASMC gains. Untested on PX4 yet -- the next discriminator is a direct A/B with PLASMC_YAW_RATE_LAW=0 forced."
+description: "⭐⭐⭐ 2026-09-18 CONFIRMED ROOT CAUSE of cross-marker rover r=0.8 curve failure: PLASMC_YAW_RATE_LAW default (kp=0.3) -- discriminator A/B (n=4/arm, real curve confirmed via Kasa fit) went 0/4 landed (default) vs 4/4 landed, xy_err 0.035-0.128m (forced PLASMC_YAW_RATE_LAW=0). Fix: force PLASMC_YAW_RATE_LAW=0 for moving-target work, or re-tune YAW_RL_KP down (MATLAB validated 0.02, unvalidated on PX4). Also: ALL ArUco-rover curve results from 2026-09-16/17 (r=0.8/r=10 QGATE A/Bs, cycle-isolation sweep, d380901c worktree test, camera-resolution test) were DELETED at user instruction -- ArUco is obsolete for the moving-rover scenario. Surviving code fact: ROVER_CIRCLE_R default 0.8m->10m (commit b816fea0) -- set ROVER_CIRCLE_R=0.8 for a real curve. Two other root-cause candidates RETRACTED (GT pose-jitter/chase-cam; yaw/alpha-sign convention, already resolved 2026-09-09)."
 metadata:
   node_type: memory
   type: project
@@ -152,18 +152,35 @@ this-gain) yaw-rate-law, while ArUco silently fell back to a correctly-zeroed AS
 heading-hold). The failure IS marker-type-correlated, but the mechanism is a yaw-control
 gain-path selection, not a perception-quality difference.
 
-**Not yet proven for PX4 — untested.** The discriminator is cheap: rerun the cross-marker
-r=0.8 no-lead baseline with `PLASMC_YAW_RATE_LAW=0` forced (true heading-hold via the ASMC
-path, correctly zeroed) vs the current default, same recipe, n=3-4 each. If the divergence
-disappears with the yaw-rate-law off, this is confirmed as the (or a major) cause. If not,
-the remaining untested candidate is the live `gt_feedback.py` call site inside
-`controller.py`'s `Controller` thread (never inspected directly).
+**✅ CONFIRMED 2026-09-18 — discriminator test run and decisive.** Same recipe as the
+`qgate_revalidation_r08_cross` arm-A baseline (GT-FB, no lead, `WORLD=rover_cross
+ROVER_MODEL=rover_cross MARKER_TYPE=cross`, `ROVER_CIRCLE_R=0.8`, `ROVER_MOTION=1`), n=4/arm,
+`PLASMC_YAW_RATE_LAW` default vs forced `=0`. Every rep confirmed on the genuine curve (Kåsa
+fit `r_fit` 0.85-0.89 m). Data: `test_data/YawRateLaw_Discriminator/{default_kp03,forced_off}/`.
 
-**How to apply:** before any further cross-marker rover A/B, either force
-`PLASMC_YAW_RATE_LAW=0` for a genuine heading-hold baseline, or explicitly set
-`PLASMC_YAW_RL_KP` to a low value (MATLAB's `0.02`, unvalidated on PX4) and re-test. Do not
-reuse the July `Rover_AB_harness` "heading-hold" recipe unmodified on cross-marker without
-accounting for this gate.
+| arm | n | landed | final xy_err | final uav_z |
+|---|---|---|---|---|
+| default (`YAW_RATE_LAW=1 kp=0.3`) | 4 | **0/4** | 0.76 – 1.20 m | 0.25 – 1.67 m (crashes through platform / non-converged) |
+| forced off (`PLASMC_YAW_RATE_LAW=0`) | 4 | **4/4** | 0.035 – 0.128 m | 0.51 – 0.52 m (consistent, correct platform altitude) |
+
+Forcing the yaw-rate-law off flips the outcome from total failure to 4/4 clean landings at
+near-baseline lateral precision (one rep even precise, 0.035 m). **`PLASMC_YAW_RL_KP=0.3` is
+confirmed as the (or the dominant) root cause of the cross-marker rover r=0.8 curve
+failure** — not perception, not GT-FB pose jitter, not a sign-convention bug, all consistent
+with the retractions above.
+
+**How to apply:** for any moving-target (rover, cross-marker) work, force
+`PLASMC_YAW_RATE_LAW=0` (true ASMC heading-hold) as the working default, or re-tune
+`PLASMC_YAW_RL_KP` down from 0.3 (MATLAB validated `0.02`, unvalidated on PX4 — try it as a
+means to keep the yaw-rate-law's intended active-tracking behavior instead of pure
+heading-hold, since heading-hold does not actually track the target's rotation and may cap
+performance on faster/tighter curves). Do not reuse the July `Rover_AB_harness`
+"heading-hold" recipe unmodified on cross-marker without forcing `PLASMC_YAW_RATE_LAW=0`
+explicitly — zeroing only the ASMC gains silently does nothing while this gate is active.
+**Open follow-up (not yet done):** re-run the retracted `cycle_isolation` gain-revert sweep
+(`CBF_DRIFT_TAU`/`P_xy`/`P2INF_xy`/`XI2_xy`) on cross-marker WITH `PLASMC_YAW_RATE_LAW=0`
+forced — the ArUco version was null, but that was confounded by the (then-undiagnosed)
+yaw-rate-law failure dominating every arm.
 
 ## What SURVIVES from the pre-2026-09-16 stationary work (unaffected by any of this)
 

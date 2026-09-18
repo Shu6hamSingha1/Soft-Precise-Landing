@@ -35,6 +35,12 @@
     clip → (old joint-QP folded ~5 m/s² UP into `I_a[2]` → `B_T`→0 → stall). Re-check under
     `visibility_projection` — Tier-1 is outward-only and does not touch `a_d[2]`.
   → [[project_20260901_rover_cross_perception_diagnosis]]
+- **⭐ MOVING TARGET, TURNING (Circular, r=0.8): root cause CONFIRMED 2026-09-18** —
+  `PLASMC_YAW_RATE_LAW` default (`kp=0.3`) causes the failure, not perception. Discriminator
+  A/B (n=4/arm): default 0/4 landed (crashes through platform) vs `PLASMC_YAW_RATE_LAW=0`
+  forced 4/4 landed (xy_err 0.035-0.128 m). Force `PLASMC_YAW_RATE_LAW=0` for any moving-
+  target work until `PLASMC_YAW_RL_KP` is re-tuned down (MATLAB validated `0.02`, unvalidated
+  on PX4). → [[project_20260916_curve_qgate_revalidation]]
 - **#1 OPEN blocker (both scenarios): terminal overfill.** Below ~0.5 m (stationary) / ~1.1 m
   (rover), `MARKER_EXTENT_PX` saturates the frame and LK lateral flow `h_y` corrupts *coherently*
   (smooth 0→+1.3 ramp, ~150 corners still "tracked", no gate fires) → middle-loop `sigma = h − h_d`
