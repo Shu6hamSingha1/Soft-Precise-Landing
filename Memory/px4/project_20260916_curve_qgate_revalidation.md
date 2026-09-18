@@ -211,9 +211,16 @@ bumps, and the mechanism proposed for it to matter here doesn't hold under locks
 time. Do not propose reverting it as a fix for this thread.
 
 **Root cause of the cross-marker rover's genuine descent-tracking divergence (confirmed
-real via touchdown `|s_e_n|` and hard-impact evidence, still stands) is OPEN.** Remaining
-untested candidates from the earlier pass: a cross-marker-specific yaw/alpha sign or
-frame-convention issue (this project has a documented history of this bug class); the
+real via touchdown `|s_e_n|` and hard-impact evidence, still stands) is OPEN.**
+⛔ **The yaw/alpha-sign-convention candidate is ALSO RETRACTED (2026-09-18, user
+correction).** That bug class was found, flip-flopped across multiple sessions, and
+finally resolved `2026-09-09` ([[feedback_gtfb_wz_sign_bug]] -- see its own superseded
+block; [[project_yaw_rate_law_sign_bug_and_validation]]), validated against the
+calibrated perception `w_iz` correlation, and is baked into the CURRENT `gt_feedback.py`
+(`w[2] = +_asign * _slope(...)`, already read in full above) -- not marker-specific and
+not open. Do not re-propose it.
+
+Remaining untested candidates: the
 `rover_cross` chassis genuinely differing from `rover_aruco`'s despite the shared include
 (not directly compared); something in the LIVE call site that feeds `gt_feedback.py` inside
 `controller.py`'s `Controller` thread specifically (never inspected -- the two ruled-out
