@@ -617,7 +617,11 @@ for idx = 1:N_steps
         % Virtual-compass yaw ASMC + geometric SO(3) tracker (verified blocks).
         % R_d uses Fix-B (body-z from the cbf2 safe lean th_safe); thrust uses the
         % measured tilt cosine R33. Identical to run_simulation/simulate_landing.
-        [psi_d, u_a, cs]     = blocks.yaw_asmc(V_s(4), V_s_d(4), V_w(3), P, cs);
+        if isfield(P, 'yaw_rate_law') && P.yaw_rate_law
+            [psi_d, u_a, cs] = blocks.yaw_rate_law(V_s(4), V_s_d(4), V_w(3), P, cs);
+        else
+            [psi_d, u_a, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
+        end
         [B_tau_cd, T_cd, cs] = blocks.so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
 
         % Ground effect on thrust

@@ -83,7 +83,11 @@ function R = simulate_landing(x0, trajType, opts)
         % --- visibility CBF + inner loop ---
         cs.cbf_Vhxy = V_h(1:2);   % de-rotated optic flow -> Tier-1 moving-target lead
         [I_a_filt, th_safe, ~, ~, R33, cs] = blocks.cbf_visibility(I_a_cd, I_R_C, yaw, C_nP, B_w_c, P, cs);
-        [psi_d, ~, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), V_w(3), P, cs);
+        if isfield(P, 'yaw_rate_law') && P.yaw_rate_law
+            [psi_d, ~, cs] = blocks.yaw_rate_law(V_s(4), V_s_d(4), V_w(3), P, cs);
+        else
+            [psi_d, ~, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
+        end
         [B_tau, T_cd, cs] = blocks.so3_tracker(I_a_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
         LG.Vs(:,k)=V_s; LG.Vh(:,k)=V_h; LG.sigma(:,k)=o.sigma; LG.Iacd(:,k)=I_a_cd;
         LG.Iaf(:,k)=I_a_filt; LG.psid(k)=psi_d; LG.Btau(:,k)=B_tau; LG.Vhe(:,k)=o.V_h_e;
