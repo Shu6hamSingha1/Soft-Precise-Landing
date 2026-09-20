@@ -29,7 +29,14 @@ function [B_tau, T_cd, cs] = so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, 
 
     eR_mat = 0.5*(R_d'*I_R_C - I_R_C'*R_d);
     e_R    = [eR_mat(3,2); eR_mat(1,3); eR_mat(2,1)];          % vee map
-    e_Omega = B_w_c;                                           % Omega_d = 0
+    Omega_d = zeros(3,1);                                      % legacy: Omega_d = 0
+    if isfield(P, 'yaw_omega_d_ff') && P.yaw_omega_d_ff && isfield(cs, 'yrl_cmd')
+        % Yaw-rate feedforward (opt-in): psi_d advances at u_a about the WORLD z axis, so the
+        % desired body rate is that axis expressed in the body frame (as PX4's AttitudeControl
+        % does with q.inversed().dcm_z()*yawspeed_setpoint). cs.yrl_cmd is the clipped u_a.
+        Omega_d = I_R_C' * [0; 0; cs.yrl_cmd];
+    end
+    e_Omega = B_w_c - Omega_d;
 
     cs.ie_R = max(min(cs.ie_R + e_R*P.dt, P.ie_R_max), -P.ie_R_max);
     if P.gamma_cog > 0                                         % adaptive CoG feedforward

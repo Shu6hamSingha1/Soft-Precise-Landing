@@ -317,9 +317,12 @@ for idx = 1:N_steps
             end
         end
 
-        % FoV failure check — strict.  Any physical-corner pixel outside the
-        % sensor box terminates the run with success=false.
-        if any(abs(C_nP(1,:)) > res(1)/2) || any(abs(C_nP(2,:)) > res(2)/2)
+        % FoV failure check (2026-09-19, matches Multi_init_cond/run_simulation.m): the run fails
+        % only when the marker CENTRE (mean of the feature points) leaves the physical sensor box.
+        % A feature point/arm tip clipping the edge is no longer a failure (MATLAB-only convention;
+        % PX4/hardware perception degrades gracefully). Same rule for all 5 controllers.
+        cen_px = mean(C_nP, 2);
+        if abs(cen_px(1)) > res(1)/2 || abs(cen_px(2)) > res(2)/2
             fov_fail   = true;
             fov_fail_t = tRange(idx);
             fprintf('  BREAK: FoV violation at idx=%d (t=%.2f), max|u|=%.1f, max|v|=%.1f\n', ...
@@ -425,7 +428,7 @@ for idx = 1:N_steps
     % to run_simulation/simulate_landing. Baselines 2-5 keep the inline V_s/V_h.
     if CTRL_SEL == 1
         cs.k = idx;
-        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs, [], B_w_c);
     end
 
 % *************************************************************************

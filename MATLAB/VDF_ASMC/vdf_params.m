@@ -200,25 +200,25 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % validated omission. Re-add (with its anti-windup) if a real bias-rejection
 % need is demonstrated; do not re-add speculatively.
 P.yaw_rate_law = 1;
-P.yrl_kp       = 0.02;  % k_p (PLASMC_YAW_RL_KP)
-                         % PRIOR=0.3, then 0.20 (both superseded). Grid-searched
-                         % 2026-09-17/18 (cb_yrl_kp_sweep.m): raising kp made the
-                         % Circular@IC2 FoV breach WORSE; lowering it is the fix,
-                         % and the trend is MONOTONIC well past 0.20 -- extended
-                         % sweep (kp in [0.02,0.20] x mult in [1.2,2.0]) shows
-                         % kp=0.02 lands EVERY Circular@IC2 case tested, 1.2x
-                         % through 2.0x (double nominal speed), all within
-                         % soft-precise thresholds (worst xy=0.035m @2.0x).
-                         % max|e_a| grows huge at low kp (up to 160deg @2.0x) but
-                         % this doesn't hurt touchdown precision -- alignment
-                         % error is decoupled from translational landing accuracy
-                         % once the correction isn't aggressive enough to excite
-                         % the image-position/orientation coupling. UNVALIDATED
-                         % beyond Circular -- re-run the full 20-cell IC2 speed
-                         % sweep + 50-cell gate. See
-                         % project_ic2_speed_sweep_failure_2026_09_17 memory.
+P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP). FINAL 2026-09-19 (with yaw_omega_d_ff=true below).
+                        % Closed-loop yaw-error dynamics s^2 + s + k_p = 0 (k_w fixed at 1): k_p sets the
+                        % convergence speed sqrt(k_p) and the damping zeta = 1/(2 sqrt(k_p)) = 0.91 here (near
+                        % critical; k_p=0.25 is critical). With the tracker feedforward removing the realization
+                        % lag, a loop model (w_z available) gives peak e_a 27deg, rate overshoot 15%, settling
+                        % ~7s at 0.3; larger k_p settles faster but overshoots the rate more (0.5: 21%, 1.0: 30%),
+                        % smaller is overdamped/slower (0.1: 20s) -- a smooth trade with no cliff, 0.3 is a balanced
+                        % pick, and it is the originally validated value. HISTORY: 0.02 (2026-09-17/18) was a
+                        % WORKAROUND that suppressed the corrective action to hide two implementation issues
+                        % (tracker Omega_d=0 lag; w_z zeroed by pinv truncation while the marker is small) at the
+                        % cost of 100+deg terminal alignment error (slow pole, ~49s time constant). See
+                        % project_ic2_speed_sweep_failure_2026_09_17 memory.
 P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
 P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
+P.yaw_omega_d_ff = true;   % FINAL 2026-09-19: so3_tracker desired body rate Omega_d = R'*[0;0;u_a] (world-z
+                          % yaw-rate feedforward, = PX4 AttitudeControl's q.inversed().dcm_z()*yawspeed_sp; the PX4
+                          % pipeline here commands u_a as a body rate directly, so this makes MATLAB consistent).
+                          % false => Omega_d=0 (legacy): psi_b lags psi_d by kOmega_z*rate/kR_z (~25deg at 1.1 rad/s)
+                          % and u_a winds up. Only meaningful with yaw_rate_law=1 (reads cs.yrl_cmd).
 
 % ---- Target-visibility CBF  (tex eq. cbf qp) ----------------------------------
 P.theta_cap = deg2rad(43.94);           % post-QP deliverable-tilt cap. PORTED FROM PX4 2026-09-03
@@ -307,6 +307,10 @@ P.theta_per_axis = true;   % LOCKED default 2026-06-26: the current formulation 
 P.ZOH      = floor(100/30);              % image refresh decimation (=3)
 P.fw       = 11;                         % Savitzky-Golay window (FILTER_WINDOW)
 P.pinv_tol = 4;                          % pinv(L_s, tol) singular-value cutoff
+P.flow_reduced = true;   % BAKED 2026-09-21 (was opt-in, false): PX4-parity reduced 4-unknown [h_x h_y h_z w_z] least-squares flow solve, NO truncation
+                          % (replaces pinv(L_s,pinv_tol) in image_features.m). false = legacy truncated 6-DOF pinv (bit-identical).
+P.flow_omega_corr = true;   % BAKED 2026-09-21 (was opt-in, false): h = h_meas + w_t x s correction for target yaw (see image_features.m); needs flow_reduced + gyro
+P.flow_gyro_variant = 1;   % diagnostic: 1 = prev-basis leveling + gyro add-back (default); 2 = PX4-literal (own-frame leveling, then minus gyro)
 P.dhd_cap  = 20;                         % hard cap on d/dt(h_d) (DH_D_CAP spike killer)
 P.alpha_ia = P.tau_ia/(P.tau_ia + P.dt); % I_a_cd LPF coefficient
 

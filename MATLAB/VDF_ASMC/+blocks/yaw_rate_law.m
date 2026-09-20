@@ -28,30 +28,21 @@ function [psi_d, u_a, cs] = yaw_rate_law(alpha, alpha_d, w_z, P, cs)
 %   yaw_asmc.m) -- see run_simulation.m / simulate_landing.m /
 %   visualControl_comparison.m.
 %
-%   CLOSED-LOOP YAW-ERROR DYNAMICS (2026-09-18 finding, see
-%   project_ic2_speed_sweep_failure_2026_09_17 memory): differentiating
-%   the alpha_e kinematics with this law's dot(u_a) gives the second-order
-%   ODE  alpha_e'' + alpha_e' + yrl_kp*alpha_e = disturbance, i.e. the
-%   characteristic equation s^2 + s + yrl_kp = 0. yrl_kp therefore sets
-%   BOTH the natural frequency (sqrt(yrl_kp)) and, jointly with the fixed
-%   unit w_z-feedback coefficient, the damping -- a single gain cannot
-%   independently set fast final convergence and low peak corrective yaw
-%   rate. yrl_kp=0.3 gives a ~2s time constant (near-exact alignment
-%   within an ~11s flight); yrl_kp=0.02 (baked 2026-09-17/18 to fix the
-%   Circular@IC2 FoV breach by keeping peak omega_z low) gives a slow
-%   real pole with a ~49s time constant -- alpha_e does not converge
-%   within the flight, terminal error 36-156deg across a yaw-rate sweep,
-%   NOT within 1deg as originally validated at yrl_kp=0.3. UNRESOLVED as
-%   of 2026-09-19: this trades alignment precision for FoV robustness:
-%   the peak omega_z during the initial IC2 acquisition (bearing swings
-%   fast because IC2 starts off-center) OVERSHOOTS the target's actual
-%   steady yaw rate (e.g. Circular @1.4x: target itself only needs
-%   0.672 rad/s, but yrl_kp=0.3 drives a peak of 1.126 rad/s -- a ~68%
-%   overshoot, not the necessary tracking rate), and that overshoot is
-%   what leaks a rotation-induced disturbance into the translational
-%   visual servo. A slew-rate limit on u_a (or a bearing-rate feedforward)
-%   is the candidate fix being investigated to decouple "fast final
-%   convergence" from "low peak corrective rate" -- NOT YET IMPLEMENTED.
+%   CLOSED-LOOP YAW-ERROR DYNAMICS: with dot(alpha_e) = -psi_b_dot + d_alpha and this law's
+%   dot(u_a), the error obeys  alpha_e'' + alpha_e' + yrl_kp*alpha_e = disturbance, i.e.
+%   s^2 + s + yrl_kp = 0 (w_z coefficient fixed at 1 -- NOTE ICRA.tex writes a free k_w).
+%   yrl_kp sets the convergence speed sqrt(yrl_kp) and the damping 1/(2 sqrt(yrl_kp)).
+%
+%   FINAL CONFIG (2026-09-19): yrl_kp = 0.3 together with P.yaw_omega_d_ff = true (tracker
+%   feedforward Omega_d = R'*[0;0;u_a] in so3_tracker.m). History: the earlier yrl_kp = 0.02
+%   (2026-09-17/18) hid two implementation issues by suppressing the correction -- (1) the tracker
+%   had Omega_d = 0, so psi_b lagged psi_d by kOmega_z*rate/kR_z (~25deg at 1.1 rad/s) and u_a wound
+%   up against it (peak 1.13 rad/s vs the 0.672 needed); (2) w_z is zeroed by pinv(L_s, pinv_tol)
+%   while the marker spans only ~3-5 px, so the implicit target-rate feedforward is absent for the
+%   first ~2 s (an undamped phase, peak e_a = d/sqrt(k_p)). yrl_kp = 0.02 paid for that with a ~49 s
+%   slow pole and 100+deg terminal alignment error. Issue (1) is fixed by the tracker feedforward;
+%   issue (2) is mitigated by a larger marker (see MARKER_SCALE hook in Multi_init_cond/InitVar.m).
+%   See project_ic2_speed_sweep_failure_2026_09_17 memory.
 
     e_raw = alpha - alpha_d;
     e_a   = atan2(sin(e_raw), cos(e_raw));           % full +-pi (alpha is 2pi-disambiguated)

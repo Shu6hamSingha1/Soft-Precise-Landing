@@ -101,6 +101,8 @@ function [X] = traj_Gen(t, type, speed_mult)
             global TARGET_YAW_RATE %#ok<GVMIS>  % test hook: decouple yaw rate from the translation rate
             if ~isempty(TARGET_YAW_RATE), dpsi_t = TARGET_YAW_RATE; end
 
+            global TARGET_TILT_OFF %#ok<GVMIS>  % test hook: zero the deck roll/pitch (diagnostics only)
+            if ~isempty(TARGET_TILT_OFF) && TARGET_TILT_OFF, phi_max = 0; theta_max = 0; end
             phi   = phi_max   * sin(w_r * t);
             theta = theta_max * sin(w_p * t + phase_p);
             psi   = dpsi_t * t;

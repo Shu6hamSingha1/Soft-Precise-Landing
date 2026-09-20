@@ -124,6 +124,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     kappa_a_log   = zeros(1, N_steps);  % yaw adaptive gain kappa_a(t)
     sigma_a_log   = zeros(1, N_steps);  % yaw sliding surface sigma_a(t) = the yaw disturbance kappa_a rejects
     e_a_log       = zeros(1, N_steps);  % yaw orientation error e_a(t)
+    V_w_log       = zeros(3, N_steps);  % SMOOTHED measured V_w actually fed to the yaw law (V_w(3) = w_z)
+    cen_px_log    = zeros(2, N_steps);  % marker-centre position in the image [px] (barrier-violation metric)
     theta_cone_log= zeros(1, N_steps);  % CBF tilt-cone bound for thrust/accel plot
     s_e_log       = zeros(2, N_steps);  % lateral centroid feature error s_e_xy (for r_bar_e)
     p_r_log       = zeros(2, N_steps);  % position (image-feature) funnel envelope p_r(t)
@@ -169,17 +171,60 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
             I_nP3  = I_R_T*T_nP3 + x_t(1:3,idx);
             C_nP3  = I_R_C'*(I_nP3 - I_p_c);
             C_s_tc = I_R_C'*(x_t(1:3,idx) - I_p_c);
-            C_nP   = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
+            % Opt-in exact pinhole projection (2026-09-19): global PX_EXACT_PERSP=true projects each point with ITS OWN camera-frame
+            % depth. The legacy line below gives all points the target ORIGIN's depth, which is only valid for a small marker seen by a
+            % level camera; with a large marker and a tilted camera it makes the de-rotated points inconsistent with the level-frame
+            % projection (measured |V_nP_i-V_nP_a| up to 42 px = 17% at 24x near the ground). Default (empty/false) = legacy, bit-identical.
+            global PX_EXACT_PERSP %#ok<GVMIS>
+            if isempty(PX_EXACT_PERSP) || PX_EXACT_PERSP   % DEFAULT ON (2026-09-20); set false for legacy
+                C_nP = f*C_nP3(1:2,:) ./ max(C_nP3(3,:) + zf, 1e-3);
+            else
+                C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
+            end
+            % Opt-in marker-CENTRE feature (2026-09-19): global PX_CENTER_FEATURE=true makes the measured marker centre the projection of the
+            % true cross centre (arm intersection = what PX4's detector reports), NOT the mean of the 5 projected points. For a large marker seen
+            % in perspective the point-mean drifts from the projected centre (8 px @0.8 m, 43 px @0.22 m at 12x) and the controller then
+            % regulates the wrong point. Feeds s (image_features), the visibility CBF, the FoV abort and cen_px_log. Default off = legacy.
+            global PX_CENTER_FEATURE %#ok<GVMIS>
+            cfeat = isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE;   % DEFAULT ON (2026-09-20); set false for legacy
+            C_ctr = f*C_s_tc(1:2)/(C_s_tc(3)+zf);
             if NOISE
                 z_dep = max(abs(C_s_tc(3)), 0.1);
-                sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);
-                C_nP = C_nP + (sigma_px/f)*randn(size(C_nP));
-                if rand < outlier_prob
-                    col = randi(size(C_nP,2));
-                    C_nP(:,col) = C_nP(:,col) + (outlier_mag/f)*sign(randn(2,1));
+                % Opt-in measured-PX4 noise model (2026-09-19): global PX_NOISE_PARAMS = [s0 s1 depth_off outlier_prob outlier_mag]
+                % [px] overrides init_robustness's pixel-noise model (use with PX_NOISE_FIX=true so it is applied in pixels).
+                % PX4 SITL cross-marker recordings (134 landings, 320x240): sigma(z)=0.027+0.175/(z+0.5) px, no outliers
+                % modelled -> PX_NOISE_PARAMS=[0.027 0.175 0.5 0 0]. Default empty => unchanged.
+                global PX_NOISE_PARAMS %#ok<GVMIS>
+                if ~isempty(PX_NOISE_PARAMS)
+                    px_sigma0 = PX_NOISE_PARAMS(1); px_sigma1 = PX_NOISE_PARAMS(2); px_depth_offset = PX_NOISE_PARAMS(3);
+                    outlier_prob = PX_NOISE_PARAMS(4); outlier_mag = PX_NOISE_PARAMS(5);
                 end
+                sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);
+                % Opt-in units check (2026-09-19): C_nP is in PIXELS and init_robustness.m documents
+                % sigma_px / outlier_mag in pixels, but the legacy code divides by f (=> ~0.003 px instead of
+                % ~0.4 px). global PX_NOISE_FIX=true applies the documented pixel level; default (empty/false)
+                % keeps the legacy behaviour bit-identical.
+                global PX_NOISE_FIX %#ok<GVMIS>
+                % PX_NOISE_FIX: [] or false -> legacy 1/f; true -> documented pixel level (x1); a numeric value v
+                % -> v times the documented level (e.g. 0.1 = 0.039 px at 5 m), for noise-tolerance sweeps.
+                if isempty(PX_NOISE_FIX) || (islogical(PX_NOISE_FIX) && ~PX_NOISE_FIX), pxu = 1/f;
+                elseif islogical(PX_NOISE_FIX), pxu = 1; else, pxu = PX_NOISE_FIX; end
+                C_nP = C_nP + (sigma_px*pxu)*randn(size(C_nP));
+                global PX_OUTLIER_OFF %#ok<GVMIS>   % opt-in (default empty/false): skip the 5 px outlier hits, Gaussian noise only
+                if rand < outlier_prob && ~(~isempty(PX_OUTLIER_OFF) && PX_OUTLIER_OFF)
+                    col = randi(size(C_nP,2));
+                    C_nP(:,col) = C_nP(:,col) + (outlier_mag*pxu)*sign(randn(2,1));
+                end
+                if cfeat, C_ctr = C_ctr + (sigma_px*pxu)*randn(2,1); end
             end
-            if any(abs(C_nP(1,:)) > res(1)/2) || any(abs(C_nP(2,:)) > res(2)/2)
+            % FoV abort on the marker CENTRE only (was: any feature point outside the frame).
+            % The centre is the 5-point mean, the same quantity the visibility CBF regulates. The run
+            % fails only when the centre leaves the PHYSICAL frame. Leaving the CBF's buffered safe
+            % set (res/2)*(1 - cbf_buffer_frac) is NOT a failure -- it is a soft objective to be
+            % minimised, so the centre trajectory is logged (cen_px_log) and analysis scripts report
+            % the violation depth/duration.
+            if cfeat, cen_px = C_ctr; else, cen_px = mean(C_nP, 2); end
+            if abs(cen_px(1)) > res(1)/2 || abs(cen_px(2)) > res(2)/2
                 fov_fail = true; fov_fail_t = tRange(idx);
                 fprintf('  BREAK: FoV violation at idx=%d (t=%.2f)\n', idx, tRange(idx));
                 break;
@@ -187,8 +232,14 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
             % auxiliary virtual corners (P_DS cols 5-8) + analytical features (V_X_DS)
             V_nP3  = I_R_V'*(I_nP3 - I_p_c);
             V_s_tc = I_R_V'*(x_t(1:3,idx) - I_p_c);
-            V_nP_a = (f/(V_s_tc(3)+zf))*V_nP3(1:2,:);
+            if isempty(PX_EXACT_PERSP) || PX_EXACT_PERSP
+                V_nP_a = f*V_nP3(1:2,:) ./ max(V_nP3(3,:) + zf, 1e-3);
+            else
+                V_nP_a = (f/(V_s_tc(3)+zf))*V_nP3(1:2,:);
+            end
+            if isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE, V_nP_a_ctr = f*V_s_tc(1:2)/(V_s_tc(3)+zf); end
             V_s_a  = image_feature(V_nP_a/f);
+            if isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE, V_s_a(1:2) = V_nP_a_ctr/f; end
             V_h_a  = I_R_V'*(dx_t(1:3,idx) - I_v_c)/(V_s_tc(3)+zf);
         end
         I_w_c = I_R_C*B_w_c;
@@ -208,7 +259,10 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         else
             C_nP_meas = C_nP;
         end
-        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP_meas, I_R_V, I_R_C, P, cs);
+        C_ctr_buf{idx} = C_ctr;
+        if LAG.on && md_n > 0 && idx > md_n, C_ctr_meas = C_ctr_buf{idx - md_n}; else, C_ctr_meas = C_ctr; end
+        if cfeat, C_ctr_arg = C_ctr_meas; else, C_ctr_arg = []; end
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP_meas, I_R_V, I_R_C, P, cs, C_ctr_arg, B_w_c);
 
         % --- early landing check ---
         alt_above = abs(I_p_c(3) - x_t(3,idx));
@@ -233,7 +287,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
 
         % --- visibility CBF + inner loop ---
         cs.cbf_Vhxy = V_h(1:2);   % de-rotated optic flow -> Tier-1 moving-target lead (condition_drift'd inside)
-        [I_a_filt, th_safe, theta_cone, ~, R33, cs] = blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
+        if cfeat, C_cbf = C_ctr; else, C_cbf = C_nP; end
+        [I_a_filt, th_safe, theta_cone, ~, R33, cs] = blocks.cbf_visibility(Iacd, I_R_C, yaw, C_cbf, B_w_c, P, cs);
         if isfield(P, 'yaw_rate_law') && P.yaw_rate_law
             [psi_d, u_a, cs] = blocks.yaw_rate_law(V_s(4), V_s_d(4), V_w(3), P, cs);
         else
@@ -303,6 +358,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         B_T_cd(idx)        = T_cd;
         psi_d_log(idx)     = psi_d;
         u_a_log(idx)       = u_a;
+        V_w_log(:,idx)     = V_w;
+        if cfeat, cen_px_log(:,idx) = C_ctr; else, cen_px_log(:,idx) = mean(C_nP, 2); end
         D_DS(:,idx)        = [o.V_h_d; Iacd; zeros(3,1); B_tau_cd; T_cd; psi_d; u_a];
         P_DS(:,:,idx)      = [V_nP_i, V_nP_a, C_nP];
         % internals-figure logs

@@ -67,12 +67,29 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % cross -> alpha = 0.
 % Legacy 4-point trapezoid (pre-2026-09-09): [-20 15 15 -15; 20 15 -15 -15; 0 0 0 0]/250
 % Sized so the recentred half-extent (~19.4/250) matches the legacy marker's (~18.8/250).
+% MARKER SIZE (2026-09-19): 2x the original 12 cm cross (arm tips at 15/250 m, stub 22/250 m -> 30/250, 44/250). The
+% cross marker only needs its CENTRE in view (centroid-visibility CBF), so it no longer has to fit the old 4-corner
+% FoV margin; a larger marker also keeps the singular values of the interaction matrix above pinv_tol early in the
+% flight so w_z is observable (see project_ic2_speed_sweep_failure_2026_09_17 memory). NB the PX4/Gazebo marker is a
+% separate asset and is NOT changed by this.
+marker_base_scale = 2.0;
 T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
           15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
-                   0,           0,           0,           0,   0 ] / 250;
+                   0,           0,           0,           0,   0 ] * marker_base_scale / 250;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
-T_nP3 = T_nP3-mean(T_nP3,2);
+global PX_CENTER_FEATURE %#ok<GVMIS>
+% With PX_CENTER_FEATURE the target origin stays at the cross INTERSECTION (the tracked centre / landing point, as in PX4); otherwise the
+% legacy recentring puts the origin at the 5-point centroid (offset 0.0176*scale m from the intersection: 3.5 cm @2x, 42 cm @24x).
+if ~isempty(PX_CENTER_FEATURE) && ~PX_CENTER_FEATURE, T_nP3 = T_nP3-mean(T_nP3,2); end
+
+% Opt-in marker-size hook (2026-09-19): global MARKER_SCALE multiplies the whole
+% cross about its centroid (default [] / 1 => unchanged). The cross marker only needs
+% its centre kept in view (centroid-visibility CBF), so it can be larger than the old
+% 4-corner marker, which had to keep every corner inside the FoV. NOTE: run_simulation.m
+% now aborts only when the marker CENTRE leaves the physical frame (not on any point).
+global MARKER_SCALE %#ok<GVMIS>
+if ~isempty(MARKER_SCALE), T_nP3 = MARKER_SCALE*T_nP3; end
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame
 V_nP3 = T_nP3;
@@ -82,6 +99,7 @@ V_nP_d = (f/(2*zf))*V_nP3(1:2,:);
 
 % Computing desired Features Parameters in Image Plane (without 'z')
 V_s_d = image_feature(V_nP_d/f);
+if isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE, V_s_d(1:2) = 0; end   % desired centre = image centre
 
 %% Data Logging
 U_DS = [];

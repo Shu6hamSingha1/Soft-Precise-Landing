@@ -49,12 +49,23 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % +x arm -- wrong on both counts vs the real PX4 marker (src/cross_marker_detector.py:
 % "two arms meet near 90deg" + STUB_REL_ANGLE_DEG=45, PX4_Gazebo/Images/cross_marker.png).
 % Legacy 4-point trapezoid (pre-2026-09-10): [-20 15 15 -15; 20 15 -15 -15; 0 0 0 0]/250
+% MARKER SIZE (2026-09-19): 2x the original 12 cm cross (arm tips at 15/250 m, stub 22/250 m -> 30/250, 44/250). The
+% cross marker only needs its CENTRE in view (centroid-visibility CBF), so it no longer has to fit the old 4-corner
+% FoV margin; a larger marker also keeps the singular values of the interaction matrix above pinv_tol early in the
+% flight so w_z is observable (see project_ic2_speed_sweep_failure_2026_09_17 memory). NB the PX4/Gazebo marker is a
+% separate asset and is NOT changed by this.
+marker_base_scale = 2.0;
 T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
           15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
-                   0,           0,           0,           0,   0 ] / 250;
+                   0,           0,           0,           0,   0 ] * marker_base_scale / 250;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);
+
+% Opt-in marker-size hook (2026-09-19), same as Multi_init_cond/InitVar.m: global MARKER_SCALE
+% multiplies the cross about its centroid (default [] / 1 => unchanged).
+global MARKER_SCALE %#ok<GVMIS>
+if ~isempty(MARKER_SCALE), T_nP3 = MARKER_SCALE*T_nP3; end
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame
 V_nP3 = T_nP3;

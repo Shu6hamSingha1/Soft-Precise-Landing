@@ -63,7 +63,7 @@ function R = simulate_landing(x0, trajType, opts)
                 idx = k-1; break;                                  % FoV violation
             end
         end
-        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs, [], B_w_c);
 
         % --- early landing check ---
         if abs(I_p_c(3)-x_t(3)) <= P.zf, landed=true; idx=k; break; end
