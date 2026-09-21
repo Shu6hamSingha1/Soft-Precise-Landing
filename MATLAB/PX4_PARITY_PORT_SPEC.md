@@ -449,9 +449,45 @@ that the design deliberately avoids a back-mapped rate proportional to the barri
 
 ### B6. Do **NOT** port (default-OFF in PX4)
 `PLASMC_AU_LEAD=0`, `PLASMC_SOFT_BREACH=0`, `PLASMC_YAW_ALPHA_KF=0`, `PLASMC_YAW_OMEGA_D_FF=0`,
-`PLASMC_AU_ROTZ_ONLY=0`, `PLASMC_CH_PSIDOT_SIGN=+1` (default correct).
+`PLASMC_AU_ROTZ_ONLY=0`, `PLASMC_CH_PSIDOT_SIGN=+1` (default correct). (Yaw-loop parity items: see B7.)
 Already agreeing, no action: `theta_per_axis` (on both sides), `CH_CLEAN` c-term form, `CBF_TAU`,
 `N`, the yaw `n_a/p_a/kappa_a0/E_a` set, `mass`.
+
+### B7. Yaw control loop (direct body-rate law) — shared parameters (2026-09-21)
+
+MATLAB now runs the same yaw structure as PX4: `psi_d := psi_b` (so `e_R[2] ≈ 0`) and yaw as a **direct body-rate
+command** `u_a`, with roll/pitch on the geometric SO(3) tracker. PX4: `controller.py` ~3418-3465 (law) and
+~4225 (`w_u[2] = u_a`). MATLAB: `+blocks/yaw_rate_law.m` (law) + `+blocks/so3_tracker.m` (direct-yaw mode,
+`P.yaw_direct_rate`). `P.yaw_rate_law = 0` (κ_a ASMC, `yaw_asmc.m`) remains as the fallback and keeps the legacy
+`psi_d`-integrating tracker path. The `Omega_a / Gamma_a / n_a / p_a / kappa_a0 / E_a` rows in A4 apply to that
+fallback only.
+
+| item | MATLAB now | MATLAB PRIOR | PX4 effective | status |
+|---|---|---|---|---|
+| law | `d(u_a)/dt = yrl_kp·e_a + yrl_wz_sign·w_z` | same law | `d(u_a)/dt = k_p·e_a + WZ_SIGN·WZ_SCALE·w_z` | ✅ same structure |
+| `k_p` | `yrl_kp = 0.3` | 0.02 (2026-09-17/18 workaround, since reverted 2026-09-19) | `PLASMC_YAW_RL_KP = 0.3` | ✅ |
+| `w_z` sign | `yrl_wz_sign = 1.0` | same | `PLASMC_YAW_RL_WZ_SIGN = 1.0` | ✅ |
+| `u_a` clamp | `yaw_rate_max = 2.0` | same | `_psid_rate` = 2.0 | ✅ |
+| `WZ_SCALE` | **1 (not ported)** | 1 | `PLASMC_YAW_RL_WZ_SCALE = 2.5` (perception magnitude-deficit factor) | ⛔ not needed: MATLAB's measured `w_z` tracks the true rate (0.47 vs 0.48 rad/s) |
+| `w_z` gate | **none (not ported)** | none | integrator frozen while raw `|w_z| > PLASMC_YAW_RL_WZ_MAX = 0.9` (`PLASMC_YAW_RL_GATE=1`; extent gate `_GATE_EXTENT=0`) | ⛔ not needed: guards terminal-overfill corruption of real perception; MATLAB max `|w_z|` 0.49 (rotating), 0.06-0.11 (Static, to the ground) |
+| `w_z` noise/dropout | not modelled | — | present in real perception | ⛔ not needed: σ up to 0.6 rad/s + 50 % frame-hold dropout leave `|e_a|` unchanged (18/18 soft+precise) |
+| heading in `R_d` | `psi_d := psi_b` (`yaw_direct_rate`) | integrated `psi_d` | `psi_d := psi_b` | ✅ |
+| yaw attitude torque | `e_R(3) := 0` | `-kR_z·e_R(3)` on `psi_d - psi_b` | none (rate loop only) | ✅ (`kR_z` is unused in direct mode) |
+| yaw rate setpoint | `Omega_d = R'·[0;0;u_a]` (`yaw_direct_frame = 0`) | `Omega_d = 0`, then (2026-09-19) the same expression via `yaw_omega_d_ff` | body-rate setpoint `w_u[2] = u_a` | ✅ see pitfall below |
+| yaw rate-loop lag | plant `τ = J_z/kOmega_z = 0.0552/0.2 = 0.276 s` (step response: 63 % at 0.270 s, 95 % at ~0.8 s) | — | 287 ms (GT 275 ms) | ✅ already matched; opt-in `cfg.lag.tau_yaw` default 0.287 → **0** to avoid double counting |
+
+**Pitfall (tested 2026-09-21):** using the pure body vector `Omega_d = [0;0;u_a]` (`yaw_direct_frame = 1`) makes the
+roll/pitch torque law read the yaw-induced x/y body rate of a tilted, yawing vehicle as attitude error. The 25-IC gate
+still passes, but `Circular` ×1.4 from IC(2,2,-5) breaks the FoV at 5.4 s. The world-z form `R'·[0;0;u_a]`
+(`yaw_direct_frame = 0`, default) lands it soft (9.96 s, xy 0.015 m).
+
+**Validation (2026-09-21):** `gate_cross_parity` 25/25 SP, 0 FoV, meanXY 0.0146, worstXY 0.0360, `t_f` 9.65 s — identical
+to before the change. `|e_a|` peak is a few degrees larger than with the old heading-stiffness path (Circular ×1.0:
+22.3° vs 18.3°; ×1.4: 31.9° vs 25.9°; CircularYaw: 19.7° vs 16.2°); mean `|e_a|` unchanged. Retired: `P.yaw_omega_d_ff`.
+Check scripts: `Multi_init_cond/check_yaw_rate_lag.m` (lag). Backups: `Obsolete/VDF_ASMC_blocks/*_pre_yawdirect.m`,
+`*_pre_directframe.m`, `*_pre_wzdoc.m`.
+
+Still open on the PX4 side (not MATLAB): moving-rover `r = 0.8` vertical plunge; the `PLASMC_YAW_RL_KP` sweep was a null result.
 
 ---
 
