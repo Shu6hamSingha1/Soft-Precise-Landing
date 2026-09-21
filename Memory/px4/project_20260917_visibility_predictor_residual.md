@@ -764,3 +764,59 @@ KF's predict step.
 ### Tool
 `tools/replay_zvmin_filter.py` committed alongside this finding, replicating the exact
 live filter + fallback logic so the negative result is reproducible, not asserted.
+
+---
+
+## 2026-09-22 (cont.): KF predict/update mechanism -- PARTIALLY confirmed, magnitude
+## unexplained. Loom R-schedule, scale-fuse, and hard backstop all ruled out directly.
+
+Continues the "why does the KF state (-0.77) exceed any single raw measurement (~-0.2)
+for IC1_rep1's gradual case" question. Read the full hw-KF pipeline in
+`cross_marker_perception.py` and checked each candidate mechanism against the ALREADY-
+LOGGED fields for this exact flight (not assumed from code alone):
+
+- **`_loomRMult()` (CROSS_LOOM_R_SCHEDULE)**: U-shaped r[2] inflation at extent extremes,
+  would suppress measurement trust near touchdown IF active. Checked `Img_Data["Loom R
+  Mult"]`: exactly 1.00 for all 1347 frames. Default OFF (`CROSS_LOOM_R_SCHEDULE=0`).
+  RULED OUT.
+- **Scale-rate fusion (`CROSS_SCALE_RATE_FUSE`)**: default OFF, confirmed via source.
+  RULED OUT.
+- **Hard loom backstop (`CROSS_LOOM_ABS_MAX=20.0`)**: clamps |loom|>20 and kills the
+  rate. Far above anything observed here (max magnitude ~2.1 in IC4_rep2's raw solve).
+  RULED OUT.
+- **Loom innovation gate**: already established in the 09-21 correction entry --
+  `"Loom Gate"` logged 0 the whole flight, wrong failure shape (spike detector, this is
+  a ramp).
+
+### Direct KF replay: rate-buildup is REAL but does not explain the full magnitude
+Built `tools/replay_hw_kf.py`: replays `_kf_step`'s exact predict+update math
+(`FLOW_KF_Q=5.0`, `FLOW_KF_R=0.1`) as a standalone scalar (value,rate) KF, fed the RAW
+per-frame solve (from the same geometry as `replay_flow_solve_conditioning.py`) as `z`
+at EVERY frame from the start of the recording (29s of warm-up before the window of
+interest, well-settled).
+
+Result for IC1_rep1: the reconstructed KF value DOES diverge beyond the raw solve, in
+the SAME direction, with a growing negative rate (0.02 -> -0.16 over the window) --
+**confirming the constant-velocity rate-buildup mechanism is real and contributes.** But
+the MAGNITUDE falls far short: at t=11.560, reconstructed value=-0.137 vs the actually
+logged h_V_z=-0.771 -- roughly 5.6x smaller. **Not a full explanation.**
+
+### What's still unaccounted for
+This reconstruction has NOT replicated: the gyro de-rotation to the reduced 4-unknown
+solve (availability still unresolved -- see the 09-22 entry above), or the sensor
+calibration matrix. Either could shift the raw per-frame solve's own values enough to
+change what the KF is tracking, independent of the KF math itself. 29s of warm-up before
+the window rules out "insufficient settling time" as the gap's explanation.
+
+### Verdict
+Two mechanisms now stand as PARTIAL, not full, explanations: near-grazing rays (real,
+confirmed, but doesn't survive point-exclusion -- see the CROSS_Z_V_MIN_FLOW correction)
+and KF rate-buildup (real, confirmed directionally, but ~5.6x short on magnitude). Niether
+alone accounts for the full observed divergence. The gyro-derotation path is now the most
+likely remaining unresolved piece -- if the live solve genuinely uses the reduced
+4-unknown [Tx,Ty,Tz,Wz] form (still not established either way), replicating THAT exactly
+(not the full 6-unknown fallback this thread has used throughout) is the natural next
+step, since it would change the raw solve values feeding everything downstream.
+
+### Tool
+`tools/replay_hw_kf.py` committed alongside this finding.
