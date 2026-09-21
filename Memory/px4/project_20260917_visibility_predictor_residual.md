@@ -322,3 +322,50 @@ since a rep that never lands can be neither; (2) a terminal descent flare/decele
 mechanism, if soft touchdown becomes a target — bigger scope, was previously avoided for
 good reasons (memory: three prior "slow the descent" attempts failed) so any new approach
 needs to reckon with why those failed, not repeat them.
+
+---
+
+## `2177670b` (2026-09-21): flow-freeze false-touchdown fix, self-audited against `diagnose-flight-data`
+
+Implemented three fixes to `_touchdownDetectV2`'s flow-freeze path (all 4 of this session's
+false touchdowns fired via this path): resolution-invariant tangent-unit thresholds
+(renamed `PLASMC_TDV2_FF_HI/_LO` → `_HI_TAN/_LO_TAN`, unit change); a confidence gate
+reusing `_bgflow_health`'s `rel_resid` at the same `0.45` the CBF's `condition_drift`
+already uses; and the dominant fix, a live-visibility precondition (`FEATURE_IS_VISIBLE`)
+restoring flow-freeze to only fire on a genuine off-marker settle, which is what its own
+docstring claims but the code never actually checked (`_td_ext_armed` is a stale one-time
+flag, not a live check).
+
+Evidence at commit time: `tools/replay_touchdown_flowfreeze_gate.py` confirmed all 4 false
+positives would be suppressed, 0 collateral effect on the 14 genuine touchdowns (flow-freeze
+never fired in any of them).
+
+**Self-audit, right after pushing, against the newly-surfaced `PX4_Gazebo/.claude/skills/
+diagnose-flight-data` skill** (its two direct warnings both apply to this kind of work):
+
+1. *"Verify timestamp sync directly, don't assume it."* The original check matched each
+   false-positive's trigger frame by extent VALUE alone within the last 60 frames — not a
+   timestamp-verified match, a real gap versus the skill's standard. Redone: JOINT match on
+   extent AND corner count (matching the exact two numbers the log line itself prints)
+   lands within 1-6 frames of the true end of each recording — consistent with a terminal,
+   flight-ending event, not a spurious coincidental match. `FEATURE_IS_VISIBLE` reads `True`
+   for every frame from the matched index through the end in all 4 cases, so the conclusion
+   is robust even to residual indexing slop.
+2. *"Watch for a stale/frozen field masquerading as live data."* Checked directly: long
+   frozen-extent runs (86-102 frames, exactly 318px) DO exist, but sit at the very START of
+   every recording (frames 1-~100), never near a trigger. For the 3 cases the visibility
+   gate addresses, extent is smoothly, monotonically growing right up to the false trigger
+   (e.g. 104->116px) -- genuinely live. For the 4th (the confidence-gate case), 318px
+   recurs AT its trigger too, but corroborates rather than contradicts: that's the marker
+   genuinely overfilling the frame, consistent with the already-identified terminal-overfill
+   `rel_resid` degradation there.
+
+**Both checks confirm the fix rather than overturn it.** No code change needed from this
+audit; recorded because the verification gap was real even though the conclusion held --
+next time, do the joint/timestamp-verified match FIRST, not as a post-hoc check.
+
+**Still not done:** live SITL re-validation (this and the earlier gate work are all
+offline replay against recorded logs -- "would this gate have fired differently on data we
+already have," not a live re-run). The 3 genuine-touchdown paths (overfill/backstop/
+IMU-spike) are structurally untouched (flow-freeze never fired in any of those 14 reps), so
+regression risk there is low, but only a live gate confirms it.
