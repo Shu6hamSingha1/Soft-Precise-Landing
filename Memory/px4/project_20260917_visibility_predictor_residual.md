@@ -369,3 +369,38 @@ offline replay against recorded logs -- "would this gate have fired differently 
 already have," not a live re-run). The 3 genuine-touchdown paths (overfill/backstop/
 IMU-spike) are structurally untouched (flow-freeze never fired in any of those 14 reps), so
 regression risk there is low, but only a live gate confirms it.
+
+---
+
+## `2177670b` SITL-validated 2026-09-21: 22% -> 0% false-touchdown rate
+
+IC1-5 gate, `WORLD=cross_marker MARKER_TYPE=cross` explicit, `test_data/ICValidation/
+20260921-144320`, 25 reps (N_REPS=5).
+
+| | pre-fix (axis-fix gate, `20260918-*`) | post-fix (this gate) |
+|---|---|---|
+| genuine touchdowns (`terminal_state_ok`) | 14/18 (78%) | **25/25 (100%)** |
+| flow-freeze firings | 4 (all false) | **0** |
+| precise (of genuine) | 11/14 (79%) | 21/25 (84%) |
+| soft (of genuine) | 0/14 | 0/25 (unchanged, expected -- this fix never touched the
+  constant-`h_rd`/no-flare mechanism §2 identified earlier) |
+
+Every one of the 25 landings caught by `overfill` (23) or the independent IMU accel-spike
+backstop (2) -- the two paths that were already reliable. `backstop` still never fires (not
+this fix's concern). IC4 (source of 3/4 original false positives, still the hardest IC by
+design -- 7 m start) goes 5/5 genuine touchdowns, 3/5 precise -- no longer losing flights
+outright.
+
+**Verdict: the touchdown-detect fix (resolution-invariant units + confidence gate +
+live-visibility gate) is SITL-validated.** 22%->0% false-touchdown rate at n=25 is not a
+marginal/fragile result -- BAKED alongside `2177670b`.
+
+Two things this does NOT resolve, both already scoped as separate: (1) soft touchdown
+(0/25, structural -- constant `h_rd`, no terminal flare, tracked separately); (2) whether
+flow-freeze's OWN theoretical niche (genuine soft off-marker settle) is ever worth its
+complexity -- it fired zero times in 43 combined reps across both gates now (18+25), so
+there is still no positive evidence for it, only the negative evidence removed. Worth
+revisiting once the rover thread reaches a stable-enough approach to observe a genuine
+off-marker settle, per [[feedback_dont_judge_cbf_by_sp]]'s general principle (judge a
+component by what it's supposed to do, not by outcome noise) -- applies here too: don't
+call this "proof flow-freeze earns its complexity," it's proof the bug is fixed.
