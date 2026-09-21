@@ -1,11 +1,11 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal divergence -- five ruled out or insufficient; (5) LIKELY ROOT CAUSE FOUND 2026-09-22: the offline replay tools' own dt was wrong (used Time[i]-Time[i-1], but the live raw flow solve uses dt=1/fps, which can differ from the log-timestamp delta by 3-8x in the terminal window because of the run() polling loop's frame-pairing architecture) -- after fixing a dead FPS/AngVel/Stamp logging path (a1ffbf02) and getting ONE fresh recording, redoing the raw-solve reconstruction with the CORRECT dt made it match logged h_V_z almost exactly (differences <0.02, vs the ~5.6x gap every prior dt=Time-delta reconstruction showed) -- meaning much of this thread's apparent 'unexplained perception divergence' was itself an artifact of the investigation's own tooling using the wrong dt, not necessarily a live controller bug. NOT YET fully closed: this confirmation rep didn't show a large spike (rel_vel=0.383, precise-only landing) -- still need one genuine large-divergence rep (like the original -0.77 case) reconstructed with the correct dt to confirm the mechanism explains the SPIKE cases too, not just the well-behaved ones. N_z adaptive-law tuning remains correctly ABANDONED. See the SESSION CLOSE section for the full index."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. REFRAMED remaining open question (not yet investigated): is the terminal h_z ramp itself (now confirmed accurately MEASURED, not a reconstruction artifact) real/legitimate perception behavior from a close-range marker, and if so is IT the actual soft-touchdown blocker and is it fixable -- a cleaner, narrower entry point than the mechanism-hunting this thread did. See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-21T21:54:43.739Z
+  modified: 2026-09-21T22:01:28.199Z
 ---
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
@@ -1131,3 +1131,59 @@ controller's actual behavior (subject to separate scrutiny of whether the pollin
 decoupling itself degrades control, a genuinely different question from "was my offline
 reconstruction right") needs to be evaluated on its own terms, not through this thread's
 prior (dt-wrong) reconstructions.
+
+## ===== 2026-09-22 (cont'd 3) -- CLOSED: dt bug confirmed against a real spike, thread resolved =====
+
+Ran 4 fresh IC1 reps (`test_data/ICValidation/20260922-032613`, `HEADLESS=1
+WORLD=cross_marker MARKER_TYPE=cross IC_LIST=IC1 N_REPS=4`) specifically to catch a
+genuine large terminal excursion, since the first confirmation rep was too well-behaved
+to be a real test. 4/4 precise, 0/4 soft (as usual under default config). `IC1_rep3`
+delivered exactly the needed case: the KF-reported `h_V_z` ramps from -0.21 to -0.68 over
+the terminal 0.6s, with the raw per-frame solve spiking to -1.28 at t=-0.212s -- the same
+SHAPE of excursion the original `-0.771` case showed.
+
+**Redid the correct-dt (`1/FPS[i]`) reconstruction against `IC1_rep3`'s actual spike.**
+Result: reconstructed KF state matches logged `h_V_z` to within 0.000-0.013 across the
+entire terminal window, including exactly at the steepest part of the ramp (-0.655 vs
+-0.651 at t=-0.212s). Checked `IC1_rep4` too (smaller excursion, -0.18 to -0.46): same
+result, diffs 0.004-0.046, still well under 10% of the swing.
+
+**This closes the mechanism.** The ~5.6x gap that drove five rounds of mechanism-hunting
+(ill-conditioning, near-grazing-rays, KF rate-buildup, R-schedule/scale-fuse/backstop/gate,
+sensor-cal) was a bug in THIS investigation's own offline replay tooling -- every one of
+those tools computed the raw flow solve's dt as `Img_Data["Time"][i] - Time[i-1]`, but the
+live `process_frame()` actually uses `dt = 1/fps`, and these differ by 3-8x in the terminal
+window because the `run()` polling loop's call cadence decouples from the camera's native
+frame-pair rate (a frame's own image_callback pairing stays one native interval apart even
+when many real-time (and real motion) has passed since the previous PROCESSED call). Using
+the wrong (too-large) dt divides displacement into an ARTIFICIALLY SMALL velocity --
+exactly the direction and magnitude of "why does my reconstruction fall short of the
+logged spike" this thread kept hitting.
+
+**What this means for the live controller, separated cleanly from what this closes:**
+- CLOSED: "why couldn't earlier reconstruction attempts reproduce the logged h_z spike" --
+  answered. It's a tooling bug (a1ffbf02 fixes the underlying dead logging that made it
+  undiagnosable), not a mystery mechanism in the perception/KF/controller stack.
+- STILL OPEN, genuinely different question, NOT addressed by this fix: does the spike
+  itself (real, in `h_V_z`, confirmed via the two independent-GT cross-checks earlier in
+  this thread -- true descent rate stays smooth while `h_V_z` ramps) represent a REAL
+  perception error, or is `h_V_z`'s terminal ramp itself legitimate given how a marker
+  genuinely fills the frame at close range (near-grazing rays ARE real per the earlier
+  finding, just not sufficient alone to explain the OLD reconstruction gap -- that
+  insufficiency is now explained by the dt bug, not by the near-grazing-ray mechanism
+  being wrong). Whether THIS ramp is itself the soft-touchdown-preventing cause, and
+  whether it's controllable/attenuable, was never actually re-examined once the dt-bug
+  explanation emerged -- it remains the next real open question for whoever picks this up,
+  now on solid tooling.
+- The polling-loop-vs-native-rate decoupling itself (large real time gaps between
+  PROCESSED frames near touchdown, even though each processed pair's own dt is small) may
+  independently be worth investigating as a controller-facing issue (large real gaps mean
+  the KF's own `t-prev_t` update interval is large too, so its OWN uncertainty growth
+  between updates is large near touchdown) -- untested, flagged not investigated.
+
+### Net state: this specific 5-mechanism-then-dt-bug chase is DONE.
+The soft-touchdown investigation's remaining open question is now narrower and cleaner:
+is the terminal h_z ramp (now confirmed accurately measured, not a reconstruction
+artifact) itself real/legitimate perception behavior, and if so is it the actual soft-
+touchdown blocker, and is it fixable. That reframing is the correct next entry point, not
+further reconstruction-accuracy work.
