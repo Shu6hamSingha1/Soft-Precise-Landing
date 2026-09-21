@@ -10,6 +10,8 @@ global DG_TRAJ DG_SEED DG_MODE CMP_FOV_ABORT VDF_OVERRIDE DG_NAMES
 DG_TRAJ=string(traj); DG_SEED=seed; DG_MODE=mode;
 here = fileparts(mfilename('fullpath')); addpath(fullfile(here,'..','Common')); cd(here);
 VDF_OVERRIDE=struct('theta_per_axis',true);
+global CMP_OVERRIDE
+cfg_ = getenv('DG_CFG'); if ~isempty(cfg_), CMP_OVERRIDE = eval(cfg_); end   % optional: gain override / shared_so3 (env DG_CFG)
 DG_NAMES={'PLASMC','Lin2022','Zhang2026','Lin2023','Cho2022'};
 for c=2:5
   global DG_TRAJ DG_SEED DG_MODE CMP_FOV_ABORT DG_NAMES

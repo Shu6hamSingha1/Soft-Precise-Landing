@@ -103,6 +103,13 @@ if ~isempty(CMP_OVERRIDE)
     end
 end
 
+% Shared SO(3) tracker for the baselines (K_ctrl.shared_so3): identical attitude control (blocks.so3_tracker, vdf_params kR/kOmega
+% + adaptive CoG feedforward) for all five controllers; the baseline only supplies its desired acceleration.
+shared_so3 = CTRL_SEL > 1 && isfield(K_ctrl,'shared_so3') && K_ctrl.shared_so3;
+if shared_so3
+    P = vdf_params();  cs = struct('ie_R', zeros(3,1), 'thetahat', zeros(2,1));
+end
+
 N_steps = numel(tRange);
 Npts    = size(T_nP3, 2);   % feature-point count (4 = legacy quad, 5 = cross marker)
 
@@ -516,7 +523,7 @@ for idx = 1:N_steps
             xi_p_init  = max(min(e_p_init ./ rho_p0_lin, 0.999), -0.999);
             eps_p_init = 0.5 * log((1 + xi_p_init) ./ (1 - xi_p_init));
             q_p_init   = 1 ./ ((1 + xi_p_init) .* (1 - xi_p_init));
-            vhat_init  = -K_ctrl.k1 * (q_p_init .* eps_p_init);
+            vhat_init  = -K_ctrl.k1 .* (q_p_init .* eps_p_init);   % k1 scalar or per-axis
             rho_v0_lin = abs(I_v_c - vhat_init) + K_ctrl.rho_v0_margin;
         end
         rho_p     = (rho_p0_lin - K_ctrl.rho_inf_p) .* ...
@@ -638,6 +645,16 @@ for idx = 1:N_steps
 
     end   % switch CTRL_SEL
 
+    if shared_so3
+        psi_des_sh = 0; if isfield(K_ctrl,'psi_des'), psi_des_sh = K_ctrl.psi_des; end   % fixed heading (Zhang has no field: 0)
+        [B_tau_sh, T_sh, cs] = blocks.so3_tracker(I_a_cd(:,idx), [], I_R_C(3,3), yaw, psi_des_sh, I_R_C, B_w_c, P, cs);
+        if GE, z_ge = -max(abs(x_c(3)), r); T_sh = 1/(1-(r/(4*z_ge))^2) * T_sh; end        % same order as controller 1: GE then saturate
+        B_tau_sh(1:2) = min(max(B_tau_sh(1:2), -tau_xy_max), tau_xy_max);
+        B_tau_sh(3)   = min(max(B_tau_sh(3),   -tau_z_max),  tau_z_max);
+        T_sh          = max(min(T_sh, T_max), T_min);
+        u_2 = [B_tau_sh; T_sh];
+    end
+
 % *************************************************************************
 % CASE 1 (PLASMC): Yaw ASMC heading generator + geometric SO(3) torque
 % *************************************************************************
@@ -675,7 +692,7 @@ for idx = 1:N_steps
 % *************************************************************************
 % GROUND EFFECT + COMPUTATIONAL DELAY  (controllers 2-5)
 % *************************************************************************
-    if CTRL_SEL > 1
+    if CTRL_SEL > 1 && ~shared_so3
         if GE
             z_ge = -max(abs(x_c(3)), r);
             u_2(4) = 1/(1-(r/(4*z_ge))^2) * u_2(4);

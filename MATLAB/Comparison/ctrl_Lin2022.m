@@ -67,7 +67,7 @@ function [u_2, I_a_cd, Rd] = ...
     Q_p   = diag(q_p);
 
     % Virtual velocity  (Eq. 15)
-    vhat = -K.k1 * (Q_p' * eps_p);
+    vhat = -K.k1 .* (Q_p' * eps_p);          % k1 scalar or per-axis 3x1 (elementwise; identical for a scalar)
 
     % Velocity error and transform  (Eq. 16)
     e_v   = I_v_c - vhat;
