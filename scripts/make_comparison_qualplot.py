@@ -192,6 +192,20 @@ def _run_metrics(run):
                 reached=reached, cat=cat, N=N, t=t, X=X, xt=xt)
 
 
+
+
+def _key5_idx(Np):
+    """Column indices of the 5 KEY points (4 arm tips + stub tip) of the marker point list.
+    Legacy 5-point cross (Np<=5): the columns themselves. Line-sampled cross (2026-09-21,
+    MATLAB InitVar.m): columns are [arm1 | arm2 | arm3 | arm4 | stub] with n samples per arm and
+    round(n*22/15) on the stub, so each line's tip is its LAST sample."""
+    if Np <= 5:
+        return list(range(Np))
+    for n in range(1, Np):
+        if 4 * n + int(round(n * 22 / 15)) == Np:
+            return [n - 1, 2 * n - 1, 3 * n - 1, 4 * n - 1, Np - 1]
+    return [0, 1, 2, 3, Np - 1]
+
 def _fov_margin(run, N):
     """Per-timestep barrier h_k({}^C r-tilde) = 1 - |[Phi^-1 {}^C r-tilde]_k|,
     k in {x,y} (ICRA.tex cbf barrier: equation), evaluated at the MARKER
@@ -230,9 +244,9 @@ def _fov_margin(run, N):
     while j >= 0 and not np.any(cnp[:, :, j] != 0):
         j -= 1
     cnp = cnp[:, :, :j + 1]
-    n_arms = min(4, Np)                              # exclude the stub (col 5)
-    cx = cnp[0, :n_arms, :].mean(axis=0)              # marker-centre x [px]
-    cy = cnp[1, :n_arms, :].mean(axis=0)              # marker-centre y [px]
+    tips = _key5_idx(Np)[:4]                         # 4 arm tips, exclude the stub (line-sampled cross aware)
+    cx = cnp[0, tips, :].mean(axis=0)                 # marker-centre x [px]
+    cy = cnp[1, tips, :].mean(axis=0)                 # marker-centre y [px]
     rx = cx / F_PX                                    # tangent-space r-tilde_x
     ry = cy / F_PX                                    # tangent-space r-tilde_y
     hx = 1.0 - np.abs(rx / PHI_MAX[0])

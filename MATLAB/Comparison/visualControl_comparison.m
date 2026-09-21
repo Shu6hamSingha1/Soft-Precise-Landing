@@ -225,6 +225,7 @@ if CTRL_SEL == 1
                           'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
     cs.V_s_i = zeros(4,1); cs.V_h_i = zeros(3,1); cs.V_w_i = zeros(3,1);
     cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,Npts);
+    if T_lines, cs.mk = struct('wq', T_wq, 'ang', T_ang); end   % line-sampled cross metadata (InitVar); absent for the 5-point cross
 end
 
 %% =========================================================================
@@ -303,8 +304,19 @@ for idx = 1:N_steps
         % Target position in camera frame
         C_s_tc = transpose(I_R_C) * (x_t(1:3,idx) - I_p_c);
 
-        % Project to image plane  (depth includes zf offset)
-        C_nP = (f / (C_s_tc(3) + zf)) * C_nP3(1:2,:);
+        % Project to image plane  (depth includes zf offset). 2026-09-21 PORT of run_simulation.m's image model: each point is
+        % projected with ITS OWN camera-frame depth (exact pinhole; the legacy common-depth line is opt-out via global PX_EXACT_PERSP=false),
+        % and the marker CENTRE (arm intersection) is the projection of the true cross centre.
+        global PX_EXACT_PERSP PX_CENTER_FEATURE %#ok<GVMIS>
+        if isempty(PX_EXACT_PERSP) || PX_EXACT_PERSP
+            C_nP = f * C_nP3(1:2,:) ./ max(C_nP3(3,:) + zf, 1e-3);
+        else
+            C_nP = (f / (C_s_tc(3) + zf)) * C_nP3(1:2,:);
+        end
+        cfeat = isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE;
+        C_ctr = f * C_s_tc(1:2) / (C_s_tc(3) + zf);
+        % Visibility mask (PLASMC line-sampled cross only): a sample is usable only if in front of the image plane AND inside the frame.
+        pt_valid = (C_nP3(3,:) + zf) > 1e-3 & abs(C_nP(1,:)) <= res(1)/2 & abs(C_nP(2,:)) <= res(2)/2;
 
         % Depth-dependent pixel noise (shared with run_simulation.m)
         if NOISE
@@ -315,13 +327,14 @@ for idx = 1:N_steps
                 col = randi(size(C_nP,2));
                 C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
             end
+            if cfeat, C_ctr = C_ctr + (sigma_px / f) * randn(2,1); end
         end
 
         % FoV failure check (2026-09-19, matches Multi_init_cond/run_simulation.m): the run fails
         % only when the marker CENTRE (mean of the feature points) leaves the physical sensor box.
         % A feature point/arm tip clipping the edge is no longer a failure (MATLAB-only convention;
         % PX4/hardware perception degrades gracefully). Same rule for all 5 controllers.
-        cen_px = mean(C_nP, 2);
+        if cfeat, cen_px = C_ctr; else, cen_px = mean(C_nP, 2); end   % marker centre (run_simulation parity)
         if abs(cen_px(1)) > res(1)/2 || abs(cen_px(2)) > res(2)/2
             fov_fail   = true;
             fov_fail_t = tRange(idx);
@@ -370,8 +383,13 @@ for idx = 1:N_steps
         % Analytical image parameters
         V_nP3  = transpose(I_R_V) * (I_nP3 - I_p_c);
         V_s_tc = transpose(I_R_V) * (x_t(1:3,idx) - I_p_c);
-        V_nP_a = (f / (V_s_tc(3) + zf)) * V_nP3(1:2,:);
-        V_s_a  = image_feature(V_nP_a / f);
+        if isempty(PX_EXACT_PERSP) || PX_EXACT_PERSP
+            V_nP_a = f * V_nP3(1:2,:) ./ max(V_nP3(3,:) + zf, 1e-3);
+        else
+            V_nP_a = (f / (V_s_tc(3) + zf)) * V_nP3(1:2,:);
+        end
+        if T_lines, V_s_a = image_feature(V_nP_a / f, T_wq); else, V_s_a = image_feature(V_nP_a / f); end
+        if cfeat, V_s_a(1:2) = f * V_s_tc(1:2) / (V_s_tc(3) + zf) / f; end   % true cross centre
         V_h_a  = transpose(I_R_V) * (dx_t(1:3,idx) - I_v_c) / (V_s_tc(3) + zf);
 
     end   % ZOH gate
@@ -428,7 +446,8 @@ for idx = 1:N_steps
     % to run_simulation/simulate_landing. Baselines 2-5 keep the inline V_s/V_h.
     if CTRL_SEL == 1
         cs.k = idx;
-        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs, [], B_w_c);
+        if cfeat, C_ctr_arg = C_ctr; else, C_ctr_arg = []; end
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs, C_ctr_arg, B_w_c, pt_valid);
     end
 
 % *************************************************************************
@@ -468,8 +487,9 @@ for idx = 1:N_steps
         [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_presc, tt, P, cs);
         [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
         cs.cbf_Vhxy = V_h(1:2);   % de-rotated optic flow -> Tier-1 moving-target lead
+        if cfeat, C_cbf = C_ctr; else, C_cbf = C_nP; end   % measured marker CENTRE (run_simulation parity), not the sample cloud
         [I_a_cd_filt, th_safe, theta_cone, ~, R33, cs] = ...
-            blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
+            blocks.cbf_visibility(Iacd, I_R_C, yaw, C_cbf, B_w_c, P, cs);
         if any(isnan(Iacd))
             fprintf('  BREAK: I_a_cd NaN at idx=%d (t=%.2f)\n', idx, tRange(idx));
             break;

@@ -188,6 +188,19 @@ def draw_landing_corridor(ax, xt, yt, zt, half_xy=PRECISE_XY_M,
     ax.plot(xR, yR, zB, color=edge_color, lw=edge_lw, ls=edge_ls)
 
 
+def _key5_idx(Np):
+    """Column indices of the 5 KEY points (4 arm tips + stub tip) of the marker point list.
+    Legacy 5-point cross (Np<=5): the columns themselves. Line-sampled cross (2026-09-21,
+    MATLAB InitVar.m): columns are [arm1 | arm2 | arm3 | arm4 | stub] with n samples per arm and
+    round(n*22/15) on the stub, so each line's tip is its LAST sample."""
+    if Np <= 5:
+        return list(range(Np))
+    for n in range(1, Np):
+        if 4 * n + int(round(n * 22 / 15)) == Np:
+            return [n - 1, 2 * n - 1, 3 * n - 1, 4 * n - 1, Np - 1]
+    return [0, 1, 2, 3, Np - 1]
+
+
 def _cnp_cols(P_DS):
     """Column slice of the physical camera corners C_nP inside P_DS.
     Layout is [V_nP_i | V_nP_a | C_nP], each Np wide, so C_nP = the last
@@ -335,6 +348,8 @@ def plot_image_plane(traj):
         three without connecting them. Fixed 2026-09-15 alongside the
         InitVar.m T_nP3 orientation correction (see that file's comments)."""
         px = list(px); py = list(py)
+        if len(px) > 5:                                  # line-sampled cross -> its 5 key points
+            _k = _key5_idx(len(px)); px = [px[i] for i in _k]; py = [py[i] for i in _k]
         if len(px) == 5:
             cx = sum(px[:4]) / 4.0
             cy = sum(py[:4]) / 4.0
@@ -573,6 +588,8 @@ def plot_combined(traj):
         three without connecting them. Fixed 2026-09-15 alongside the
         InitVar.m T_nP3 orientation correction (see that file's comments)."""
         px = list(px); py = list(py)
+        if len(px) > 5:                                  # line-sampled cross -> its 5 key points
+            _k = _key5_idx(len(px)); px = [px[i] for i in _k]; py = [py[i] for i in _k]
         if len(px) == 5:
             cx = sum(px[:4]) / 4.0
             cy = sum(py[:4]) / 4.0
@@ -635,8 +652,9 @@ def plot_combined(traj):
         # theory-relevant quantity (Delta_c/image_feature.m centroid), so the
         # 4 individual arm-tip paths are no longer informative and were pure
         # clutter. Fixed 2026-09-15.
-        cxt = P[0, :4, :].mean(axis=0)
-        cyt = P[1, :4, :].mean(axis=0)
+        _tips = _key5_idx(P.shape[1])[:4]                 # 4 arm tips (line-sampled cross aware)
+        cxt = P[0, _tips, :].mean(axis=0)
+        cyt = P[1, _tips, :].mean(axis=0)
         ic_label = (rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$,"
                     rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
         h, = axI.plot(cxt, cyt, color=c, lw=2.0, alpha=0.85, zorder=3,
