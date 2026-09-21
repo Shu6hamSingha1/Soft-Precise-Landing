@@ -1,8 +1,144 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Measured the visibility CBF's own one-step predictor against realized centre motion on the IC1-5 gate (25 reps, ~24k frame pairs, attitude time-aligned with a proven self-check). Three results: (1) the predictor's meaningful horizon is the ~125-144 ms ATTITUDE-REALIZATION time, not one control step -- at 1 step it is WORSE than assuming no motion (p95 0.0183 vs null 0.0152) because L_e amplifies attitude noise when dy~0; (2) buffer b=0.15 covers the bulk but not the tail -- residual p95 0.084 vs per-axis buffer [0.133,0.178], but p99 0.194 and p99.9 0.307 both EXCEED it, over-buffer on 1.2% of frames (consistent with the independently measured 0.27% buffered-set exits / 0% sensor exits); (3) the tau*d drift term is a MODEST MEDIAN correction only -- reduces residual on 54.1% of frames, mean 9.9%, p50 0.0194->0.0169, but does NOT improve the safety-relevant tail (over-buffer 1.235%->1.319%). So tau's SCALE is a plant property (attitude-realization horizon), but tau*d is not a fix for the frames that matter."
-metadata:
+description: "Multi-session thread (2026-09-17 to 09-22), four major results, in order: (1) visibility-CBF predictor residual measured (attitude-realization horizon ~144ms, buffer b=0.15 thin in the p99 tail, tau*d median-only); (2) a TRANSPOSED phi axis bug found and FIXED+BAKED in the visibility CBF (96271ba6) -- one image axis of the barrier was inert -- SITL-validated 14/14 genuine touchdowns, no regression; (3) the touchdown-detect flow-freeze false-positive root-caused and FIXED+BAKED (2177670b: resolution-invariant units + confidence gate + live-visibility gate) -- SITL-validated 22%->0% false-touchdown rate at n=25; (4) an OPEN soft-touchdown investigation -- GT-FB confirms 3/3 soft+precise is achievable, but the perceived h_z corrupts in the terminal ~150-450ms before touchdown for a reason only PARTIALLY identified after testing five candidate mechanisms (ill-conditioning falsified; near-grazing rays real but insufficient; KF rate-buildup real but ~5.6x short even with gyro-availability resolved; R-schedule/scale-fuse/backstop/gate all ruled out). N_z adaptive-law tuning was correctly ABANDONED as the wrong lever once this was found. See the SESSION CLOSE section for the full index and open items."
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
+  modified: 2026-09-21T19:23:36.457Z
+---
+
+## ===== SESSION CLOSE 2026-09-22 -- READ THIS FIRST =====
+
+Four threads, in chronological order. Each has its own detailed trail below (headed by
+`##` date-stamped sections) -- this block is the map, not a replacement for it.
+
+### 1. Visibility-CBF predictor residual (2026-09-17) -- DONE, informational
+Measured the visibility CBF's one-step predictor (`c_next = r~ + L_e*dy`) against
+realized centre motion, IC1-5 gate, 25 reps. Meaningful horizon is ~125-144ms (the
+attitude-realization time), not one control step -- at 1 step the predictor is WORSE
+than assuming no motion. Buffer `b=0.15` covers the bulk (p95) but not the tail (p99/
+p99.9 exceed it on 1.2% of frames). `tau*d` (the moving-target lead) is a ~10% MEDIAN
+correction only, does not improve the safety-relevant tail. `tau` is correctly understood
+as a PLANT property (the realization horizon), not a scenario one -- applies to
+stationary targets too.
+
+### 2. Visibility-CBF axis-transposition bug -- FOUND, FIXED, BAKED (`96271ba6`)
+`marker_tangent()` applies a `_SWAP` to the measured centre `c`; `fov_limit()` did NOT
+apply the same swap to the barrier `phi` -- one image axis's barrier sat OUTSIDE the
+physical sensor edge (permanently inert), the other was 36% over-tight. Found while
+implementing a per-axis buffer (§1's own follow-up). Fixed at 3 sites (the CBF itself,
+`controller.py`'s drift-off trigger, and the validator's own oracle -- the oracle carried
+the SAME transposition, which is why "15/15" never caught it). SITL-validated:
+WORLD=cross_marker MARKER_TYPE=cross explicit (a §19-class trap independently found the
+same session), PD-FB, IC1-5 gate -- 14/14 genuine touchdowns (`terminal_state_ok`), no
+regression vs the pre-fix baseline (11/14 vs ~17/21 precise, both ~79-81%).
+**Retracted along the way:** a proposed "degenerate deliverability ball" fix (`y_max=0`
+when `a_z>=a_cap`) -- implementing it broke the validator's deliverability-by-construction
+checks; `y_max=0` there is the mathematically CORRECT answer (the feasible set is
+genuinely empty), not a bug.
+
+### 3. Touchdown-detect flow-freeze false-positive -- FOUND, FIXED, BAKED (`2177670b`)
+Found while validating fix #2: the IC1-5 gate showed 4/18 reps (22%) never reaching the
+surface at all (a live-reporting gotcha caught along the way -- `run_ic_validation.sh`'s
+`landed` column means "a recording was saved," not "touchdown occurred"; the authoritative
+field is `Ground_Truth.npy`'s `SoftPrecise.terminal_state_ok`). All 4 false touchdowns
+fired via the SAME path (`_touchdownDetectV2`'s flow-freeze), root-caused to THREE
+independent defects: (a) `ff_hi`/`ff_lo` were hardcoded px thresholds sitting INSIDE the
+normal background-flow noise floor at the current focal length (51-81% of ordinary
+frames already below `ff_lo`); (b) no confidence gate on the flow solve (unlike its
+sibling `condition_drift`, which already gates the same `rel_resid` signal); (c) no LIVE
+check the marker is actually absent -- `_td_ext_armed` is a stale one-time flag, so the
+path could (and did) fire while the marker was continuously tracked, directly violating
+its own documented purpose ("catches a soft OFF-marker settle"). Fixed all three
+(resolution-invariant tangent units, `rel_resid` confidence gate, `FEATURE_IS_VISIBLE`
+live-visibility gate -- NOT a minimum-extent gate, which was considered and rejected: a
+genuine off-marker settle has extent -> 0, so requiring HIGH extent would exclude the
+real target case). SITL-validated: 25/25 genuine touchdowns, ZERO flow-freeze firings,
+22%->0% false-touchdown rate. Self-audited against the `diagnose-flight-data` skill right
+after pushing (timestamp-verified the trigger-frame matches, checked for frozen-field
+artifacts) -- audit confirmed rather than overturned the fix.
+**Open, not done:** flow-freeze's OWN theoretical niche (genuine soft off-marker settle)
+still has ZERO positive evidence across 43 combined reps now -- the fix removes a bug, it
+does not prove the path earns its ongoing complexity. Worth revisiting once the rover
+thread can produce a genuine off-marker settle to test against.
+
+### 4. Soft-touchdown investigation -- OPEN, root cause only partially identified
+User's premise ("GT-FB achieves soft touchdown, so tune the vertical adaptive law") was
+RIGHT to push on -- an earlier framing in this thread ("soft touchdown looks structural")
+was WRONG and is the exact mistake `feedback_dont_conclude_lag_floor` exists to prevent
+(a masked failure is a tuning target, not proof of an architectural ceiling).
+
+- **Confirmed the premise**: GT-FB, `h_rd=-0.38` (MATLAB's then-current value), IC1 n=3:
+  3/3 soft+precise, rel_vel 0.014-0.023 m/s (10x under threshold).
+- **N_z (kappa-ODE adaptation rate) explored, then correctly ABANDONED before its planned
+  gate**: offline kappa-ODE replay confirmed a real, too-slow-to-respond mechanism
+  (17.4x disturbance in 10% of kappa_z's own tau); small-n live trial (N_z=0.3) showed no
+  ratchet but a weak, statistically-lost-in-noise effect. Abandoned once the REAL driver
+  was found (below) -- a faster-responding kappa reacting to an already-wrong signal
+  would apply an even LARGER erroneous correction, not a softer landing.
+- **Parallel peer session (`7476400a`, MATLAB) independently converged on the SAME
+  kappa-sensitivity mechanism**, went much further with a coordinated N/Pleak/E/chi_z/
+  p_hinf retune (25-IC gate, 25/25 SP), and REVERTED h_rd back to -0.30 (PX4's original
+  value) with that retune in place -- superseding the h_rd=-0.38 recommendation. Neither
+  retune is yet ported+validated on PX4 (gain VALUES don't port directly,
+  `feedback_matlab_gains_not_portable`) and neither addresses the perception-side finding
+  below, which is PX4-real-camera-specific and has no MATLAB analog.
+- **Root-caused (partially) the actual mechanism**: perceived `h_z` genuinely diverges
+  from ground truth in the terminal ~150-450ms before touchdown (confirmed via
+  `tools/gt_optical_flow.py`, Z_REG-regularized, sync-verified -- GT loom stays smooth
+  and even flares naturally, matching clean GT-FB; perceived `h_z` diverges to ~1.6x the
+  true value over the same window). Cross-validated by a second, independent signal
+  within the SAME pipeline (`Width Loom Rate`/`Scale Loom Rate`, a different sensing
+  principle, ALSO stay flat through the identical window).
+- **Five candidate mechanisms tested for WHY it diverges, in order, each via direct
+  offline reconstruction against real recorded data (not inferred from correlation
+  alone)**:
+  1. Matrix ill-conditioning (`cond(A)`) -- FALSIFIED. Stays modest (7-16) throughout,
+     both a gradual-divergence rep and a sharp-spike rep.
+  2. Near-grazing-ray perspective-divide amplification (small `z_v`) -- REAL, confirmed
+     directly (a mechanism the code's own 2026-08-02 comment predicted but never
+     confirmed), but does NOT survive point-exclusion testing: filtering out the
+     grazing points (`CROSS_Z_V_MIN_FLOW`, isolated from the unrelated
+     `CROSS_FLOW_ANG_MAX` knob that backfired before) barely changes the sharp-spike
+     case and is a complete no-op for the gradual case (z_v never gets low enough
+     there). Retracted as a proposed fix.
+  3. KF constant-velocity rate-buildup -- REAL, directionally confirmed by replaying
+     `_kf_step`'s exact math, but only accounts for ~1/5.6 of the observed magnitude,
+     even after correcting to the RIGHT solve path (see next item).
+  4. Loom R-schedule / scale-rate fusion / hard loom backstop / loom innovation gate --
+     all RULED OUT directly against already-logged fields (each inactive by default in
+     this data, or the innovation gate's slew-based trigger is the wrong shape for a
+     gradual ~450ms ramp vs the single-frame spike it's built to catch).
+  5. Gyro-availability for the reduced 4-unknown solve -- RESOLVED (gyro was live the
+     whole flight, confirmed via `Telemetry_Data.npy`'s `Angular Velocity FRD`, not
+     inferred from a dead log field) -- but redoing the KF replay with the CORRECT
+     solve path barely changed the reconstruction, so this was not the missing piece
+     either.
+- **Net: none of the five fully explains the divergence.** ~5.6x of the observed
+  magnitude remains unaccounted for after the most careful reconstruction attempted.
+  Flagged to the user as diminishing returns on mechanism-hunting at this layer.
+
+**Tools committed this thread** (all read-only, reproducible, documented with their own
+replication scope/limits): `tools/scan_vis_safeset.py`, `measure_vis_predictor_residual.py`
+(thread 1); `tools/replay_touchdown_flowfreeze_gate.py` (thread 3);
+`tools/replay_flow_solve_conditioning.py`, `replay_zvmin_filter.py`, `replay_hw_kf.py`,
+`replay_hw_kf_gyro.py` (thread 4's mechanism-hunting).
+
+**What's genuinely open for a future session:**
+- Thread 4's root cause remains ~5.6x unexplained. Untried candidates: the sensor
+  calibration matrix's end-to-end effect with the KF in the loop (dismissed early as
+  "too small" via its diagonal value alone, never rigorously verified with the KF
+  active); a `dt`/jitter discrepancy between this offline replay and the live
+  controller's actual per-frame timing.
+- A practical mitigation not requiring full mechanism attribution may be more tractable
+  than continuing to chase it: e.g. damping the KF's rate-state growth specifically in
+  the terminal/high-extent window, or a simple proximity-triggered hold/clamp on `h_z`.
+- The coordinated MATLAB adaptive-law retune (`7476400a`) is not yet ported or
+  SITL-validated on PX4.
+- Thread 3's flow-freeze path still has zero positive evidence for its own stated
+  purpose, across 43 combined reps.
+
 ---
 
 **Stating positively what the 2026-09-17 audit block left implied** (peer
