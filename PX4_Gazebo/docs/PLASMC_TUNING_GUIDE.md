@@ -38,9 +38,11 @@
 - **⭐ MOVING TARGET, TURNING (Circular, r=0.8): root cause CONFIRMED 2026-09-18** —
   `PLASMC_YAW_RATE_LAW` default (`kp=0.3`) causes the failure, not perception. Discriminator
   A/B (n=4/arm): default 0/4 landed (crashes through platform) vs `PLASMC_YAW_RATE_LAW=0`
-  forced 4/4 landed (xy_err 0.035-0.128 m). Force `PLASMC_YAW_RATE_LAW=0` for any moving-
-  target work until `PLASMC_YAW_RL_KP` is re-tuned down (MATLAB validated `0.02`, unvalidated
-  on PX4). → [[project_20260916_curve_qgate_revalidation]]
+  forced 4/4 landed (xy_err 0.035-0.128 m) — **but that forced-off arm was DIAGNOSTIC ONLY**
+  (2026-09-21 user correction): don't ship it as the fix — it feeds perception-derived target
+  yaw rate as feedforward, which pure ASMC heading-hold can't replicate on a genuinely
+  turning target. Correct fix: re-tune `PLASMC_YAW_RL_KP` down from 0.3 (MATLAB validated
+  `0.02`, **unvalidated on PX4, not yet run**). → [[project_20260916_curve_qgate_revalidation]]
 - **#1 OPEN blocker (both scenarios): terminal overfill.** Below ~0.5 m (stationary) / ~1.1 m
   (rover), `MARKER_EXTENT_PX` saturates the frame and LK lateral flow `h_y` corrupts *coherently*
   (smooth 0→+1.3 ramp, ~150 corners still "tracked", no gate fires) → middle-loop `sigma = h − h_d`
