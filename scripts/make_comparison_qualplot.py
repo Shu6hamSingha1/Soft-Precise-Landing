@@ -808,6 +808,11 @@ _draw_energy(ax3d, fontsize=_LBL_FS, tick_fontsize=_TICK_FS)      # (b): Relativ
 # with the same black-edge/pad styling as the in-axes N/A markers drawn by _draw_energy)
 # was previously undocumented anywhere in this panel -- explicit user request to add it here.
 _b_handles, _b_labels = ax3d.get_legend_handles_labels()
+if len(_b_handles) > 2:
+    # 2026-09-21: with the retuned baselines several controllers reach the surface, so (b)'s own legend (VISTA + up to 4 baselines +
+    # N/A) no longer fits under the panel (it wrapped into (c)'s area and clipped at the right edge). The bottom shared legend already
+    # maps every controller colour, so (b) keeps only the N/A swatch it alone needs.
+    _b_handles, _b_labels = [], []
 _b_handles = _b_handles + [mpatches.Patch(facecolor="white", edgecolor="black",
                                            linewidth=0.6, label="N/A")]
 _b_labels = _b_labels + ["N/A"]

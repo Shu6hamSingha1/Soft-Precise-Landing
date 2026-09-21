@@ -98,17 +98,17 @@ K_Lin2022 = struct();
 %    eq. 14 uses diag Q_p); wide xy absorbs wind, tight z preserves
 %    descent authority
 %  - l slowed so bound stays wide during catch-up
-K_Lin2022.k1 = 0.6;
+K_Lin2022.k1 = [1.5; 1.5; 0.6];  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): lateral k1 0.6->1.5 (vertical stays 0.6: raising it aborts at t=0); PRIOR 0.6 (scalar)
 K_Lin2022.k2 = 4.0;
 
 % z-bound widened to 0.15: Linear/Circ carry Lin heave (A_z=0.2, w_z=0.5)
 % so target v_z oscillates ±0.1 m/s. Tighter bound barrier-saturated xi_v(3).
 % (R1 FoV-survival attempt l_xy=0.02/k2=3.0 REVERTED: broke FoV earlier, no gain
 %  — Lin2022 loses FoV from the lateral chase tilt regardless; structural.)
-K_Lin2022.rho_inf_p     = [0.30; 0.30; 0.15];
+K_Lin2022.rho_inf_p     = [0.10; 0.10; 0.15];  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): xy 0.30->0.10 (precision); PRIOR [0.30;0.30;0.15]
 K_Lin2022.rho_inf_v     = [0.30; 0.30; 0.15];
-K_Lin2022.l_p           = [0.03; 0.03; 0.10];
-K_Lin2022.l_v           = [0.03; 0.03; 0.10];
+K_Lin2022.l_p           = [0.10; 0.10; 0.10];  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): xy 0.03->0.10 (faster funnel); PRIOR [0.03;0.03;0.10]
+K_Lin2022.l_v           = [0.10; 0.10; 0.10];  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): xy 0.03->0.10; PRIOR [0.03;0.03;0.10]
 K_Lin2022.rho_p0_margin = 1.5;
 K_Lin2022.rho_v0_margin = 1.5;
 
@@ -150,8 +150,8 @@ K_Zhang2026 = struct();
 % seed-1002 Lissajous regression -> REVERTED to baked-old. (Same harness-transfer
 % lesson as VDF h_rd=-0.38.) Original gains are Zhang's best-effort face.
 K_Zhang2026.Kc1 = diag([0.25, 0.25, 0.03]);
-K_Zhang2026.Kc2 = diag([2.0,  2.0,  0.15]);
-K_Zhang2026.Kc3 = diag([2.5,  2.5,  0.5 ]);
+K_Zhang2026.Kc2 = diag([2.0,  2.0,  0.05]);  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): Kc2_z 0.15->0.05 (touchdown v ~0.95->0.65); PRIOR diag([2.0 2.0 0.15])
+K_Zhang2026.Kc3 = diag([2.5,  2.5,  0.30]);  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): Kc3_z 0.5->0.30; PRIOR diag([2.5 2.5 0.5])
 
 % AEDO: lAF1/2 and PNF tightened further (prev PNF=50 still caused
 % omega_AF to drift high enough to produce 7 post-landing oscillations).
@@ -182,7 +182,7 @@ K_Zhang2026.kOmega = kOmega_shared;
 % paper's framework on IC2 under the Table-II noise model, exactly as the
 % other baselines were (published gains expected to need adjustment).
 K_Lin2023 = struct();
-K_Lin2023.k1 = [0.4; 0.4; 0.40];             % feature -> virtual velocity (Kt), per-axis
+K_Lin2023.k1 = [1.2; 1.2; 0.40];  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): lateral 0.4->1.2 (>=2.2 aborts); PRIOR [0.4;0.4;0.40]             % feature -> virtual velocity (Kt), per-axis
                                              % (lateral raised for centring; depth=0.40 is the
                                              %  FoV-safe sweet spot: 0.60 reintroduces FoV loss)
 % R1 anti-blowup attempt (k2 4.0->2.5, rho_inf_v widened, l_v slowed) REVERTED:
@@ -232,7 +232,7 @@ K_Cho2022.lambda_IBVS = [-0.8; -0.8; -2.0; 0; 0; 0];
 % fluctuates on moving trajs -> ad_z jitters -> z-command jitters. Kept
 % k_sigmoid=0.02 and v_sat(3)=0.7. Static stall at ~0.35m is accepted.
 K_Cho2022.v_sat       = [0.5; 0.5; 0.7; 0.2];
-K_Cho2022.k_sigmoid   = 0.02;
+K_Cho2022.k_sigmoid   = 0.0005;  % OUTER-LOOP RETUNE 2026-09-21 (shared SO(3) tracker era; 3-seed Static/Linear/Circular sweep, see memory project_baseline_failure_analysis_2026_09_21): 0.02->0.0005: the 26x marker's stub offsets the key-point centroid by >100 px so ad_z=1-sigmoid(k*c)->0 stalled the descent at ~0.4 m; PRIOR 0.02
 K_Cho2022.use_sq_comp = true;
 K_Cho2022.Kv          = diag([1.8, 1.8, 2.0]);
 K_Cho2022.psi_des     = 0;
