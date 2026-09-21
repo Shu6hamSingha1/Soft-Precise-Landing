@@ -557,3 +557,78 @@ kappa_z reacting to the SAME corrupted terminal h_z could make the corruption's 
 WORSE, not better, until the perception fix lands. Recommend sequencing: perception fix
 first (removes the confound), THEN port+validate the coordinated retune on PX4 PD-FB,
 rather than porting the retune first into a still-corrupted signal.
+
+---
+
+## CORRECTION 2026-09-21 (same day): the extent/rel_resid mechanism was UNDER-INVESTIGATED --
+## real diagnosis is more precise and points at a different, already-recommended fix
+
+User: "First investigate the issue properly. Don't assume things here." Right call -- the
+prior entry's causal story (extent saturates -> rel_resid collapses -> h_z corrupts) was
+built from ONE window read at coarse granularity and doesn't survive a finer check.
+
+**Traced the full data path first** (code, not inference): `Control_Data["h(t)"]` <-
+`self._img_node.getOptFlowAngVel()` -> `CrossMarkerPerception.getOptFlowAngVel()` =
+`_sensor_cal_hw @ getRawOptFlowAngVel()` = `self._hw` = a coast+freeze KF's state
+(`_hw_kf_x[:,0]`), updated via `_kf_update_hw(z, t)`. Ruled out two alternate explanations
+by checking the actual code and logs, not assuming:
+- `_ring_committed` (deliberate h_z<-RING_LOOM substitution): grepped the log, never fired
+  this flight (`RING-COMMIT` absent). `_loom_ring_on_loss`: default OFF, unset.
+- Loom values ARE excluded from the savgol lateral-spike-reconstruction (comment: "not
+  depth-free predictable" -- the loom passes through as the raw/KF measurement, not
+  smoothed-over).
+- **A loom-channel innovation gate ALREADY EXISTS** (`CROSS_LOOM_INNOV_GATE`, default ON,
+  NIS>25 AND slew>12/s -> inflate r[2] 1000x). Checked the logged `Loom Gate` field: **fired
+  0/1347 frames the whole flight.** Computed why: the actual slew rate through the
+  divergence (e.g. -0.364->-0.565 in 76ms = 2.6/s) is far under the 12/s trigger -- the gate
+  is built to catch discrete single-frame SPIKES; this is a gradual ~450ms RAMP, a
+  structurally different signature the existing gate cannot see regardless of threshold.
+
+**Finer-grained look at extent/rel_resid falsifies the simple story.** `extent=318px`
+(saturated) and `rel_resid` (0.5-0.95, mostly above the 0.45 confidence-gate value used
+elsewhere) are BOTH elevated for the ENTIRE window t=10.5-11.6s -- including t=10.5-11.0,
+where `h_V_z` was tracking WELL (improving -0.19->-0.05 toward zero). The sharp reversal
+specifically starts ~t=11.08 with no corresponding step-change in either signal at that
+moment. So "high rel_resid + saturated extent" is present but NOT discriminating -- it was
+true during the good part of the trace too. A rel_resid gate would have thrown away good
+frames along with bad ones.
+
+**Stronger, better evidence: independent cross-check via the SAME pipeline's OWN
+scale-based loom estimates.** `Width Loom Rate` and `Scale Loom Rate` (derived from marker
+SIZE/WIDTH change -- a different physical principle than optical flow, already computed,
+already logged) stay SMALL and roughly FLAT through the identical window (-0.03..-0.26 and
+-0.002..-0.10) while `h_V_z` (flow-based) diverges to -0.77. `Detection Status`/`Fail
+Reason` both read "ok" throughout -- the pipeline itself never flags anything wrong. Two
+independent references now agree (GT position-derived loom from § above, AND this
+same-pipeline scale-derived loom) that the true signal is much smaller than what the
+flow-based estimate reports in this window.
+
+**This connects to, and is a specific instance of, prior project work rather than a new
+finding needing a new mechanism.** `project_20260908_line_width_loom_investigation.md`:
+continuous width/scale-loom fusion (`CROSS_SCALE_RATE_FUSE`) was tried and REJECTED (biased
+normal-tracking loom-setpoint, caused fast/erratic arrival) -- but that investigation's own
+recorded next step, never executed: "(c) consider limiting it to only VETO a pinv spike
+(|pinv h_z - scale_rate| large) rather than continuously correcting." **This data is exactly
+the case that recommendation was written for.**
+
+### Revised diagnosis
+Not "terminal-overfill corrupts confidence, gate on rel_resid." Rather: **the flow-based
+loom estimate specifically diverges from the pipeline's own independently-computed
+scale-based loom estimate in a ~150-450ms terminal window, for a reason not yet identified
+at the mechanism level** (the KF's coast/freeze internals, a specific geometric effect of
+the flow solve at extreme close range, or something else -- NOT YET FOUND, do not assume
+further without checking). What IS well-established: (1) it is a flow-solve-specific
+artifact, not a real vehicle motion (2 independent cross-checks agree); (2) the existing
+loom innovation gate cannot catch it (wrong failure shape -- ramp not spike); (3) the
+already-computed, already-logged scale-loom signal stays reliable exactly where flow
+diverges and is the natural veto/substitution signal, per the peer's own prior
+recommendation.
+
+### Still open, correctly scoped now
+- WHY the flow-based loom specifically diverges in this window (KF dynamics? geometric
+  effect of the flow solve near saturation? something else?) -- not yet found.
+- Design the VETO (not continuous fusion) using `|pinv h_z - scale_rate|`, matching the
+  prior investigation's own untried recommendation, rather than a fresh rel_resid gate.
+- Whether this same mechanism explains the CBF drift-lead's "terminal-overfill" exposure
+  flagged earlier this session -- plausible given the shared window, NOT yet verified with
+  the same rigor applied here. Don't assume it's the same without checking.
