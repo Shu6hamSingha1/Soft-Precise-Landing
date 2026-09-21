@@ -1108,8 +1108,26 @@ class Controller(Thread):
         self._tdv2_sdot_back   = float(os.environ.get("PLASMC_TDV2_SDOT_BACK",  "0.03"))  # |d centroid_px/dt| over back_win
         self._tdv2_back_win    = float(os.environ.get("PLASMC_TDV2_BACK_WIN",   "3.0"))
         self._tdv2_arm_dwell   = float(os.environ.get("PLASMC_TDV2_ARM_DWELL",  "2.5"))   # min s since arm for the backstop
-        self._tdv2_ff_hi       = float(os.environ.get("PLASMC_TDV2_FF_HI",      "2.0"))   # px/frame -- "was moving"
-        self._tdv2_ff_lo       = float(os.environ.get("PLASMC_TDV2_FF_LO",      "0.45"))  # px/frame -- "now frozen"
+        # UNITS (2026-09-19): ff_hi/ff_lo are now TANGENT (focal-length-normalized) units,
+        # not raw px -- matches how phi/_p_10/etc already work in this codebase and makes
+        # the comparison resolution-invariant (frame_min above already is; these weren't).
+        # V2 was built 2026-08-30, three days AFTER the 640x480/f=270 -> 320x240/f=135 drop,
+        # so the old px defaults (2.0, 0.45) were never stale from the old resolution --
+        # they were chosen fresh at f=135 and are simply miscalibrated regardless of units
+        # (measured: median background flow sits at 0.17-0.44 px even mid-flight, well
+        # inside ff_lo=0.45 -- see project_20260917_visibility_predictor_residual.md). The
+        # defaults below preserve the EXACT old numeric behavior at f=135 (2.0/135, 0.45/135)
+        # -- this commit only fixes the resolution-invariance, NOT the magnitude, which is a
+        # separate, not-yet-validated question (flagged in that memory file, not fixed here).
+        # RENAMED from PLASMC_TDV2_FF_HI/_LO (2026-09-21): units changed px -> tangent, and
+        # nothing committed referenced the old names (grepped clean), so renaming rather
+        # than silently reinterpreting the same name under a typed-from-memory old px value.
+        self._tdv2_ff_hi       = float(os.environ.get("PLASMC_TDV2_FF_HI_TAN",  str(2.0 / 135.0)))   # tangent units/frame -- "was moving"
+        self._tdv2_ff_lo       = float(os.environ.get("PLASMC_TDV2_FF_LO_TAN",  str(0.45 / 135.0)))  # tangent units/frame -- "now frozen"
+        # Reuses CBF_DRIFT_RESID_GATE's value (not its env var -- independent knob, same
+        # number) so flow-freeze and condition_drift agree on what "trust this flow solve"
+        # means without being coupled. See _tdV2_perceptionSignals' confidence-gate comment.
+        self._tdv2_ff_resid_gate = float(os.environ.get("PLASMC_TDV2_FF_RESID_GATE", "0.45"))
         self._tdv2_ff_recent   = float(os.environ.get("PLASMC_TDV2_FF_RECENT",  "1.2"))   # s lookback for the "was moving" test
         self._tdv2_ff_minpts   = int(os.environ.get("PLASMC_TDV2_FF_MINPTS",    "5"))
         self._tdv2_armed = False
@@ -1660,9 +1678,14 @@ class Controller(Thread):
         defensively straight off the cross-marker perception object (mirrors
         MARKER_EXTENT_PX's own _feature_pts reach-in). Any signal that isn't
         available -> None/0, and the latch path that needs it simply won't fire.
-        Returns (extent_px, n_flow_corners|None, (cx,cy)|None, med_flow_disp_px|None, n_flow_pts)."""
+        Returns (extent_px, n_flow_corners|None, (cx,cy)|None, med_flow_disp_TANGENT|None,
+        n_flow_pts, marker_visible_this_frame). ``ff_disp`` is tangent units (px/focal), not
+        raw px -- see ff_hi/ff_lo's 2026-09-19 units comment in __init__; kept
+        resolution-invariant by construction."""
         ext = float(self.MARKER_EXTENT_PX)
         n_corn = None; cen = None; ff_disp = None; ff_n = 0
+        focal_scalar = float(np.mean(self._img_node.focal))
+        marker_visible = bool(getattr(self._img_node, "FEATURE_IS_VISIBLE", True))
         perc = getattr(self._img_node, "_perception", None)
         try:
             ncl = getattr(perc, "_n_flow_corners_log", None)
@@ -1682,11 +1705,30 @@ class Controller(Thread):
             if p0 is not None and p1 is not None:
                 a = np.asarray(p0, float); b = np.asarray(p1, float)
                 if a.ndim == 2 and a.shape == b.shape and len(a) >= 3:
-                    ff_disp = float(np.median(np.linalg.norm(b - a, axis=1)))
+                    # TANGENT units (px/focal), not raw px -- 2026-09-19, see ff_hi/ff_lo's
+                    # units comment in __init__.
+                    ff_disp = float(np.median(np.linalg.norm(b - a, axis=1))) / focal_scalar
                     ff_n = int(len(a))
         except Exception:
             pass
-        return ext, n_corn, cen, ff_disp, ff_n
+        # CONFIDENCE GATE (2026-09-19): flow-freeze previously had NO check on whether the
+        # background-flow SOLVE itself was trustworthy -- unlike its sibling
+        # visibility_projection.condition_drift(), which gates the SAME _bgflow_health
+        # (rel_resid, n_pts) signal at CBF_DRIFT_RESID_GATE=0.45 before trusting a flow
+        # reading. Traced live: one of four flow-freeze false-touchdowns this session
+        # (IC4_rep1, min_alt=0.24m) shows rel_resid climbing 0.46->0.99 into the trigger
+        # while extent=318/240px -- the marker overfilling the frame, the same
+        # terminal-overfill degradation already flagged (unfixed) for condition_drift's
+        # own drift lead. A low-confidence solve now reports ff_disp=None (path inert)
+        # rather than a spuriously "low" displacement -- matches the CBF's own gate value
+        # so the two systems can't disagree about what "trust this flow" means. Does NOT
+        # explain the other 3/4 false triggers (healthy rel_resid 0.09-0.24 there) -- see
+        # ff_hi/ff_lo's own comment for that separate, more common cause.
+        ff_resid_gate = self._tdv2_ff_resid_gate
+        rr = getattr(self._img_node, "_bgflow_health", (0.0, 0))[0]
+        if ff_disp is not None and (not np.isfinite(rr) or rr > ff_resid_gate):
+            ff_disp = None
+        return ext, n_corn, cen, ff_disp, ff_n, marker_visible
 
     def _touchdownDetectV2(self, s_e_n):
         """Replay-designed perception touchdown detector (2026-08-30; see __init__'s
@@ -1721,7 +1763,7 @@ class Controller(Thread):
             t = float(self._t[-1])
         except (IndexError, TypeError):
             return False
-        ext, n_corn, cen, ff_disp, ff_n = self._tdV2_perceptionSignals()
+        ext, n_corn, cen, ff_disp, ff_n, marker_visible = self._tdV2_perceptionSignals()
         if ext > 0:
             self._tdv2_ext_hist.append((t, ext))
         if cen is not None:
@@ -1776,8 +1818,32 @@ class Controller(Thread):
         # starts (observed: false-fired at 4.87 m on the very first perception run,
         # 2026-08-31). For a genuine marker-gone settle the marker always grew a lot on
         # the way down before leaving the FoV, so this costs nothing there.
+        #
+        # LIVE-VISIBILITY GATE (2026-09-21): also requires `not marker_visible` THIS
+        # FRAME. Without it, `_td_ext_armed` alone is a STALE one-time flag ("was
+        # approached at some point") with no live check that the marker is actually
+        # gone NOW -- so the path could fire mid-descent while the marker is fully,
+        # continuously tracked, which is exactly this path's own docstring's
+        # precondition violated. Traced live: 3 of 4 flow-freeze false-touchdowns this
+        # session (2.66-3.77 m altitude) show FEATURE_IS_VISIBLE ~100% true for the
+        # ENTIRE flight -- there was never a genuine off-marker event in any of them,
+        # so nothing should have been eligible to satisfy this path at all. The 4th
+        # false-touchdown (0.24 m) is separately excluded by the confidence gate above
+        # (terminal-overfill rel_resid collapse), not this one -- the marker was also
+        # visible there. A minimum-EXTENT gate (matching overfill's/backstop's
+        # convention) was considered and rejected: a genuine off-marker settle has
+        # extent -> 0, so requiring HIGH extent would exclude the real target case, not
+        # the false-positive one -- checked directly against overfill's 0.55*frame_min
+        # (132px) / backstop's 0.62*frame_min (149px) floors: none of the false
+        # positives (78-116px) would have cleared those, but neither would a genuine
+        # marker-just-left-frame settle. Requiring the marker to be CURRENTLY absent is
+        # the design-consistent fix, not a proximity threshold. No altitude/depth term
+        # used anywhere -- FEATURE_IS_VISIBLE is a live perception flag, same convention
+        # as every other signal this detector reads
+        # (feedback_scale_free_depth_free.md).
         freeze = False
-        if (self._td_ext_armed and ff_disp is not None and ff_n >= self._tdv2_ff_minpts
+        if (self._td_ext_armed and not marker_visible
+                and ff_disp is not None and ff_n >= self._tdv2_ff_minpts
                 and ff_disp < self._tdv2_ff_lo):
             recent = [d for (tt, d, npt) in self._tdv2_ff_hist if tt >= t - self._tdv2_ff_recent]
             if recent and max(recent) > self._tdv2_ff_hi:
@@ -1795,9 +1861,14 @@ class Controller(Thread):
             return False
         self._touchdown = True
         _sen = float(np.max(np.abs(s_e_n))) if s_e_n is not None else float("nan")
+        # ff_disp is tangent units internally (2026-09-19) -- convert back to px for the log
+        # line so it reads the same as every historical log (mean focal, matches
+        # _tdV2_perceptionSignals' focal_scalar).
+        _ff_disp_px = (ff_disp * float(np.mean(self._img_node.focal))
+                       if ff_disp is not None else -1.0)
         print(f"[controller] TOUCHDOWN-DETECT v2 [{path}]: extent={ext:.0f}/{W:.0f}px  "
               f"n_corn={(n_corn if n_corn is not None else -1):.0f} (airborne ref {nc_ref:.0f})  "
-              f"flow_disp={(ff_disp if ff_disp is not None else -1):.2f}px  |s_e_n|={_sen:.2f} "
+              f"flow_disp={_ff_disp_px:.2f}px  |s_e_n|={_sen:.2f} "
               f"-> LANDED (disarm before bounce)")
         return True
 
