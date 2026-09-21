@@ -1,12 +1,77 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), four major results, in order: (1) visibility-CBF predictor residual measured (attitude-realization horizon ~144ms, buffer b=0.15 thin in the p99 tail, tau*d median-only); (2) a TRANSPOSED phi axis bug found and FIXED+BAKED in the visibility CBF (96271ba6) -- one image axis of the barrier was inert -- SITL-validated 14/14 genuine touchdowns, no regression; (3) the touchdown-detect flow-freeze false-positive root-caused and FIXED+BAKED (2177670b: resolution-invariant units + confidence gate + live-visibility gate) -- SITL-validated 22%->0% false-touchdown rate at n=25; (4) an OPEN soft-touchdown investigation -- GT-FB confirms 3/3 soft+precise is achievable, but the perceived h_z corrupts in the terminal ~150-450ms before touchdown for a reason only PARTIALLY identified after testing five candidate mechanisms (ill-conditioning falsified; near-grazing rays real but insufficient; KF rate-buildup real but ~5.6x short even with gyro-availability resolved; R-schedule/scale-fuse/backstop/gate all ruled out). N_z adaptive-law tuning was correctly ABANDONED as the wrong lever once this was found. See the SESSION CLOSE section for the full index and open items."
+description: "Multi-session thread (2026-09-17 to 09-22), four major results, in order: (1) visibility-CBF predictor residual measured (attitude-realization horizon ~144ms, buffer b=0.15 thin in the p99 tail, tau*d median-only); (2) a TRANSPOSED phi axis bug found and FIXED+BAKED in the visibility CBF (96271ba6) -- one image axis of the barrier was inert -- SITL-validated 14/14 genuine touchdowns, no regression; (3) the touchdown-detect flow-freeze false-positive root-caused and FIXED+BAKED (2177670b: resolution-invariant units + confidence gate + live-visibility gate) -- SITL-validated 22%->0% false-touchdown rate at n=25; (4) an OPEN soft-touchdown investigation -- GT-FB confirms 3/3 soft+precise is achievable, but the perceived h_z corrupts in the terminal ~150-450ms before touchdown for a reason only PARTIALLY identified after testing six candidate mechanisms (ill-conditioning falsified; near-grazing rays real but insufficient; KF rate-buildup real but ~5.6x short even with gyro-availability resolved; R-schedule/scale-fuse/backstop/gate all ruled out; sensor-cal matrix ruled out cleanly -- logged h_V is pre-cal/raw, apples-to-apples with all replays; live dt/fps was UNTESTABLE not ruled out -- found+fixed a dead FPS/AngVel/Stamp logging path, 2026-09-22, awaiting a fresh recording). N_z adaptive-law tuning was correctly ABANDONED as the wrong lever once this was found. See the SESSION CLOSE section for the full index and open items."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-21T19:23:36.457Z
+  modified: 2026-09-21T19:51:20.541Z
 ---
+
+## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
+
+**Resumed the soft-touchdown investigation** ("Investigate to find the Soft-touchdown
+root cause"), picking up the two untried candidates flagged at session close: the sensor
+calibration matrix's end-to-end effect, and a `dt`/jitter discrepancy between the offline
+replay and the live controller's actual per-frame timing.
+
+**Sensor-cal candidate: RULED OUT cleanly.** Traced `getOptFlowAngVel()` = `_sensor_cal_hw
+@ getRawOptFlowAngVel()` (line ~3180) -- the cal gain is applied in the GETTER, i.e.
+downstream of `self._hw` (the coast+freeze KF's own state). But `Img_Data.npy`'s logged
+`"h_V"` field is `self._perception._hw_log`, populated from `self._hw` directly (line
+~3020), with its own inline comment confirming "optical flow (raw, before cal)". So the
+logged `h_V_z` this whole thread has been comparing against is ALREADY raw/uncalibrated --
+the same units every replay tool (`replay_hw_kf.py`, `replay_hw_kf_gyro.py`,
+`replay_flow_solve_conditioning.py`) has been producing. No unit mismatch, no cal-gain
+explanation possible for the ~5.6x gap. This closes the sensor-cal candidate definitively,
+not just "dismissed as small."
+
+**dt/jitter candidate: found a real bug, but it makes the hypothesis UNTESTABLE
+retroactively, not ruled out.** `process_frame(img_prev, img_curr, t, fps, ...)`
+(cross_marker_perception.py ~2714) computes `dt = 1.0/fps` and uses THAT to divide pixel
+displacement into velocity for the raw flow solve -- NOT `t - prev_t` from consecutive
+calls. Every replay tool in this thread instead used `Img_Data["Time"][i] -
+Img_Data["Time"][i-1]` (the log's own consecutive timestamps), because that's the only
+dt available -- `Img_Data["FPS"]` reads `getattr(self, '_pending_fps', np.nan)`
+(~line 3118), on a comment claiming `CrossMarkerNode.run()` sets `self._pending_fps` "just
+before calling process_frame()". **Grepped for the assignment: it does not exist anywhere
+in the file.** Same for `_pending_angvel` (feeds the already-known-dead "IMU AngVel" log
+field from earlier in this thread) and `_pending_stamp`. All three have been silently dead
+since the 2026-08-12 dt/frame-pairing rewrite -- `process_frame` receives `fps`/`angvel_*`/
+`t` as its own direct call arguments and never stored them back onto `self._pending_*`.
+
+Checked one specific rep (`ICValidation/20260921-144320/IC1_rep1`, the exact rep this
+thread's `-0.771` KF number came from): `Img_Data["FPS"]` is NaN for all 1347 frames,
+confirming the dead path there directly. (A DIFFERENT, older rep,
+`ICValidation/20260917-224720/IC1_rep1`, showed a constant `62.5` instead of NaN -- not
+live per-call data either given the confirmed-absent assignment; some other stale/constant
+source, not verification of the hypothesis. Do not treat that number as real.)
+
+**This means the dt/jitter hypothesis was never actually tested in this thread** --
+every reconstruction to date implicitly assumed `dt_replay == dt_live`, and that assumption
+itself was unverifiable with the logging as it stood. It remains a live, untested candidate
+for the ~5.6x gap, not a ruled-out one.
+
+**Fix applied** (`src/cross_marker_perception.py`, top of `process_frame`): sets
+`self._pending_fps = fps`, `self._pending_stamp = t`, `self._pending_angvel = angvel_curr`
+from the call's own real arguments, so `Img_Data["FPS"]`/`["Stamp"]`/`["IMU AngVel"]` will
+finally hold real values on the NEXT recording. Pure logging fix -- does not touch any
+control/perception math, `process_frame`'s dt computation is unchanged, just now observable.
+Compiled clean (`py_compile`). **NOT yet SITL-validated** -- a peer session (`soft-precise-
+landing-53`) was running a headless rover SITL gate and asked to hold SITL at the time this
+fix was made, so no new recording was taken this session. `_kf_step`'s own internal dt
+(`t - prev_t`, general-purpose, line ~422) is unaffected either way -- only the RAW
+per-frame flow solve's dt was ever in question.
+
+### Next step for whoever picks this up
+Get ONE new perception-mode IC1-5 recording (any WORLD=cross_marker MARKER_TYPE=cross run
+is enough, doesn't need to be a full gate) with this fix in place, then compare
+`Img_Data["FPS"][i]` against `1.0/(Img_Data["Time"][i]-Img_Data["Time"][i-1])` directly in
+the terminal touchdown window. If they diverge meaningfully (as the OLD, unverifiable
+62.5-constant rep hinted they might, at a ~2x ratio in one spot-check before this fix), redo
+`replay_flow_solve_conditioning.py`'s raw solve using the REAL logged `dt=1/fps` instead of
+`Time` deltas and see if that closes some/all of the ~5.6x gap. If they match closely, this
+6th candidate is also ruled out and the mechanism remains genuinely open.
 
 ## ===== SESSION CLOSE 2026-09-22 -- READ THIS FIRST =====
 
