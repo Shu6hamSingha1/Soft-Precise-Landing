@@ -820,3 +820,58 @@ step, since it would change the raw solve values feeding everything downstream.
 
 ### Tool
 `tools/replay_hw_kf.py` committed alongside this finding.
+
+---
+
+## 2026-09-22 (cont.): gyro-availability RESOLVED (was live) -- but doesn't close the gap
+
+**Resolved directly, not inferred.** `getAngVels()` is fed from `self._FC.getAngVelIMU()`
+on EVERY image callback (`src/gz_subscriber.py:image_callback`), and `getAngVelIMU()`
+(`src/flight_controller.py:455`) is `None` only before the IMU task's FIRST sample at
+boot -- trivially past that by 10+ seconds into flight. Confirmed empirically:
+`Telemetry_Data.npy["Angular Velocity FRD"]` holds real, finite MAVSDK
+`AngularVelocityFrd` objects throughout `IC1_rep1` (same absolute clock as `Img_Data`'s
+`Time`, `IMU Timestamp` range overlaps it directly). **Gyro WAS live-available the whole
+flight** -- the earlier ambiguity (`Img_Data["IMU AngVel"]`=NaN) was entirely the dead
+`_pending_angvel` logging path, unrelated to what `_solve_jacobian` actually received.
+
+**Redid the KF replay with the CORRECT reduced [Tx,Ty,Tz,Wz] gyro-derotated solve**
+(`tools/replay_hw_kf_gyro.py`, angvel aligned from `Telemetry_Data` by nearest
+timestamp). Result: **almost no change** from the earlier (wrong-path, full 6-unknown)
+reconstruction. At t=11.560: raw solve -0.129 (was -0.103), KF-reconstructed value
+-0.138 (was -0.137) -- still ~5.6x short of the actually logged h_V_z=-0.771.
+**Gyro-derotation was NOT the missing piece.** Plausible reason: Wx/Wy are apparently
+small enough in this near-hover descent that substituting their true gyro values for
+the jointly-solved ones doesn't materially shift Tx/Ty/Tz/Wz.
+
+### State of the investigation, honestly
+Four candidate mechanisms tested, all either falsified or insufficient:
+1. Matrix ill-conditioning -- FALSIFIED (cond(A) modest throughout).
+2. Near-grazing rays -- real correlation, confirmed via direct reconstruction, but does
+   NOT survive point-exclusion testing (CROSS_Z_V_MIN_FLOW correction).
+3. KF constant-velocity rate-buildup -- real, directionally confirmed, ~5.6x short on
+   magnitude even with the corrected solve path.
+4. Loom R-schedule / scale-fuse / hard backstop / innovation gate -- all ruled out
+   directly against logged fields (inactive or wrong failure shape).
+
+**None of the four fully explains the observed divergence.** The ~5.6x gap between the
+KF math replayed exactly (now confirmed with the correct solve path) and the actual
+logged h_V_z remains unresolved. Candidates not yet checked: the sensor calibration
+matrix's actual effect (dismissed early as "too small," 0.9513 z-diagonal, but not
+rigorously verified end-to-end with the KF in the loop); a possible discrepancy in HOW
+`dt` is computed live (frame-to-frame Img_Data Time deltas used here vs whatever the
+live controller actually uses, e.g. `getFPS()`'s own jitter-rejection logic could differ
+subtly); or a genuinely different z-value ordering/sign convention error in this
+reconstruction that happens to preserve rough SHAPE but not magnitude.
+
+### Recommendation
+This is the 4th consecutive partial/negative result on the SAME mechanism-hunting
+question. Diminishing returns at this layer -- flagging to the user rather than
+continuing to guess. The near-grazing-ray correlation and KF rate-buildup are BOTH real
+contributing factors even though neither is sufficient alone; a practical mitigation
+(e.g. damping the KF's rate-state growth specifically in the terminal window, or a
+much simpler terminal-proximity hold/clamp on h_z) may be more tractable than fully
+attributing the residual gap before acting.
+
+### Tools
+`tools/replay_hw_kf_gyro.py` committed alongside this finding.
