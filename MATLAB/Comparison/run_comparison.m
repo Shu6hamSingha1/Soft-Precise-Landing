@@ -80,6 +80,7 @@ for c = ctrl_list
     result.X_DS   = X_DS;
     result.U_DS   = U_DS;
     result.P_DS   = P_DS;   % [V_nP_i, V_nP_a, C_nP] per-corner image-plane pixels, for FoV-margin analysis
+    result.cen_px_log = cen_px_log;   % exact marker-centre trace [px] (2 x N)
     result.m      = m;      % vehicle mass (comparison_qualplot.py: terminal kinetic energy)
 
     % Target trajectory

@@ -377,12 +377,14 @@ def plot_image_plane(traj):
         j_end = _last_valid_p(d.P_DS, n)
         end_idx.append(j_end)
         _cs = _cnp_cols(d.P_DS)
-        end_corners.append((d.P_DS[0, _cs, j_end].copy(),
-                            d.P_DS[1, _cs, j_end].copy()))
+        _pe = d.P_DS[:, _cs, j_end]
+        _k5 = _key5_idx(_pe.shape[1])                         # line-sampled cross -> 4 tips + stub tip
+        end_corners.append((_pe[0, _k5].copy(), _pe[1, _k5].copy()))
         if desired_quad is None and hasattr(d, "V_nP_d"):
             Pd = d.V_nP_d
-            desired_quad = (np.asarray(Pd[0, :]).copy(),
-                            np.asarray(Pd[1, :]).copy())
+            _kd = _key5_idx(np.asarray(Pd).shape[1])
+            desired_quad = (np.asarray(Pd[0, :])[_kd].copy(),
+                            np.asarray(Pd[1, :])[_kd].copy())
     def _marker_centre(px, py):
         """Marker-centre position: mean of the arm tips only (first 4 cols;
         the cross junction), excluding the stub (col 5), which biases the
@@ -400,8 +402,13 @@ def plot_image_plane(traj):
     # ends up relative to where it should be. Fixed 2026-09-15.
     for k in range(len(results)):
         if desired_quad is not None:
-            cx_e, cy_e = _marker_centre(*end_corners[k])
-            cx_d, cy_d = _marker_centre(*desired_quad)
+            _cl = getattr(results[k].data, "cen_px_log", None)
+            if _cl is not None and np.ndim(_cl) == 2 and _cl.shape[0] == 2 and np.any(_cl != 0):
+                cx_e, cy_e = float(_cl[0, end_idx[k]]), float(_cl[1, end_idx[k]])   # exact marker centre at touchdown
+                cx_d, cy_d = 0.0, 0.0                                                # desired centre = image centre
+            else:
+                cx_e, cy_e = _marker_centre(*end_corners[k])
+                cx_d, cy_d = _marker_centre(*desired_quad)
             max_offsets.append(float(np.hypot(cx_e - cx_d, cy_e - cy_d)))
         else:
             max_offsets.append(np.nan)
@@ -609,12 +616,14 @@ def plot_combined(traj):
         j_end = _last_valid_p(d.P_DS, n)
         end_idx.append(j_end)
         _cs = _cnp_cols(d.P_DS)
-        end_corners.append((d.P_DS[0, _cs, j_end].copy(),
-                            d.P_DS[1, _cs, j_end].copy()))
+        _pe = d.P_DS[:, _cs, j_end]
+        _k5 = _key5_idx(_pe.shape[1])                         # line-sampled cross -> 4 tips + stub tip
+        end_corners.append((_pe[0, _k5].copy(), _pe[1, _k5].copy()))
         if desired_quad is None and hasattr(d, "V_nP_d"):
             Pd = d.V_nP_d
-            desired_quad = (np.asarray(Pd[0, :]).copy(),
-                            np.asarray(Pd[1, :]).copy())
+            _kd = _key5_idx(np.asarray(Pd).shape[1])
+            desired_quad = (np.asarray(Pd[0, :])[_kd].copy(),
+                            np.asarray(Pd[1, :])[_kd].copy())
     def _marker_centre(px, py):
         """Marker-centre position: mean of the arm tips only (first 4 cols;
         the cross junction), excluding the stub (col 5), which biases the
@@ -632,8 +641,13 @@ def plot_combined(traj):
     # ends up relative to where it should be. Fixed 2026-09-15.
     for k in range(len(results)):
         if desired_quad is not None:
-            cx_e, cy_e = _marker_centre(*end_corners[k])
-            cx_d, cy_d = _marker_centre(*desired_quad)
+            _cl = getattr(results[k].data, "cen_px_log", None)
+            if _cl is not None and np.ndim(_cl) == 2 and _cl.shape[0] == 2 and np.any(_cl != 0):
+                cx_e, cy_e = float(_cl[0, end_idx[k]]), float(_cl[1, end_idx[k]])   # exact marker centre at touchdown
+                cx_d, cy_d = 0.0, 0.0                                                # desired centre = image centre
+            else:
+                cx_e, cy_e = _marker_centre(*end_corners[k])
+                cx_d, cy_d = _marker_centre(*desired_quad)
             max_offsets.append(float(np.hypot(cx_e - cx_d, cy_e - cy_d)))
         else:
             max_offsets.append(np.nan)
@@ -655,6 +669,9 @@ def plot_combined(traj):
         _tips = _key5_idx(P.shape[1])[:4]                 # 4 arm tips (line-sampled cross aware)
         cxt = P[0, _tips, :].mean(axis=0)
         cyt = P[1, _tips, :].mean(axis=0)
+        _cl = getattr(run.data, "cen_px_log", None)       # exact marker-centre trace (preferred: perspective makes the tip mean drift)
+        if _cl is not None and np.ndim(_cl) == 2 and _cl.shape[0] == 2 and np.any(_cl != 0):
+            _m = min(_cl.shape[1], P.shape[2]); cxt = _cl[0, :_m]; cyt = _cl[1, :_m]
         ic_label = (rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$,"
                     rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
         h, = axI.plot(cxt, cyt, color=c, lw=2.0, alpha=0.85, zorder=3,

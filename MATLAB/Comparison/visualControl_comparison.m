@@ -114,6 +114,7 @@ X_DS      = zeros(13, N_steps + 1);   X_DS(:,1) = x_c;
 V_X_DS    = zeros(24, N_steps);
 D_DS      = zeros(17, N_steps);
 P_DS      = zeros(2,  3*Npts, N_steps);   % [V_nP_i, V_nP_a, C_nP], each 2 x Npts
+cen_px_log = zeros(2, N_steps);   % marker-CENTRE image position [px] (exact; the FoV/visibility quantity)
 
 x_t       = zeros(7,  N_steps);
 dx_t      = zeros(6,  N_steps);
@@ -716,6 +717,7 @@ for idx = 1:N_steps
     V_X_DS(:,idx) = [V_s_i(1:2); V_s_i(4); V_h_i; V_w_i; V_dw_i; ...
                      V_s_a(1:2); V_s_a(4); V_h_a; V_w_a; V_dw_a];
     P_DS(:,:,idx) = [V_nP_i, V_nP_a, C_nP];
+    cen_px_log(:,idx) = cen_px;
     % D_DS layout (matches plotter_adaptive):
     %   rows 1-3:  V_h_d   (desired optical flow)
     %   rows 4-6:  I_a_cd  (desired acceleration)

@@ -245,8 +245,11 @@ def _fov_margin(run, N):
         j -= 1
     cnp = cnp[:, :, :j + 1]
     tips = _key5_idx(Np)[:4]                         # 4 arm tips, exclude the stub (line-sampled cross aware)
-    cx = cnp[0, tips, :].mean(axis=0)                 # marker-centre x [px]
+    cx = cnp[0, tips, :].mean(axis=0)                 # marker-centre x [px] (tip mean: legacy fallback)
     cy = cnp[1, tips, :].mean(axis=0)                 # marker-centre y [px]
+    _cl = getattr(d, "cen_px_log", None)              # exact marker centre (2026-09-21 harness log) -- perspective makes the tip mean drift
+    if _cl is not None and np.ndim(_cl) == 2 and _cl.shape[0] == 2 and np.any(_cl != 0):
+        _m = min(_cl.shape[1], cnp.shape[-1]); cx = _cl[0, :_m]; cy = _cl[1, :_m]
     rx = cx / F_PX                                    # tangent-space r-tilde_x
     ry = cy / F_PX                                    # tangent-space r-tilde_y
     hx = 1.0 - np.abs(rx / PHI_MAX[0])
