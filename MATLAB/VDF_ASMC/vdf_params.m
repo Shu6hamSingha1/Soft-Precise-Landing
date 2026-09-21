@@ -193,6 +193,15 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % leakage ASMC (kept as the documented alternative / fallback).
 % PX4's PLASMC_YAW_RL_WZ_SCALE (2.5) is a PERCEPTION magnitude-deficit factor and
 % does NOT port -- MATLAB's V_w(3) is the analytic pseudo-inverse recovery, scale 1.
+% PX4 w_z-PATH COMPONENTS NOT NEEDED IN MATLAB (checked 2026-09-21, direct-rate yaw, 26x line-sampled marker,
+% PX4-measured pixel noise): (1) WZ_SCALE 2.5 -- measured w_z tracks the true rate (max 0.47 vs 0.48 rad/s on
+% Circular; 0.42 vs 0.40 on CircularYaw), no magnitude deficit, scale stays 1. (2) The |w_z| > 0.9 rad/s
+% integrator-freeze gate -- PX4 needs it for terminal-OVERFILL corruption of real perception (w_z climbs past
+% 1 rad/s on a NON-rotating target below ~1 m); MATLAB's max |w_z| is 0.49 on rotating targets and 0.06-0.11
+% on the non-rotating Static target down to the ground, so the gate would never fire. (3) w_z noise/dropout
+% modelling -- injecting Gaussian noise up to 0.6 rad/s and 50% frame-hold dropout on w_z leaves |e_a|
+% unchanged (Circular x1.0/x1.4, CircularYaw x1.0: 18/18 soft+precise, mean|e_a| 5.9-13.5 deg vs 8.2-13.5
+% clean). Hence no P.yrl_wz_scale / P.yrl_wz_max are added.
 % Sign derived for MATLAB's (non-inverted) plant: V_w(3) ~= +alpha_e_dot, closed
 % loop  alpha_e' + yrl_kp*alpha_e ~ d_alpha  Hurwitz for yrl_kp>0.
 % Integral term REMOVED 2026-09-10: k_i was 0.0 in every validated config above
