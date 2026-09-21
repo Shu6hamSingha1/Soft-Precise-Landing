@@ -1,6 +1,6 @@
 ---
 name: project_20260916_curve_qgate_revalidation
-description: "⭐⭐⭐ 2026-09-18 CONFIRMED ROOT CAUSE of cross-marker rover r=0.8 curve failure: PLASMC_YAW_RATE_LAW default (kp=0.3) -- discriminator A/B (n=4/arm, real curve confirmed via Kasa fit) went 0/4 landed (default) vs 4/4 landed, xy_err 0.035-0.128m (forced PLASMC_YAW_RATE_LAW=0). Fix: force PLASMC_YAW_RATE_LAW=0 for moving-target work, or re-tune YAW_RL_KP down (MATLAB validated 0.02, unvalidated on PX4). Also: ALL ArUco-rover curve results from 2026-09-16/17 (r=0.8/r=10 QGATE A/Bs, cycle-isolation sweep, d380901c worktree test, camera-resolution test) were DELETED at user instruction -- ArUco is obsolete for the moving-rover scenario. Surviving code fact: ROVER_CIRCLE_R default 0.8m->10m (commit b816fea0) -- set ROVER_CIRCLE_R=0.8 for a real curve. Two other root-cause candidates RETRACTED (GT pose-jitter/chase-cam; yaw/alpha-sign convention, already resolved 2026-09-09)."
+description: "⭐⭐⭐ 2026-09-18 CONFIRMED ROOT CAUSE of cross-marker rover r=0.8 curve failure: PLASMC_YAW_RATE_LAW's default gain kp=0.3 -- discriminator A/B (n=4/arm, real curve confirmed via Kasa fit) went 0/4 landed (default) vs 4/4 landed, xy_err 0.035-0.128m (PLASMC_YAW_RATE_LAW=0 forced, DIAGNOSTIC ONLY). ⛔ 2026-09-21 user correction: do NOT disable PLASMC_YAW_RATE_LAW as the working fix -- it feeds perception-derived target yaw rate as feedforward, which pure ASMC heading-hold cannot replicate on a genuinely turning target. Correct fix is re-tuning PLASMC_YAW_RL_KP down from 0.3 (MATLAB validated 0.02, UNVALIDATED on PX4) -- not yet run. Also: ALL ArUco-rover curve results from 2026-09-16/17 (r=0.8/r=10 QGATE A/Bs, cycle-isolation sweep, d380901c worktree test, camera-resolution test) were DELETED at user instruction -- ArUco is obsolete for the moving-rover scenario. Surviving code fact: ROVER_CIRCLE_R default 0.8m->10m (commit b816fea0) -- set ROVER_CIRCLE_R=0.8 for a real curve. Two other root-cause candidates RETRACTED (GT pose-jitter/chase-cam; yaw/alpha-sign convention, already resolved 2026-09-09)."
 metadata:
   node_type: memory
   type: project
@@ -169,18 +169,28 @@ confirmed as the (or the dominant) root cause of the cross-marker rover r=0.8 cu
 failure** — not perception, not GT-FB pose jitter, not a sign-convention bug, all consistent
 with the retractions above.
 
-**How to apply:** for any moving-target (rover, cross-marker) work, force
-`PLASMC_YAW_RATE_LAW=0` (true ASMC heading-hold) as the working default, or re-tune
-`PLASMC_YAW_RL_KP` down from 0.3 (MATLAB validated `0.02`, unvalidated on PX4 — try it as a
-means to keep the yaw-rate-law's intended active-tracking behavior instead of pure
-heading-hold, since heading-hold does not actually track the target's rotation and may cap
-performance on faster/tighter curves). Do not reuse the July `Rover_AB_harness`
-"heading-hold" recipe unmodified on cross-marker without forcing `PLASMC_YAW_RATE_LAW=0`
-explicitly — zeroing only the ASMC gains silently does nothing while this gate is active.
-**Open follow-up (not yet done):** re-run the retracted `cycle_isolation` gain-revert sweep
-(`CBF_DRIFT_TAU`/`P_xy`/`P2INF_xy`/`XI2_xy`) on cross-marker WITH `PLASMC_YAW_RATE_LAW=0`
-forced — the ArUco version was null, but that was confounded by the (then-undiagnosed)
-yaw-rate-law failure dominating every arm.
+**⛔ CORRECTED 2026-09-21 (user correction): do NOT adopt `PLASMC_YAW_RATE_LAW=0` as the
+working default for moving-target work.** `PLASMC_YAW_RATE_LAW=0` was only ever the
+*diagnostic* baseline (isolates whether the yaw-rate-law is the cause). Disabling it
+permanently throws away its actual value: the yaw-rate-law feeds the perception-derived
+**target yaw rate as a feedforward term**, which pure ASMC heading-hold does not provide —
+heading-hold cannot track a genuinely rotating/turning target, only hold a fixed heading, so
+it would cap curve-tracking performance even though it "landed" in the n=4 test (that test's
+rover path only needed a modest, roughly-constant `wz≈0.48 rad/s`, not a demonstration that
+heading-hold generalizes to arbitrary curves). **The correct fix is re-tuning
+`PLASMC_YAW_RL_KP` down from 0.3, not disabling the law.** MATLAB validated `kp=0.02` for
+Circular tracking, but this is **unvalidated on PX4** (PX4 carries real actuation lag
+MATLAB's torque-level inner loop does not, so the same gain may not transfer cleanly).
+**Open, not yet run:** repeat the r=0.8 discriminator recipe with `PLASMC_YAW_RL_KP=0.02`
+(n=4); if that doesn't fully resolve it, sweep intermediate values (e.g. 0.02/0.05/0.1) to
+find where it holds on PX4's actual plant. Do not reuse the July `Rover_AB_harness`
+"heading-hold" recipe (`PLASMC_YAW_GAMMA/KAPPA0/N/OMEGA=0`, zeroing only the ASMC gains)
+un-modified on cross-marker — it silently does nothing while `PLASMC_YAW_RATE_LAW` is active
+at its default gate, which is exactly what produced the misleading original ~1/5 result.
+**Open follow-up (not yet done):** once a working `PLASMC_YAW_RL_KP` is found, re-run the
+retracted `cycle_isolation` gain-revert sweep (`CBF_DRIFT_TAU`/`P_xy`/`P2INF_xy`/`XI2_xy`) on
+cross-marker at that gain — the ArUco version was null, but that was confounded by the
+(then-undiagnosed) yaw-rate-law failure dominating every arm.
 
 ## What SURVIVES from the pre-2026-09-16 stationary work (unaffected by any of this)
 
