@@ -51,7 +51,7 @@ P.Xi_r   = diag([0.30, 0.30]);          % Xi_r funnel contraction rate.
 % ---- Optic-flow funnel  (tex eq. PPC on h_e; p_h(t)) ---------------------------
 P.p_h0   = [15.0; 15.0; 10.0];          % p_{h0} initial half-width (code p_20; PX4 PLASMC_P20_{X,Y,Z}).
                                         % PORTED (PRIOR [25;25;4]): xy tighter, z 2.5x looser.
-P.p_hinf = [2.5;  2.5;  1.5];           % p_{h,inf} terminal floor (PX4 PLASMC_P2INF_{X,Y,Z}). PORTED
+P.p_hinf = [2.5;  2.5;  0.3];   % BAKED 2026-09-21 z 1.5->0.3 (PRIOR 1.5): tighter vertical optic-flow funnel = stronger terminal vertical feedback.            % p_{h,inf} terminal floor (PX4 PLASMC_P2INF_{X,Y,Z}). PORTED
                                         % xy 1.0->2.5; z 1.5 ALREADY MATCHED (PX4 comments it "vdf
                                         % p_hinf z"). PX4 rebaked xy 1.0->2.5 on 2026-08-28 after
                                         % tracing P2INF_xy=0.5/1.0 as the MECHANICAL TRIGGER of the
@@ -91,7 +91,7 @@ P.chi_r = [2.0; 2.0];                   % lateral surface gain (PD: zeta_h + chi
                                         % ORIGINAL w2=0.85 (removes the w2 0.8 trim), 45/45 held, multi_init
                                         % worst xy improved 0.041->0.034. (Old "1.2 regresses Liss-IC3"
                                         % warning was scalar-theta/w2=0.85 era; stale under per-axis+p_hinf)
-P.chi_z = 0.1;                          % descent surface gain (PI: zeta_h3 + chi_z*int zeta_h3).
+P.chi_z = 0.5;   % BAKED 2026-09-21 (PRIOR 0.1): stronger descent integral, vertical disturbance rejection (see kappa study).                           % descent surface gain (PI: zeta_h3 + chi_z*int zeta_h3).
                                         % ALREADY MATCHES PX4 -- no port needed. PX4 calls this
                                         % PLASMC_OMEGA_Z (controller.py:2850 states "chi_z = Omega_z"
                                         % verbatim); both are 0.1. NB PX4's OMEGA_X/Y are INACTIVE under
@@ -103,7 +103,7 @@ P.Gamma   = diag([0.25, 0.25, 0.75]);   % Gamma linear sliding gain (PX4 PLASMC_
                                         % PORTED xy 0.4375/0.5->0.25 (symmetric); z 0.75 ALREADY MATCHED.
                                         % PX4 rationale: the reaching gain is the terminal-limit-cycle
                                         % FORCING amplitude; lower Gamma shrinks the cycle.
-P.E       = diag([1.0, 1.0, 0.5]);      % E boundary-layer thickness (PX4 PLASMC_E_{X,Y,Z}).
+P.E       = diag([0.1, 0.1, 0.02]);   % BAKED 2026-09-21 (PRIOR diag([1.0 1.0 0.5])): low boundary layer so the switching term engages and kappa adapts; kappa/E<~5 keeps it clean.       % E boundary-layer thickness (PX4 PLASMC_E_{X,Y,Z}).
                                         % PORTED xy 0.5->1.0; z 0.5 ALREADY MATCHED.
                                         % ⚠ THIS REVERTS a MATLAB LOCK. PRIOR (E_xy 1.0->0.5 LOCKED
                                         % 2026-06-26): 0.5 escapes the boundary layer so kappa's switching
@@ -112,20 +112,20 @@ P.E       = diag([1.0, 1.0, 0.5]);      % E boundary-layer thickness (PX4 PLASMC
                                         % kappa switching hurts there -- a real-perception consideration
                                         % MATLAB's synthetic perception does not have. Prime revert
                                         % candidate if lateral stress performance regresses.
-P.N       = diag([0.10, 0.10, 0.10]);   % N adaptation rate. ALREADY MATCHES PX4 (PLASMC_N=0.1 x3) --
+P.N       = diag([2.0, 2.0, 5.0]);   % BAKED 2026-09-21 (PRIOR 0.1 x3): adaptation speed; stability is set by kappa's SENSITIVITY dkappa/dWx (theta*G/P and N), target ~0.05-0.07 per m/s.    % N adaptation rate. ALREADY MATCHES PX4 (PLASMC_N=0.1 x3) --
                                         % no port needed. LOCKED 0.02->0.10: primes the kappa-ODE
                                         % (tau 1/(N P) ~33s->7s) so kappa adapts within the descent
-P.Pleak   = diag([2.5, 2.5, 5.0]);      % P kappa leakage (PX4 PLASMC_P_{X,Y,Z}). PORTED
+P.Pleak   = diag([0.5, 0.5, 0.1]);   % BAKED 2026-09-21 (PRIOR [2.5 2.5 5.0]): leakage sets kappa_ss=theta*G|sigma|/P and hence the sensitivity/extent of adaptation.       % P kappa leakage (PX4 PLASMC_P_{X,Y,Z}). PORTED
                                         % [0.5;0.5;1.5]->[2.5;2.5;5.0]. ⚠ REVERTS-AND-EXCEEDS a MATLAB
                                         % LOCK (which had gone [1.5;1.5;5.0]->[0.5;0.5;1.5] so that lower
                                         % leakage RAISES sustained kappa, k* = thG|s|/P). Porting back up
                                         % LOWERS sustained kappa ~5x on xy. Pairs with kappa0 below.
-P.kappa0  = [0.5; 0.5; 0.25];           % kappa(0) (PX4 PLASMC_KAPPA0_{X,Y,Z}). PORTED [.05;.05;.05]->
+P.kappa0  = [0.1; 0.1; 0.25];   % BAKED 2026-09-21 xy (PRIOR [0.5 0.5 0.25]).            % kappa(0) (PX4 PLASMC_KAPPA0_{X,Y,Z}). PORTED [.05;.05;.05]->
                                         % [.5;.5;.25] (10x/5x). ⚠ REVERTS a MATLAB LOCK
                                         % ([.125;.125;.25]->.05, "lower start so kappa adapts UP under
                                         % stress; 7x SP 5/5 vs baked 3/5"). PX4 uses the high start as a
                                         % BOOTSTRAP: z braking authority from t=0 -> soft touchdown.
-P.kappa_max = [30.0; 30.0; 3.0];        % NEW, PORTED FROM PX4 (PLASMC_KAPPA_MAX_{X,Y,Z}). MATLAB had no
+P.kappa_max = [1.0; 1.0; 3.0];   % BAKED 2026-09-21 xy 30->1 (PRIOR [30 30 3]): BACKSTOP only (kappa/E<=10); stability comes from N,P (sensitivity), not from this cap.         % NEW, PORTED FROM PX4 (PLASMC_KAPPA_MAX_{X,Y,Z}). MATLAB had no
                                         % cap. xy=30 came from real hardware runaway (kappa_xy pinned
                                         % 25-29 for 10-28 s); z=3.0 is load-bearing in bad reps and inert
                                         % in good ones (clean reps sit at kappa_z~1).
@@ -146,7 +146,7 @@ P.S_margin   = 0.05;                    % funnel-saturation guard (|zeta|<=3.66,
 P.drop_sddot = true;                    % s_ddot-drop (validated combined-barrier default)
 
 % ---- Descent reference  (tex h_d final: h_rd < 0) ------------------------------
-P.h_rd = -0.38;                         % desired descent optic flow. RE-TUNED 2026-09-09.
+P.h_rd = -0.30;   % BAKED 2026-09-21 (PRIOR -0.38): PX4's LANDING_REF_RAD_OPT_FLOW value again, for terminal touchdown speed margin (5-seed, 35 cases: 33/35 soft vs 24/35 at -0.38; flight time +24% single trajectory). The 2026-09-09 revert note below (multi-init t_f 10.3->16.7 s) is the risk -> see 25-IC gate.                          % desired descent optic flow. RE-TUNED 2026-09-09.
                                         % PX4's -0.30 (ported 2026-09-03, LANDING_REF_RAD_OPT_FLOW)
                                         % slowed the descent ~40% -> multi-init mean t_f 10.3 s -> 16.7 s
                                         % with no accuracy gain; that was the entire moving-traj
