@@ -253,10 +253,10 @@ K_Bouazza.Kd     = diag([0.8, 0.8, 1.2]);
 K_Bouazza.P0_ric = 2 * eye(6);
 K_Bouazza.psi_des = 0;
 
-%% SHARED-INNER-LOOP switch (2026-09-21). false = each baseline's own geometric SO(3) torque law with kR_shared/kOmega_shared
+%% SHARED-INNER-LOOP switch (2026-09-21) -- DEFAULT TRUE. false = each baseline's own geometric SO(3) torque law with kR_shared/kOmega_shared
 % (legacy). true = the baseline supplies only its desired acceleration I_a_cd and the torque/thrust come from the SAME
 % blocks.so3_tracker (vdf_params kR/kOmega + adaptive CoG feedforward) that PLASMC uses, i.e. identical attitude control
 % for all five controllers. See visualControl_comparison.m (shared_so3).
-K_Lin2022.shared_so3 = false;  K_Zhang2026.shared_so3 = false;  K_Lin2023.shared_so3 = false;  K_Cho2022.shared_so3 = false;
+K_Lin2022.shared_so3 = true;  K_Zhang2026.shared_so3 = true;  K_Lin2023.shared_so3 = true;  K_Cho2022.shared_so3 = true;   % DEFAULT ON (2026-09-21, user decision): identical attitude control for all five controllers; false = legacy per-baseline P-only law (kR_shared/kOmega_shared)
 
 fprintf('Comparison gains initialised for 5 controllers.\n');
