@@ -404,3 +404,97 @@ revisiting once the rover thread reaches a stable-enough approach to observe a g
 off-marker settle, per [[feedback_dont_judge_cbf_by_sp]]'s general principle (judge a
 component by what it's supposed to do, not by outcome noise) -- applies here too: don't
 call this "proof flow-freeze earns its complexity," it's proof the bug is fixed.
+
+---
+
+## 2026-09-21: soft-touchdown gap root-caused — perceived h_z corrupts in the terminal
+## ~0.3m, NOT a gain-tuning gap. N_z investigation correctly abandoned before its gate ran.
+
+Continues the touchdown-quality thread. User's premise ("GT-FB achieves soft touchdown, so
+tune the vertical adaptive law") was RIGHT to push on -- my earlier "soft touchdown looks
+structural" framing was wrong (see [[feedback_dont_conclude_lag_floor]], directly
+applicable: don't conclude an architectural ceiling while a masked failure is a tuning
+target). But the actual diagnosis lands somewhere neither the user's nor my first framing
+expected: it's a PERCEPTION defect, not a control-gain one.
+
+### Step 1 -- confirmed GT-FB reference, and found the MATLAB/PX4 h_rd divergence
+GT-FB IC1 n=3, `LANDING_REF_RAD_OPT_FLOW=-0.38` (MATLAB's current re-tuned value,
+`P.h_rd=-0.38`, vs PX4's baked default -0.30): **3/3 soft+precise**, rel_vel 0.014-0.023
+m/s (10x under the 0.20 threshold), xy 0.0002-0.0034m. `test_data/ICValidation/
+20260921-160526`. Confirms the premise unambiguously.
+
+MATLAB's own comment on -0.38 is worth recording: PX4's -0.30 (ported into MATLAB
+2026-09-03) was found there to SLOW the descent ~40% (t_f 10.3->16.7s) with NO accuracy
+gain -- "the entire moving-traj regression vs the manuscript numbers." -0.42 (older locked
+value) is "too aggressive noiseless." -0.38 is MATLAB's sweet spot on the CURRENT stack
+(two-tier CBF + drift lead + yaw rate law + per-axis theta) -- gain VALUES don't port
+between the two ([[feedback_matlab_gains_not_portable]], the 38ms-lag mechanism), but this
+result is still evidence PX4's -0.30 may be under-motivated on the current architecture and
+worth its own PX4-side validation (not done yet -- see Open below).
+
+### Step 2 -- N_z (kappa adaptation rate) offline replay: real disturbance, too-slow response
+Measured PD-FB `kappa_z`'s ODE against its own recorded `sigma_z`: a genuine 17.4x
+disturbance spike lasting only 10% of `kappa_z`'s own tau (`1/(N_z*P_z)`=2.0s at the
+baked N_z=0.1/P_z=5.0) -- kappa moved only 1.2x. Small-n live trial (N_z=0.3, IC1, n=3):
+NO kappa-ratchet signature (unlike the XY-axis N=0.1 history, kappa_z stayed bounded,
+a_u modest) but the terminal kappa_z response barely moved the needle (0.042-0.047 vs
+baseline 0.027-0.039) and rel_vel showed no real change (0.40-0.63, indistinguishable from
+baseline). `test_data/ICValidation/20260921-1[6-7]*` (small-n runs).
+
+### Step 3 -- the decisive check: GT loom vs perceived h_z, same PD-FB flight, terminal window
+Per [[feedback_recurring_analysis_mistakes]] / `PX4_Gazebo/.claude/skills/
+diagnose-flight-data`: computed genuine ground truth via `tools/gt_optical_flow.py`
+(Z_REG=0.2 regularized, valid to the deck) for `ICValidation/20260921-144320/IC1_rep1`, and
+compared directly against the PERCEIVED `h(t)[:,2]` actually fed to the control law.
+Sync verified first (Control_Data `t[0]` == GT `Start Time` exactly).
+
+| t | alt (m) | GT loom (truth) | perceived h_z |
+|---|---|---|---|
+| 11.44 | 0.19 | -0.472 | -0.347 |
+| 11.50 | 0.18 | -0.462 | -0.537 |
+| 11.58 | 0.17 | -0.440 | **-0.686** |
+
+**GT loom stays smooth in this window and even begins its OWN gentle taper (-0.49->-0.44)
+-- the same natural flare character the clean GT-FB run showed independently.** The
+PERCEIVED signal diverges the opposite way, to ~1.6x the true value, over the same ~150ms.
+The vehicle's real motion is fine; the MEASUREMENT is not.
+
+**Root cause matches an already-flagged, still-open defect from earlier this session.**
+Checked `extent`/`rel_resid` in the exact same window (aligned by absolute time, not
+`Img_Data`'s own longer-running clock which extends past touchdown for the video tail):
+`extent=318px` (saturated -- the marker massively overfills the 240px detection frame) and
+`rel_resid=0.44-0.85` (frequently above the 0.45 confidence-gate threshold used to fix the
+flow-freeze false-positive the same session). **This is the SAME terminal-overfill
+degradation already found corrupting the CBF's `condition_drift` drift lead (flagged,
+unfixed) and one of the four original flow-freeze false-touchdowns (fixed via the
+confidence gate, `2177670b`).** Three previously-separate-seeming symptoms, one root cause.
+
+### Verdict
+**N_z tuning is the WRONG lever and was correctly abandoned before its planned n>=5 gate
+ran.** A faster-responding kappa_z reacting to a signal that spikes to 1.6x the true value
+applies an even LARGER erroneous correction, not a softer landing. Gain-tuning against a
+corrupted signal was about to repeat exactly the mistake
+[[feedback_dont_conclude_lag_floor]]'s RULE 2 warns about in spirit (masking a real defect
+with a compensating gain, at the wrong layer) -- caught here by checking against GT before
+committing to the tuning direction, not after.
+
+### What's actually needed (not yet implemented)
+Fix belongs in the PERCEPTION pipeline, in the terminal ~0.2-0.3m where extent saturates:
+gate/hold `h_z` on the same `rel_resid` confidence signal that already exists
+(`_bgflow_health`), analogous to two patterns already live in this codebase --
+`condition_drift`'s own resid gate (visibility_projection.py) and the KF-freeze-during-
+marker-loss pattern ([[feedback_kf_frozen_during_marker_loss]]). NOT yet designed or
+implemented. Natural next scope: fix ALL THREE overfill-exposed consumers
+(condition_drift's drift lead, h_z, and re-verify flow-freeze's own resid gate covers this
+case fully) under one terminal-overfill perception fix rather than three separate patches,
+since they share the exact same root signal (`extent`/`rel_resid` saturating near the
+deck).
+
+### Open, not done
+- PX4-side validation of `h_rd=-0.38` on IC2-5 (only GT-FB IC1 n=3 checked so far;
+  `feedback_matlab_gains_not_portable` means this needs its own PX4 gate, not a port-on-
+  faith, though the result direction is encouraging).
+- The terminal-overfill `h_z`/perception fix itself (design + implement + validate).
+- Whether `h_rd=-0.38` ALSO needs to be tested under PD-FB once the perception fix lands
+  (the two may interact: a faster commanded descent reaching the corrupted-signal altitude
+  band sooner/differently).
