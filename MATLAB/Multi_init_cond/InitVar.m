@@ -78,9 +78,27 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % run_simulation.m aborts only when the marker CENTRE leaves the physical frame.
 global MARKER_SCALE %#ok<GVMIS>
 if isempty(MARKER_SCALE), marker_scale = 26; else, marker_scale = MARKER_SCALE; end
-T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
-          15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
-                   0,           0,           0,           0,   0 ] * marker_scale / 250;
+T_tip = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;     % 4 arm tips + stub tip (legacy 5-point cross)
+         15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
+                  0,           0,           0,           0,   0 ] * marker_scale / 250;
+% LINE-SAMPLED CROSS (2026-09-21): each arm and the stub is a LINE of N evenly spaced samples from the centre to its tip (k/N of the way,
+% k=1..N; the centre itself is the separate centre feature). N grows with the scale so the sample spacing stays ~constant:
+% N_arm = max(1, round(scale/2)), N_stub = round(N_arm*22/15). At N_arm=1 (scale <~3) this is EXACTLY the legacy 5-point cross
+% (cols 1-4 arm tips, col 5 stub) -- so the N==5 branch of image_feature.m and old small-marker results are unchanged. For larger scales the
+% column order is [arm1 samples | arm2 | arm3 | arm4 | stub samples]. Companion vectors (used only when N>5 by run_simulation / image_features):
+%   T_wq(j)   = disambiguation weight (stub samples 3, arm samples 1), same role as wq=[1 1 1 1 3] in image_feature.m;
+%   T_ang(j)  = direction (rad, target frame) of the line sample j lies on: the measured alpha is the mean of atan2(sample-centre) - T_ang over the VISIBLE samples.
+N_arm = max(1, round(marker_scale/2));  N_stub = max(1, round(N_arm*22/15));
+T_nP3 = zeros(3,0);  T_wq = zeros(1,0);  T_ang = zeros(1,0);
+for ln = 1:5
+    if ln <= 4, Nl = N_arm; wl = 1; else, Nl = N_stub; wl = 3; end
+    for kk = 1:Nl
+        T_nP3(:,end+1) = T_tip(:,ln)*kk/Nl;               %#ok<SAGROW>
+        T_wq(end+1)    = wl;                              %#ok<SAGROW>
+        T_ang(end+1)   = atan2(T_tip(2,ln), T_tip(1,ln));  %#ok<SAGROW>
+    end
+end
+T_lines = size(T_nP3,2) > 5;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
 global PX_CENTER_FEATURE %#ok<GVMIS>
@@ -95,7 +113,7 @@ V_nP3 = T_nP3;
 V_nP_d = (f/(2*zf))*V_nP3(1:2,:);
 
 % Computing desired Features Parameters in Image Plane (without 'z')
-V_s_d = image_feature(V_nP_d/f);
+if T_lines, V_s_d = image_feature(V_nP_d/f, T_wq); else, V_s_d = image_feature(V_nP_d/f); end
 if isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE, V_s_d(1:2) = 0; end   % desired centre = image centre
 
 %% Data Logging

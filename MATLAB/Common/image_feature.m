@@ -1,7 +1,7 @@
 % *************************************************************************
 % Function to compute image features of a set of feature points nP
 % *************************************************************************
-function [q] = image_feature(nP)
+function [q] = image_feature(nP, wq_in)
 %% Moments
 % Zeroth Order
 m_00 = moment(nP, 0, 0);
@@ -44,7 +44,10 @@ mu_03 = centered_moment(nP, P_g, 0, 3);
 %  - N==4 ArUco square: mu11==0 by symmetry, so both axis and disambiguation
 %    use corner weights [4 3 2 1] (legacy ArUco path, _marker_principal_angle).
 N = size(nP, 2);
-if N == 4
+custom = nargin >= 2 && ~isempty(wq_in);   % line-sampled cross (any N): caller-supplied weights, generic moment path
+if custom
+    wq = wq_in(:)';
+elseif N == 4
     % ArUco square: mu11 == 0 by symmetry, so the plain 2nd-moment axis is
     % undefined. Monotone corner weights [4 3 2 1] break the 180deg symmetry.
     wq = [4, 3, 2, 1];
@@ -58,7 +61,7 @@ elseif N == 5
 else
     wq = ones(1, N);
 end
-if N == 4
+if N == 4 && ~custom
     Wq  = sum(wq);
     xcw = sum(wq.*nP(1,:))/Wq;   ycw = sum(wq.*nP(2,:))/Wq;
     Xcw = nP(1,:) - xcw;         Ycw = nP(2,:) - ycw;

@@ -1,6 +1,6 @@
 %% Perception-channel fidelity vs marker size at altitude (independent of landing outcome).
 % Env: Z0 (start alt, default 7), SCALES (old-style multiplier list; MARKER_SCALE = 2*scale, total size = 2x that), TRAJS, SEEDS. Measured = logged cs.V_*_i (raw per-frame),
-% and its causal SG-filtered version (what the controller sees, window P.fw, order 2). Truth = V_X_DS analytic rows.
+% and its causal SG-filtered version (what the controller sees, window P.fw, order 2). Truth = V_X_DS analytic rows, except alpha = geometric relative yaw.
 clc; clear; addpath('../Common');
 global VDF_OVERRIDE MARKER_SCALE PX_NOISE_FIX PX_NOISE_PARAMS
 PX_NOISE_FIX=true; PX_NOISE_PARAMS=[0.027 0.175 0.5 0 0];
@@ -18,6 +18,11 @@ for sc=scs
     r=run_simulation([2;2;-z0;1;0;0;0;zeros(6,1)],string(tn{a}),[],1.4,cfg,sd); d=r.data; n=d.idx; if n<=0,n=numel(d.e_a_log);end
     V=d.V_X_DS(:,1:n); alt=-(d.X_DS(3,1:n)-d.x_t(3,1:n));
     meas=[V(1:2,:);V(3,:);V(4:6,:);V(9,:)]; tru=[V(13:14,:);V(15,:);V(16:18,:);V(21,:)];
+    % alpha truth = GEOMETRIC relative yaw (target yaw - camera yaw, from the quaternions), not the analytic image-moment alpha V_X_DS(15,:):
+    % the moment alpha of the whole marker is itself 0.03-0.04 rad off the true yaw (perspective/foreshortening), which swamps the small alpha
+    % signal near the ground. Sign convention alpha = +(psi_t - psi_c) verified 2026-09-21 (line-sampled cross, level camera).
+    yq=@(q) atan2(2*(q(1,:).*q(4,:)+q(2,:).*q(3,:)),1-2*(q(3,:).^2+q(4,:).^2));
+    tru(3,:)=angle(exp(1i*(yq(d.x_t(4:7,1:n))-yq(d.X_DS(4:7,1:n)))));
     dal=angle(exp(1i*(meas(3,:)-tru(3,:)))); meas(3,:)=tru(3,:)+dal;
     filt=meas; for k=Wf:n, filt(:,k)=meshsg(meas(:,k-Wf+1:k)); end
     for w=1:4, m=alt<=wins(w,1)&alt>wins(w,2);

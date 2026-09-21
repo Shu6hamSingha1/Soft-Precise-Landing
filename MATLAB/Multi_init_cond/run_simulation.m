@@ -101,6 +101,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
                           'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
     cs.V_s_i = zeros(4,1); cs.V_h_i = zeros(3,1); cs.V_w_i = zeros(3,1);
     cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,Npts);
+    if T_lines, cs.mk = struct('wq', T_wq, 'ang', T_ang); end   % line-sampled cross metadata (InitVar); absent for the legacy 5-point cross
 
     % --- logging arrays the manuscript plotters / analyzers read ---
     U_DS   = zeros(4,  N_steps);
@@ -181,6 +182,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
             else
                 C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
             end
+            % Visibility mask (2026-09-21): a sample is used for perception (alpha, optic flow) only if a real camera could see it -- in front of
+            % the image plane AND inside the physical frame (noise-free projection; C_nP is noised below).
+            pt_valid = (C_nP3(3,:) + zf) > 1e-3 & abs(C_nP(1,:)) <= res(1)/2 & abs(C_nP(2,:)) <= res(2)/2;
             % Opt-in marker-CENTRE feature (2026-09-19): global PX_CENTER_FEATURE=true makes the measured marker centre the projection of the
             % true cross centre (arm intersection = what PX4's detector reports), NOT the mean of the 5 projected points. For a large marker seen
             % in perspective the point-mean drifts from the projected centre (8 px @0.8 m, 43 px @0.22 m at 12x) and the controller then
@@ -238,7 +242,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
                 V_nP_a = (f/(V_s_tc(3)+zf))*V_nP3(1:2,:);
             end
             if isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE, V_nP_a_ctr = f*V_s_tc(1:2)/(V_s_tc(3)+zf); end
-            V_s_a  = image_feature(V_nP_a/f);
+            if T_lines, V_s_a = image_feature(V_nP_a/f, T_wq); else, V_s_a = image_feature(V_nP_a/f); end   % truth: whole marker, visibility-independent
             if isempty(PX_CENTER_FEATURE) || PX_CENTER_FEATURE, V_s_a(1:2) = V_nP_a_ctr/f; end
             V_h_a  = I_R_V'*(dx_t(1:3,idx) - I_v_c)/(V_s_tc(3)+zf);
         end
@@ -253,16 +257,16 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         % Perception/pipeline transport lag: feed the controller the corners as
         % measured md_n control steps ago (physical FoV check above still uses the
         % true current C_nP). No-op when LAG.on is false (md_n unused).
-        C_nP_buf{idx} = C_nP;
+        C_nP_buf{idx} = C_nP;  valid_buf{idx} = pt_valid;
         if LAG.on && md_n > 0 && idx > md_n
-            C_nP_meas = C_nP_buf{idx - md_n};
+            C_nP_meas = C_nP_buf{idx - md_n};  valid_meas = valid_buf{idx - md_n};
         else
-            C_nP_meas = C_nP;
+            C_nP_meas = C_nP;  valid_meas = pt_valid;
         end
         C_ctr_buf{idx} = C_ctr;
         if LAG.on && md_n > 0 && idx > md_n, C_ctr_meas = C_ctr_buf{idx - md_n}; else, C_ctr_meas = C_ctr; end
         if cfeat, C_ctr_arg = C_ctr_meas; else, C_ctr_arg = []; end
-        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP_meas, I_R_V, I_R_C, P, cs, C_ctr_arg, B_w_c);
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP_meas, I_R_V, I_R_C, P, cs, C_ctr_arg, B_w_c, valid_meas);
 
         % --- early landing check ---
         alt_above = abs(I_p_c(3) - x_t(3,idx));
