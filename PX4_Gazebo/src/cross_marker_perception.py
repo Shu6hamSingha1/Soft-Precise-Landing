@@ -2724,6 +2724,22 @@ class CrossMarkerPerception:
         # _flow_diag_log entries etc.)
         self._last_t = t
         dt = 1.0 / fps if (isinstance(fps, (int, float)) and fps > 1) else np.nan
+        # 2026-09-22 FIX: _fps_log/_imu_angvel_log/_stamp_log read self._pending_fps/
+        # _pending_angvel/_pending_stamp via getattr(..., default), on a comment
+        # claiming CrossMarkerNode.run() sets these as instance attrs "just before
+        # calling process_frame()" -- that wiring was never actually added (grepped:
+        # zero assignments to any of the three anywhere in this file), so all three
+        # logged fields (FPS, IMU AngVel, Stamp in Img_Data.npy) have been dead/NaN
+        # (or, for FPS in at least one older recording, some OTHER stale value not
+        # actually reflecting this call's fps arg) for every recording since the
+        # 2026-08-12 dt/frame-pairing rewrite. Set them from THIS call's own actual
+        # args instead, so the log finally reflects what the solve really used --
+        # needed to test the "live dt differs from Img_Data['Time'] deltas" hypothesis
+        # for the still-open ~5.6x terminal loom-divergence gap (see
+        # project_20260917_visibility_predictor_residual.md).
+        self._pending_fps = fps
+        self._pending_stamp = t
+        self._pending_angvel = angvel_curr
         # reset bg-flow health -- a solve method overwrites it if it runs this
         # frame; if none does, (inf, 0) => _kf_update_hw's centroid blend treats
         # it as fully unhealthy (correct: there was no usable bg-flow this frame).
