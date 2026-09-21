@@ -33,8 +33,9 @@ function [psi_d, u_a, cs] = yaw_rate_law(alpha, alpha_d, w_z, P, cs)
 %   s^2 + s + yrl_kp = 0 (w_z coefficient fixed at 1 -- NOTE ICRA.tex writes a free k_w).
 %   yrl_kp sets the convergence speed sqrt(yrl_kp) and the damping 1/(2 sqrt(yrl_kp)).
 %
-%   FINAL CONFIG (2026-09-19): yrl_kp = 0.3 together with P.yaw_omega_d_ff = true (tracker
-%   feedforward Omega_d = R'*[0;0;u_a] in so3_tracker.m). History: the earlier yrl_kp = 0.02
+%   FINAL CONFIG (2026-09-19): yrl_kp = 0.3 together with the tracker yaw-rate feedforward. SUPERSEDED
+%   2026-09-21 by P.yaw_direct_rate (PX4 parity): so3_tracker.m now takes psi_d := psi_b, e_R(3)=0 and
+%   Omega_d = [0;0;u_a] (body z), replacing the retired P.yaw_omega_d_ff (Omega_d = R'*[0;0;u_a]). History: the earlier yrl_kp = 0.02
 %   (2026-09-17/18) hid two implementation issues by suppressing the correction -- (1) the tracker
 %   had Omega_d = 0, so psi_b lagged psi_d by kOmega_z*rate/kR_z (~25deg at 1.1 rad/s) and u_a wound
 %   up against it (peak 1.13 rad/s vs the 0.672 needed); (2) w_z is zeroed by pinv(L_s, pinv_tol)

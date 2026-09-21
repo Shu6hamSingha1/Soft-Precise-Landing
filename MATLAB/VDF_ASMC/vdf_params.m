@@ -200,7 +200,7 @@ P.E_a     = 3.0;   % eps_alpha boundary layer
 % validated omission. Re-add (with its anti-windup) if a real bias-rejection
 % need is demonstrated; do not re-add speculatively.
 P.yaw_rate_law = 1;
-P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP). FINAL 2026-09-19 (with yaw_omega_d_ff=true below).
+P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP). FINAL 2026-09-19 (with yaw_direct_rate=true below).
                         % Closed-loop yaw-error dynamics s^2 + s + k_p = 0 (k_w fixed at 1): k_p sets the
                         % convergence speed sqrt(k_p) and the damping zeta = 1/(2 sqrt(k_p)) = 0.91 here (near
                         % critical; k_p=0.25 is critical). With the tracker feedforward removing the realization
@@ -214,11 +214,11 @@ P.yrl_kp       = 0.3;   % k_p (PLASMC_YAW_RL_KP). FINAL 2026-09-19 (with yaw_ome
                         % project_ic2_speed_sweep_failure_2026_09_17 memory.
 P.yrl_wz_sign  = 1.0;   % V_w(3) already carries +w_z = +alpha_e_dot for this plant
 P.yaw_rate_max = 2.0;   % rad/s clip on u_a (PX4 _psid_rate)
-P.yaw_omega_d_ff = true;   % FINAL 2026-09-19: so3_tracker desired body rate Omega_d = R'*[0;0;u_a] (world-z
-                          % yaw-rate feedforward, = PX4 AttitudeControl's q.inversed().dcm_z()*yawspeed_sp; the PX4
-                          % pipeline here commands u_a as a body rate directly, so this makes MATLAB consistent).
-                          % false => Omega_d=0 (legacy): psi_b lags psi_d by kOmega_z*rate/kR_z (~25deg at 1.1 rad/s)
-                          % and u_a winds up. Only meaningful with yaw_rate_law=1 (reads cs.yrl_cmd).
+P.yaw_direct_rate = true;   % 2026-09-21 PX4 PARITY: yaw = DIRECT body-rate command u_a (so3_tracker: psi_d := psi_b, e_R(3)=0,
+                          % Omega_d = [0;0;u_a]); roll/pitch stay on the geometric SO(3) tracker. Active only when
+                          % yaw_rate_law=1 (reads cs.yrl_cmd); false / yaw_rate_law=0 => legacy psi_d-integrating path.
+P.yaw_direct_frame = 0;   % Omega_d frame in direct mode: 0 = R'*[0;0;u_a] (world-z yaw rate in body), 1 = [0;0;u_a] (pure body z). Diagnostic switch 2026-09-21.
+                          % RETIRED: P.yaw_omega_d_ff (2026-09-19 patch Omega_d = R'*[0;0;u_a] with psi_d integrated).
 
 % ---- Target-visibility CBF  (tex eq. cbf qp) ----------------------------------
 P.theta_cap = deg2rad(43.94);           % post-QP deliverable-tilt cap. PORTED FROM PX4 2026-09-03

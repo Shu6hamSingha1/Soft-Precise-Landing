@@ -5,6 +5,25 @@ function [B_tau, T_cd, cs] = so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, 
 %   torque tau = -kR e_R - kOmega e_Omega + w x Jw. Thrust T = m|a_{d,z}|/R33 uses
 %   the measured tilt cosine. A thrust-scaled adaptive CoG feedforward cancels the
 %   constant r_cog x f body torque (Lee-style; default-on, gamma_cog).
+%
+%   YAW = DIRECT BODY-RATE COMMAND (2026-09-21, PX4 parity; P.yaw_direct_rate, default true, active
+%   whenever the direct-rate law ran this step, i.e. cs.yrl_cmd exists = P.yaw_rate_law=1):
+%   PX4 sets psi_d := psi_b (so e_R[2] ~ 0) and sends the yaw axis as a body-rate setpoint
+%   w_u[2] = u_a to its own rate loop; roll/pitch stay on this geometric tracker. Here that is:
+%     * heading for R_d := the CURRENT body yaw (the psi_d argument is ignored),
+%     * e_R(3) := 0  (no attitude-error torque about yaw, no yaw integral),
+%     * Omega_d = R'*[0;0;u_a]  (u_a = WORLD-z yaw rate expressed in the body; P.yaw_direct_frame=0, default) so
+%       tau_z ~ -kOmega_z (w_z - u_a cos(tilt)) and the roll/pitch channels see NO spurious rate error from
+%       the yaw motion of a tilted vehicle. P.yaw_direct_frame=1 uses the pure body vector [0;0;u_a]
+%       instead: that mis-reads the yaw-induced x/y body rate as roll/pitch error and FAILS Circular x1.4
+%       IC(2,2,-5) (FoV break at 5.4 s; 2026-09-21 test), so it is kept only as a diagnostic switch.
+%   With P.yaw_rate_law=0 (kappa_a ASMC fallback) cs.yrl_cmd is absent and the legacy path is unchanged
+%   (psi_d integrated by yaw_asmc, Omega_d = 0). Replaces the retired P.yaw_omega_d_ff patch
+%   (Omega_d = R'*[0;0;u_a] while psi_d still integrated); previous version:
+%   Obsolete/VDF_ASMC_blocks/so3_tracker_v2_pre_yawdirect.m.
+
+    direct_yaw = isfield(P, 'yaw_direct_rate') && P.yaw_direct_rate && isfield(cs, 'yrl_cmd');
+    if direct_yaw, psi_d = yaw; end                            % psi_d := psi_b (PX4)
 
     I_F = P.m * I_a_cd_filt;  f_mag = norm(I_F);  T_cd = f_mag;
     if f_mag < 1e-6
@@ -29,12 +48,15 @@ function [B_tau, T_cd, cs] = so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, 
 
     eR_mat = 0.5*(R_d'*I_R_C - I_R_C'*R_d);
     e_R    = [eR_mat(3,2); eR_mat(1,3); eR_mat(2,1)];          % vee map
-    Omega_d = zeros(3,1);                                      % legacy: Omega_d = 0
-    if isfield(P, 'yaw_omega_d_ff') && P.yaw_omega_d_ff && isfield(cs, 'yrl_cmd')
-        % Yaw-rate feedforward (opt-in): psi_d advances at u_a about the WORLD z axis, so the
-        % desired body rate is that axis expressed in the body frame (as PX4's AttitudeControl
-        % does with q.inversed().dcm_z()*yawspeed_setpoint). cs.yrl_cmd is the clipped u_a.
-        Omega_d = I_R_C' * [0; 0; cs.yrl_cmd];
+    if direct_yaw
+        e_R(3)  = 0;                                           % yaw handled by the rate loop only
+        if isfield(P, 'yaw_direct_frame') && P.yaw_direct_frame == 1
+            Omega_d = [0; 0; cs.yrl_cmd];                      % u_a as a pure BODY-z rate (roll/pitch see the yaw-induced x/y body rate as error)
+        else
+            Omega_d = I_R_C' * [0; 0; cs.yrl_cmd];             % u_a = WORLD-z yaw rate expressed in the body (PX4 AttitudeControl style)
+        end
+    else
+        Omega_d = zeros(3,1);                                  % legacy kappa_a-ASMC path: Omega_d = 0
     end
     e_Omega = B_w_c - Omega_d;
 
