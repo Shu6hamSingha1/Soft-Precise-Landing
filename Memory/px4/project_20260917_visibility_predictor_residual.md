@@ -498,3 +498,62 @@ deck).
 - Whether `h_rd=-0.38` ALSO needs to be tested under PD-FB once the perception fix lands
   (the two may interact: a faster commanded descent reaching the corrupted-signal altitude
   band sooner/differently).
+
+---
+
+## 2026-09-21 (same day, parallel session): MATLAB independently converged on the SAME
+## kappa-adaptation-too-slow mechanism, went much further, and REVERTED h_rd to -0.30
+
+Found via `7476400a` (peer session, `MATLAB/VDF_ASMC/vdf_params.m`) immediately after
+pushing the above. Directly overlapping work, reconciling now.
+
+**Independent confirmation of the mechanism.** The peer's own comment: "adaptation speed;
+stability is set by kappa's SENSITIVITY dkappa/dWx (theta*G/P and N)" -- the exact
+diagnosis this thread reached via the offline kappa-ODE replay (§ above), reached
+independently via MATLAB-side work.
+
+**A coordinated retune, far more aggressive and complete than the N_z=0.3 trial here:**
+
+| param | old | new | ratio |
+|---|---|---|---|
+| N (xy,z) | 0.1,0.1,0.1 | 2.0,2.0,**5.0** | 20x/50x |
+| Pleak (xy,z) | 2.5,2.5,5.0 | 0.5,0.5,**0.1** | 5x/50x down |
+| E (xy,z) | 1.0,1.0,0.5 | 0.1,0.1,**0.02** | 10x/25x down (stiffer) |
+| chi_z | 0.1 | 0.5 | 5x |
+| p_hinf z | 1.5 | 0.3 | 5x tighter |
+| kappa0 xy | 0.5,0.5 | 0.1,0.1 | (z unchanged 0.25) |
+| kappa_max xy | 30,30 | 1,1 | (z unchanged 3.0) |
+
+Note N_z*Pleak_z tau is UNCHANGED (0.1*5.0 = 5.0*0.1 = 0.5 -> tau=2.0s either way) -- the
+fix is not "faster tau," it's the GROWTH TERM theta*N*G*|sigma| scaling directly with N
+(50x for z) while Pleak drops the SAME 50x, raising kappa's reachable equilibrium by that
+same factor. A materially different (and apparently much more effective) lever than the
+"raise N, hold P" shape this thread's own N_z=0.3 trial used.
+
+**Validated: 25-IC gate, 25/25 SP, t_f 9.65s** (MATLAB, presumably noiseless/synthetic --
+not yet PX4-validated, and per [[feedback_matlab_gains_not_portable]] the VALUES will not
+port as-is; needs its own PX4-side re-derivation/gate, not a straight copy).
+
+**h_rd REVERTED 2026-09-09's -0.38 back to -0.30** (PX4's original value), with the
+retuned adaptive law in place: "5-seed, 35 cases: 33/35 soft vs 24/35 at -0.38." This
+DIRECTLY SUPERSEDES the "Open" item this thread flagged above (test h_rd=-0.38 on PX4) --
+once the adaptive law itself is properly retuned, -0.38's faster commanded descent is
+apparently no longer needed or even net-negative; -0.30 (already PX4's live default) wins.
+**Do not port h_rd=-0.38 to PX4** -- the peer's own newer result reverses that
+recommendation on MATLAB's own turf. GT-FB's PX4-side h_rd=-0.38 n=3 result recorded above
+(3/3 soft+precise) still stands as a fact about PX4's -0.38, but is no longer the
+comparison to chase -- the coordinated N/P/E/chi_z/p_hinf retune is the more promising
+direction, tested against PX4's OWN existing -0.30.
+
+**What this does NOT address: the terminal-overfill h_z perception corruption** found
+independently in this thread (§ immediately above). MATLAB's synthetic pixel-noise model
+is not the same failure mode as a real camera's extent saturating / flow-solve confidence
+collapsing at extreme close range -- there is no reason to expect the peer's retune (tuned
+against MATLAB's noise model) to fix a defect that exists only in PX4's real perception
+pipeline. Both fixes are likely needed: the coordinated adaptive-law retune (ported +
+re-validated on PX4) for the CONTROL side, and the h_z confidence-gate (this thread's
+finding) for the PERCEPTION side. They may also interact -- a stiffer, faster-adapting
+kappa_z reacting to the SAME corrupted terminal h_z could make the corruption's effect
+WORSE, not better, until the perception fix lands. Recommend sequencing: perception fix
+first (removes the confound), THEN port+validate the coordinated retune on PX4 PD-FB,
+rather than porting the retune first into a still-corrupted signal.
