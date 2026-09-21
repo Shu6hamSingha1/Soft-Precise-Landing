@@ -12,7 +12,7 @@ PX_EXACT_PERSP = ~strcmp(getenv('EXACTP'), '0');   % EXACTP=1 -> exact per-point
 if strcmp(getenv('PXNOISE'), '1'), PX_NOISE_PARAMS = [0.027 0.175 0.5 0 0]; PX_NOISE_FIX = true; else, PX_NOISE_PARAMS = []; end   % measured PX4 model
 PX_OUTLIER_OFF = strcmp(getenv('OUTLIERS'), '0');   % OUTLIERS=0 -> Gaussian noise only
 nfv = str2double(getenv('NOISEFIX')); if strcmp(getenv('PXNOISE'),'1'), nfv = 1; end; if isnan(nfv) || nfv == 0, nf = 0; PX_NOISE_FIX = false; else, nf = nfv; PX_NOISE_FIX = nfv; end   % numeric = x documented level
-sc = str2double(getenv('SCALE')); if isnan(sc), sc = 1; end;  MARKER_SCALE = sc;
+sc = str2double(getenv('SCALE')); if isnan(sc), sc = 1; end;  MARKER_SCALE = 2*sc;
 tols  = str2num(getenv('TOLS'));  if isempty(tols),  tols = [1 4 8]; end %#ok<ST2NM>
 seeds = str2num(getenv('SEEDS')); if isempty(seeds), seeds = [1 2 3]; end %#ok<ST2NM>
 cfg = struct('NOISE', 1, 'GE', 1, 'delay', 1);

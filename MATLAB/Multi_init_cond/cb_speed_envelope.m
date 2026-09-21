@@ -7,7 +7,7 @@ clc; clear;
 mfile_dir = fileparts(mfilename('fullpath'));
 addpath(fullfile(mfile_dir, '..', 'Common'));
 global VDF_OVERRIDE MARKER_SCALE       %#ok<GVMIS>
-sc = str2double(getenv('SCALE')); if isnan(sc), MARKER_SCALE = []; sc = 1; else, MARKER_SCALE = sc; end   % hook, ON TOP of the baked 2x
+sc = str2double(getenv('SCALE')); if isnan(sc), sc = 1; end, MARKER_SCALE = 2*sc;   % SCALE = old multiplier on the 2x base; MARKER_SCALE is now absolute
 trajs = strsplit(strtrim(getenv('TRAJS'))); if isempty(trajs{1}), trajs = {'Linear','Sinusoidal','Lissajous','Circular'}; end
 fprintf('### extra marker hook scale=%g (total marker = %gx original)\n', sc, 2*sc);
 VDF_OVERRIDE = struct('theta_per_axis', true);

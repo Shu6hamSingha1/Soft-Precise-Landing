@@ -1,5 +1,5 @@
 %% Perception-channel fidelity vs marker size at altitude (independent of landing outcome).
-% Env: Z0 (start alt, default 7), SCALES (MARKER_SCALE list, total size = 2x), TRAJS, SEEDS. Measured = logged cs.V_*_i (raw per-frame),
+% Env: Z0 (start alt, default 7), SCALES (old-style multiplier list; MARKER_SCALE = 2*scale, total size = 2x that), TRAJS, SEEDS. Measured = logged cs.V_*_i (raw per-frame),
 % and its causal SG-filtered version (what the controller sees, window P.fw, order 2). Truth = V_X_DS analytic rows.
 clc; clear; addpath('../Common');
 global VDF_OVERRIDE MARKER_SCALE PX_NOISE_FIX PX_NOISE_PARAMS
@@ -12,7 +12,7 @@ cfg=struct('NOISE',1,'GE',1,'delay',1); Wf=11;
 wins=[7 5;5 3;3 1.5;1.5 0.5];
 chn={'s_x','s_y','alpha','h_x','h_y','h_z','w_z'};
 for sc=scs
-  MARKER_SCALE=sc; VDF_OVERRIDE=struct('theta_per_axis',true);
+  MARKER_SCALE=2*sc; VDF_OVERRIDE=struct('theta_per_axis',true);
   M=cell(1,4); T=cell(1,4);
   for a=1:numel(tn), for sd=seeds
     r=run_simulation([2;2;-z0;1;0;0;0;zeros(6,1)],string(tn{a}),[],1.4,cfg,sd); d=r.data; n=d.idx; if n<=0,n=numel(d.e_a_log);end

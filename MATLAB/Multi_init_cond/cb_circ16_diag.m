@@ -6,7 +6,7 @@ addpath(fullfile(mfile_dir, '..', 'Common'));
 global VDF_OVERRIDE MARKER_SCALE   %#ok<GVMIS>
 VDF_OVERRIDE = struct('theta_per_axis', true);
 x0 = [2; 2; -5; 1; 0; 0; 0; zeros(3,1); zeros(3,1)];
-cases = struct('tag', {'A','B','C','D'}, 'sc', {[] , [], 0.5, []}, 'm', {1.6, 1.5, 1.6, 1.6}, 'noise', {1, 1, 1, 0});
+cases = struct('tag', {'A','B','C','D'}, 'sc', {2, 2, 1, 2}, 'm', {1.6, 1.5, 1.6, 1.6}, 'noise', {1, 1, 1, 0});
 outDir = fullfile(mfile_dir, '..', 'Datasets', 'MultiInit');
 for k = 1:numel(cases)
     MARKER_SCALE = cases(k).sc;

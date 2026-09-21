@@ -54,18 +54,16 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % FoV margin; a larger marker also keeps the singular values of the interaction matrix above pinv_tol early in the
 % flight so w_z is observable (see project_ic2_speed_sweep_failure_2026_09_17 memory). NB the PX4/Gazebo marker is a
 % separate asset and is NOT changed by this.
-marker_base_scale = 2.0;
+% 2026-09-21: SINGLE size variable = global MARKER_SCALE (absolute, x the 12 cm cross; default [] -> 26), same as
+% Multi_init_cond/InitVar.m. 26x => 3.12 m tip-to-tip >= 60 px at 7 m (f=135). PRIOR: base 2.0 x hook.
+global MARKER_SCALE %#ok<GVMIS>
+if isempty(MARKER_SCALE), marker_scale = 26; else, marker_scale = MARKER_SCALE; end
 T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
           15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
-                   0,           0,           0,           0,   0 ] * marker_base_scale / 250;
+                   0,           0,           0,           0,   0 ] * marker_scale / 250;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
 T_nP3 = T_nP3-mean(T_nP3,2);
-
-% Opt-in marker-size hook (2026-09-19), same as Multi_init_cond/InitVar.m: global MARKER_SCALE
-% multiplies the cross about its centroid (default [] / 1 => unchanged).
-global MARKER_SCALE %#ok<GVMIS>
-if ~isempty(MARKER_SCALE), T_nP3 = MARKER_SCALE*T_nP3; end
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame
 V_nP3 = T_nP3;

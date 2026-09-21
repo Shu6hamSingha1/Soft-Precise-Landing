@@ -72,24 +72,21 @@ x_c = [I_p_c; q_c; I_v_c; B_w_c];
 % FoV margin; a larger marker also keeps the singular values of the interaction matrix above pinv_tol early in the
 % flight so w_z is observable (see project_ic2_speed_sweep_failure_2026_09_17 memory). NB the PX4/Gazebo marker is a
 % separate asset and is NOT changed by this.
-marker_base_scale = 2.0;
+% 2026-09-21: SINGLE size variable = global MARKER_SCALE (absolute, x the 12 cm cross; default [] -> 26). 26x => tip-to-tip span
+% 0.12*26 = 3.12 m >= 60 px at 7 m (f=135: 3.12*135/7 = 60.2 px), matching the PX4 >=60 px@7 m rule. PRIOR: base 2.0 x hook
+% (old MARKER_SCALE=s meant total 2*s; use MARKER_SCALE=2*s now). The cross only needs its CENTRE in view (centroid-visibility CBF);
+% run_simulation.m aborts only when the marker CENTRE leaves the physical frame.
+global MARKER_SCALE %#ok<GVMIS>
+if isempty(MARKER_SCALE), marker_scale = 26; else, marker_scale = MARKER_SCALE; end
 T_nP3 = [ 15/sqrt(2), -15/sqrt(2), -15/sqrt(2),  15/sqrt(2),  22 ;
           15/sqrt(2), -15/sqrt(2),  15/sqrt(2), -15/sqrt(2),   0 ;
-                   0,           0,           0,           0,   0 ] * marker_base_scale / 250;
+                   0,           0,           0,           0,   0 ] * marker_scale / 250;
 
 % Removing offset due to unsymmetry (the stub biases the geometric centroid)
 global PX_CENTER_FEATURE %#ok<GVMIS>
 % With PX_CENTER_FEATURE the target origin stays at the cross INTERSECTION (the tracked centre / landing point, as in PX4); otherwise the
 % legacy recentring puts the origin at the 5-point centroid (offset 0.0176*scale m from the intersection: 3.5 cm @2x, 42 cm @24x).
 if ~isempty(PX_CENTER_FEATURE) && ~PX_CENTER_FEATURE, T_nP3 = T_nP3-mean(T_nP3,2); end
-
-% Opt-in marker-size hook (2026-09-19): global MARKER_SCALE multiplies the whole
-% cross about its centroid (default [] / 1 => unchanged). The cross marker only needs
-% its centre kept in view (centroid-visibility CBF), so it can be larger than the old
-% 4-corner marker, which had to keep every corner inside the FoV. NOTE: run_simulation.m
-% now aborts only when the marker CENTRE leaves the physical frame (not on any point).
-global MARKER_SCALE %#ok<GVMIS>
-if ~isempty(MARKER_SCALE), T_nP3 = MARKER_SCALE*T_nP3; end
 
 % Computing Desired Feature Points wrt Target Origin in Virtual Camera Reference Frame
 V_nP3 = T_nP3;

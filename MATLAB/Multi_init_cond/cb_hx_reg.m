@@ -1,6 +1,6 @@
 clc; clear; addpath('../Common');
 global VDF_OVERRIDE MARKER_SCALE PX_NOISE_FIX PX_NOISE_PARAMS
-MARKER_SCALE=1; VDF_OVERRIDE=struct('theta_per_axis',true,'pinv_tol',4,'flow_reduced',true);
+MARKER_SCALE=2; VDF_OVERRIDE=struct('theta_per_axis',true,'pinv_tol',4,'flow_reduced',true);
 cfg=struct('NOISE',0,'GE',1,'delay',1);
 r=run_simulation([2;2;-5;1;0;0;0;zeros(6,1)],"Circular",[],1.4,cfg,1); d=r.data; n=d.idx; if n<=0,n=numel(d.e_a_log);end
 disp(fieldnames(d)')

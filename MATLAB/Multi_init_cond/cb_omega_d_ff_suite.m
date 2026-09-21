@@ -6,7 +6,7 @@ clc; clear;
 mfile_dir = fileparts(mfilename('fullpath'));
 addpath(fullfile(mfile_dir, '..', 'Common'));
 global VDF_OVERRIDE MARKER_SCALE      %#ok<GVMIS>
-sc = str2double(getenv('SCALE'));  if isnan(sc), MARKER_SCALE = []; sc = 1; else, MARKER_SCALE = sc; end
+sc = str2double(getenv('SCALE'));  if isnan(sc), sc = 1; end, MARKER_SCALE = 2*sc;   % SCALE = old multiplier on the 2x base; MARKER_SCALE is now absolute
 ff  = ~strcmp(getenv('FF'), '0');
 kp  = str2double(getenv('KP')); if isnan(kp), kp = 0.3; end
 VDF_OVERRIDE = struct('theta_per_axis', true, 'yaw_omega_d_ff', ff);

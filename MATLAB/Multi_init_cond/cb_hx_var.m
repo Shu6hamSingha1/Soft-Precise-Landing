@@ -1,6 +1,6 @@
 clc; clear; addpath('../Common');
 global VDF_OVERRIDE MARKER_SCALE PX_NOISE_FIX PX_NOISE_PARAMS TARGET_YAW_RATE TARGET_TILT_OFF
-PX_NOISE_FIX=true; PX_NOISE_PARAMS=[0.027 0.175 0.5 0 0]; MARKER_SCALE=1;
+PX_NOISE_FIX=true; PX_NOISE_PARAMS=[0.027 0.175 0.5 0 0]; MARKER_SCALE=2;
 VDF_OVERRIDE=struct('theta_per_axis',true,'pinv_tol',4,'flow_reduced',true);
 cfg=struct('NOISE',0,'GE',1,'delay',1);
 V4={[],[];0,[]};

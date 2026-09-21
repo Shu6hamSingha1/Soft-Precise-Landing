@@ -17,7 +17,7 @@ fprintf('%-6s %-11s %-7s %-6s %-6s %-8s %-8s %-10s %-9s | %-9s %-9s %-9s\n', ...
     'scale','yaw cfg','landed','soft','prec','t_f','xy[m]','max|e_a|','term|e_a|','wz_seen','wz_true','viol[px]');
 for s = scales
     for c = 1:numel(cfgs)
-        MARKER_SCALE = s;
+        MARKER_SCALE = 2*s;  % s = old multiplier on the 2x base
         VDF_OVERRIDE = struct('theta_per_axis', true, 'yaw_omega_d_ff', cfgs(c).ff);
         r = run_simulation(x0, "Circular", struct('yaw_rate_law',1,'yrl_kp',cfgs(c).kp), 1.4, cfg, 1);
         d = r.data; idx = d.idx; if idx <= 0, idx = numel(d.e_a_log); end

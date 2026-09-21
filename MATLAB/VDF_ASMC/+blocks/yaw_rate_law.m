@@ -41,7 +41,7 @@ function [psi_d, u_a, cs] = yaw_rate_law(alpha, alpha_d, w_z, P, cs)
 %   while the marker spans only ~3-5 px, so the implicit target-rate feedforward is absent for the
 %   first ~2 s (an undamped phase, peak e_a = d/sqrt(k_p)). yrl_kp = 0.02 paid for that with a ~49 s
 %   slow pole and 100+deg terminal alignment error. Issue (1) is fixed by the tracker feedforward;
-%   issue (2) is mitigated by a larger marker (see MARKER_SCALE hook in Multi_init_cond/InitVar.m).
+%   issue (2) is mitigated by a larger marker (see the global MARKER_SCALE in Multi_init_cond/InitVar.m).
 %   See project_ic2_speed_sweep_failure_2026_09_17 memory.
 
     e_raw = alpha - alpha_d;
