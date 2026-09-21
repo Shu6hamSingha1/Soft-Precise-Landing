@@ -250,3 +250,75 @@ job — it correctly stopped a false regression from being pinned on `96271ba6`,
 took one more step (comparing `Img_Data.npy` keys) to find why both arms failed. The `96271ba6`
 axis fix remains uncontaminated by any of this: still not landing-quality gated, re-running
 now with `WORLD=cross_marker MARKER_TYPE=cross` set explicitly.
+
+---
+
+## BAKED 2026-09-18: `96271ba6` landing-quality validated, no regression
+
+IC1-5 gate, WORLD=cross_marker MARKER_TYPE=cross explicitly set (the §19 trap), PD-FB (real
+perception — `PLASMC_GT_FEEDBACK` defaults `"0"`, never set here). 18 reps total (IC1×5,
+IC2×5, IC3×1, IC4×6 across two sub-runs, IC5×1); 14 genuine touchdowns (`terminal_state_ok`),
+4 false-positive-touchdown-detect failures (see below — pre-existing, not this fix).
+
+| | pre-fix (Sep-12, real touchdowns) | post-fix (this session, real touchdowns) |
+|---|---|---|
+| precise | ~17/21 (81%) | 11/14 (79%) |
+| soft | 1/21 (5%) | 0/14 (0%) |
+
+No regression on any measured axis. IC4's one investigated outlier (`IC4_rep4`, this gate:
+0.788 m / 1.655 m/s) has `vis_active=0%` for its entire flight — the CBF never engaged — and
+the pre-fix worst IC4 rep (`IC4_rep3`, Sep-12: 0.486 m / 1.409 m/s) shows the identical
+signature (also `vis_active=0%`, also a short ~5s flight). Same failure mode before and
+after; the fix has zero involvement in either.
+
+**`96271ba6` is BAKED.** Already on `main` unconditionally (no flag), so nothing to flip —
+this entry is the landing-quality validation record the fix was missing.
+
+**Methodology note for next time:** `run_ic_validation.sh`'s own `landed` column (used
+throughout this gate's live reporting) means "a recording was saved," NOT "the vehicle
+touched down." The authoritative field is `Ground_Truth.npy`'s `SoftPrecise.terminal_state_ok`
+— check it before trusting any precise/soft rate computed from the summary.tsv's `landed=YES`
+rows. Caught late in this thread; corrected before baking, but the wrong count ("18/18 landed")
+was stated to the user first. Worth its own checklist entry.
+
+## NEW FINDING (out of scope for `96271ba6`, do not conflate): false-positive touchdown
+## detection is the dominant landing-quality blocker, not the CBF
+
+4/18 reps this gate (22%) never reached the surface — timed out mid-descent at altitudes from
+0.24 m up to **3.77 m**. All four show the identical signature:
+
+    [controller] TOUCHDOWN-DETECT v2 [flow-freeze]: extent=78/240px n_corn=148
+      flow_disp=0.19px |s_e_n|=0.27 -> LANDED (disarm before bounce)
+    [landing_test] Landing classification: NOT_LANDED [never reached surface: min 3.77 m above it]
+
+The `PLASMC_TOUCHDOWN_LOOM`/`PLASMC_TD_V2` "flow-freeze" touchdown detector fires on a
+transient optic-flow/extent pattern unrelated to actual ground proximity, tells the controller
+the vehicle has landed, and the controller stops commanding descent and attempts to disarm.
+PX4 correctly refuses ("Disarming denied: not landed") but the flight is over as far as the
+controller thread is concerned — this is a hard flight failure, not an imprecision.
+
+Pre-fix baseline (Sep-12) shows the SAME mechanism at a similar rate (4/25) but the misses
+there were near-threshold (min alt 0.21-0.30 m, essentially "landed but the 0.20 m check
+missed narrowly"). This gate's three worst cases (2.66, 3.50, 3.77 m) are genuine early
+triggers, not threshold noise — not enough n to say whether that's a real difference or just
+which draws landed in each n=small sample; needs its own n>=5 gate with the touchdown-detect
+diagnostic isolated (log `extent`/`flow_disp`/`s_e_n` at the trigger frame across many reps,
+check whether false triggers cluster by IC/altitude/marker-fill state) before concluding
+anything about severity trend.
+
+**Separately, soft touchdown is essentially never achieved (0/14 this gate, 1/25 pre-fix,
+~4%) and looks like a design characteristic rather than a bug.** Velocity breakdown at
+touchdown (`Telemetry_Data.npy["Velocity Body"]`, MAVSDK `VelocityBody`, body-frame — NOT a
+plain array, `.x_m_s`/`.y_m_s`/`.z_m_s`): **14/16 checked reps are dominated by VERTICAL
+velocity**, consistently ~0.35-0.6 m/s vs the 0.20 m/s soft threshold, lateral velocity
+usually small by comparison. Points to the descent reference `h_rd` being a constant (by
+deliberate prior design decision — memory already carries a caution against reintroducing a
+time-varying one): no terminal flare, so the vehicle touches down near its steady-state
+descent rate. This is not something the visibility CBF touches or could fix.
+
+**Priority for future work, by leverage:** (1) false-positive touchdown detection — fixing
+it converts hard failures into landings and directly raises BOTH precise and soft rates,
+since a rep that never lands can be neither; (2) a terminal descent flare/deceleration
+mechanism, if soft touchdown becomes a target — bigger scope, was previously avoided for
+good reasons (memory: three prior "slow the descent" attempts failed) so any new approach
+needs to reckon with why those failed, not repeat them.

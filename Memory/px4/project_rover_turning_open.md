@@ -9,6 +9,20 @@ metadata:
 
 ## ⛔⛔⛔ CORRECTION 2026-09-17 (later, same day) — THE RE-STAMP BELOW IS WRONG. THE CURVE IS STILL OPEN.
 
+> ⛔ **2026-09-18 note: the underlying ArUco-world `test_data/Rover_Turning/{r08_confirm,
+> cycle_isolation, worktree_d380901c, camera_640x480, qgate_revalidation}` referenced below
+> were DELETED at user instruction** — ArUco is an obsolete approach for the moving-rover
+> scenario. **What remains true and needs no re-verification**: the `ROVER_CIRCLE_R` 0.8m→10m
+> code fact (`b816fea0`) and the git-anchor-date mistake — both are code/history facts
+> independent of which marker is mounted on the rover, and the Kåsa-fit radius/sweep numbers
+> below measure the rover's DRIVEN PATH (marker-agnostic geometry), not marker detection.
+> **What would need re-verification on cross-marker before being relied on again**: the
+> camera-SDF-falsification numbers, the old-cone `theta_cone` comparison, and the tail-
+> variance claim — those measured CONTROLLER/perception behavior, which the 2026-09-18
+> cross-marker finding in [[project_20260916_curve_qgate_revalidation]] shows is NOT
+> equivalent between ArUco and cross-marker (the yaw-rate-law is `MARKER_TYPE=cross`-gated,
+> so ArUco silently ran a different yaw controller than cross-marker the whole time).
+
 **The limit cycle is ALIVE on current HEAD. It was never fixed — it was never re-tested.**
 
 `ROVER_TRAJ=Circular` stopped driving a real circle on **2026-07-03 12:13**, commit
