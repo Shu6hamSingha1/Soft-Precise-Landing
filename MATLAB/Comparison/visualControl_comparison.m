@@ -336,12 +336,16 @@ for idx = 1:N_steps
         % A feature point/arm tip clipping the edge is no longer a failure (MATLAB-only convention;
         % PX4/hardware perception degrades gracefully). Same rule for all 5 controllers.
         if cfeat, cen_px = C_ctr; else, cen_px = mean(C_nP, 2); end   % marker centre (run_simulation parity)
+        % Diagnostic switch (2026-09-21): global CMP_FOV_ABORT=false records the first FoV crossing (fov_fail, fov_fail_t)
+        % but does NOT abort, to test whether a controller would land if the target stayed available. Default (empty/true) = abort.
+        global CMP_FOV_ABORT %#ok<GVMIS>
         if abs(cen_px(1)) > res(1)/2 || abs(cen_px(2)) > res(2)/2
-            fov_fail   = true;
-            fov_fail_t = tRange(idx);
-            fprintf('  BREAK: FoV violation at idx=%d (t=%.2f), max|u|=%.1f, max|v|=%.1f\n', ...
-                idx, tRange(idx), max(abs(C_nP(1,:))), max(abs(C_nP(2,:))));
-            break;
+            if ~fov_fail, fov_fail = true; fov_fail_t = tRange(idx); end
+            if isempty(CMP_FOV_ABORT) || CMP_FOV_ABORT
+                fprintf('  BREAK: FoV violation at idx=%d (t=%.2f), max|u|=%.1f, max|v|=%.1f\n', ...
+                    idx, tRange(idx), max(abs(C_nP(1,:))), max(abs(C_nP(2,:))));
+                break;
+            end
         end
 
         % Virtual image plane transform
