@@ -52,7 +52,13 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     %   torque hold is the WRONG surrogate. Use meas_delay (perception latency,
     %   the lever PX4 docs tie h_rd/chi_r to) and keep it <= ~0.03 s -- MATLAB's
     %   own tune cliffs hard past that. See project_matlab_px4_lag_model_2026_09_10.
-    LAG = struct('on',false,'tau_act',0.038,'tau_yaw',0.287,'meas_delay',0.16);
+    %   YAW (2026-09-21): tau_yaw default 0.287 -> 0. With the direct body-rate yaw (so3_tracker,
+    %   P.yaw_direct_rate) the plant's own yaw rate loop is ALREADY first order with
+    %   tau = J_z/kOmega_z = 0.0552/0.2 = 0.276 s (measured step response: 63% at 0.270 s, 95% at 0.79 s,
+    %   check_yaw_rate_lag.m) = PX4's measured 287 ms (GT 275 ms), so a further 287 ms torque hold
+    %   double-counts (tested: an extra 287 ms moves peak |e_a| by only 0.2-0.6 deg, landings unchanged).
+    %   Set lag.tau_yaw explicitly to study a slower yaw chain.
+    LAG = struct('on',false,'tau_act',0.038,'tau_yaw',0,'meas_delay',0.16);
     if ~isempty(cfg_override) && isfield(cfg_override,'lag') && ~isempty(cfg_override.lag)
         lg = cfg_override.lag;
         if isstruct(lg)
