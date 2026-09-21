@@ -1,6 +1,6 @@
 %% Truncation study: closed-loop outcome AND optic-flow estimate quality vs pinv_tol, marker size, pixel noise.
-% Env: NOISEFIX=0/1 (global PX_NOISE_FIX: documented pixel noise vs legacy /f), SCALE (MARKER_SCALE hook on top of
-% the baked 2x: 0.5 -> 1x marker, 1 -> 2x), TOLS, SEEDS. Cases: Circular x1.4 and Linear x1.4 at IC2 (realistic cfg).
+% Env: NOISEFIX=0/1 (global PX_NOISE_FIX: documented pixel noise vs legacy /f), SCALE (old-style multiplier; sets the absolute
+% global MARKER_SCALE = 2*SCALE, x the 12 cm cross: 0.5 -> 1x marker, 1 -> 2x, 13 -> 26x = InitVar default), TOLS, SEEDS. Cases: Circular x1.4 and Linear x1.4 at IC2 (realistic cfg).
 % Estimator metrics over t in [0.3, min(t_end,8)]: LS slope of measured h_x vs analytic, rms|h_xy err|/rms|h_xy true|,
 % rms(w_z err)/rms(w_z true). Saves nothing.
 clc; clear;
