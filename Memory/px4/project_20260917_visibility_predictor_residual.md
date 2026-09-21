@@ -1,11 +1,11 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), four major results, in order: (1) visibility-CBF predictor residual measured (attitude-realization horizon ~144ms, buffer b=0.15 thin in the p99 tail, tau*d median-only); (2) a TRANSPOSED phi axis bug found and FIXED+BAKED in the visibility CBF (96271ba6) -- one image axis of the barrier was inert -- SITL-validated 14/14 genuine touchdowns, no regression; (3) the touchdown-detect flow-freeze false-positive root-caused and FIXED+BAKED (2177670b: resolution-invariant units + confidence gate + live-visibility gate) -- SITL-validated 22%->0% false-touchdown rate at n=25; (4) an OPEN soft-touchdown investigation -- GT-FB confirms 3/3 soft+precise is achievable, but the perceived h_z corrupts in the terminal ~150-450ms before touchdown for a reason only PARTIALLY identified after testing six candidate mechanisms (ill-conditioning falsified; near-grazing rays real but insufficient; KF rate-buildup real but ~5.6x short even with gyro-availability resolved; R-schedule/scale-fuse/backstop/gate all ruled out; sensor-cal matrix ruled out cleanly -- logged h_V is pre-cal/raw, apples-to-apples with all replays; live dt/fps was UNTESTABLE not ruled out -- found+fixed a dead FPS/AngVel/Stamp logging path, 2026-09-22, awaiting a fresh recording). N_z adaptive-law tuning was correctly ABANDONED as the wrong lever once this was found. See the SESSION CLOSE section for the full index and open items."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal divergence -- five ruled out or insufficient; (5) LIKELY ROOT CAUSE FOUND 2026-09-22: the offline replay tools' own dt was wrong (used Time[i]-Time[i-1], but the live raw flow solve uses dt=1/fps, which can differ from the log-timestamp delta by 3-8x in the terminal window because of the run() polling loop's frame-pairing architecture) -- after fixing a dead FPS/AngVel/Stamp logging path (a1ffbf02) and getting ONE fresh recording, redoing the raw-solve reconstruction with the CORRECT dt made it match logged h_V_z almost exactly (differences <0.02, vs the ~5.6x gap every prior dt=Time-delta reconstruction showed) -- meaning much of this thread's apparent 'unexplained perception divergence' was itself an artifact of the investigation's own tooling using the wrong dt, not necessarily a live controller bug. NOT YET fully closed: this confirmation rep didn't show a large spike (rel_vel=0.383, precise-only landing) -- still need one genuine large-divergence rep (like the original -0.77 case) reconstructed with the correct dt to confirm the mechanism explains the SPIKE cases too, not just the well-behaved ones. N_z adaptive-law tuning remains correctly ABANDONED. See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-21T19:51:20.541Z
+  modified: 2026-09-21T21:54:43.739Z
 ---
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
@@ -1076,3 +1076,58 @@ attributing the residual gap before acting.
 
 ### Tools
 `tools/replay_hw_kf_gyro.py` committed alongside this finding.
+
+## ===== 2026-09-22 (cont'd 2) -- SITL freed, fresh recording confirms dt-fix hypothesis =====
+
+SITL lane freed by `soft-precise-landing-53` (rover gate finished 03:05). Got ONE fresh
+headless `WORLD=cross_marker MARKER_TYPE=cross` recording with the FPS-logging fix in
+place (`test_data/Landing_Test/Tue Sep 22 03-22-59 2026`; PRECISE-only landing,
+xy=0.038m, rel_vel=0.383 m/s -- not a soft touchdown, but that's irrelevant to this check).
+
+**Confirmed `Img_Data["FPS"]` is now live** (0/1240 NaN, values 50-83.3 Hz, varying frame
+to frame -- the fix works).
+
+**Confirmed the dt mismatch is real and large in the terminal window**: printed
+`Time[i]-Time[i-1]` (`dt_log`, what every prior replay tool used) against `1/FPS[i]`
+(`dt_fps`, what `process_frame`'s raw solve actually divides by) for the last 0.6s before
+touchdown -- `dt_log` is **3-8x LARGER** than `dt_fps` throughout (e.g. t=-0.14s:
+dt_log=0.128, dt_fps=0.016, ratio=8.0). Mechanism: the `run()` polling loop's own call
+cadence (governed by new-stamp arrival + `time.sleep(0.002)`) can be much slower than the
+camera's native frame rate, but `imgs[0]/imgs[1]` (from `Image_Node`'s adjacent-pair deque)
+stay ONE native frame apart regardless -- so the raw solve's own dt is correctly small,
+but a lot of real elapsed time (and un-observed marker motion) can pass between
+consecutive PROCESSED calls without process_frame's raw solve ever seeing it.
+
+**Redid the raw-solve reconstruction using the CORRECT dt** (`1/FPS[i]`, not `Time` deltas)
+against this fresh recording, feeding it through the same `_kf_step` math as always
+(KF's own internal dt is `t-prev_t`, unaffected -- only the RAW measurement's own dt
+changes). Result: reconstructed KF state now matches the logged `h_V_z` almost exactly
+throughout the terminal window (e.g. -0.262 vs -0.238, -0.247 vs -0.243, -0.322 vs -0.238
+at the very last frame) -- **no ~5.6x gap, no unexplained divergence in this rep.**
+
+**Interpretation, held to the honest standard this thread has used throughout**: this is
+strong evidence that a meaningful fraction (possibly most) of the previously "unexplained"
+divergence in earlier reconstructions was an ARTIFACT of the investigation's OWN replay
+tooling using the wrong dt -- not necessarily evidence of a live controller defect. BUT this
+confirmation rep is a well-behaved landing (no large spike observed even in the ORIGINAL
+h_V_z here, max magnitude ~-0.32) -- it validates the METHODOLOGY (correct-dt reconstruction
+now tracks the KF's actual output essentially perfectly, which is itself the strongest
+sanity check this thread has produced on the reconstruction tools generally) but does NOT
+yet directly confirm that correct-dt reconstruction also explains a genuine LARGE spike case
+(the original `-0.771` `IC1_rep1` case this whole 5.6x-gap chase was about). That rep's own
+`FPS` field is dead/NaN (recorded before this fix), so it can't be redone with correct dt
+retroactively -- need a NEW recording that reproduces a comparable large spike.
+
+### Honest net state
+Root cause is LIKELY (not yet certain) the investigation's own dt bug, now fixed both in
+the live logging (so future recordings are diagnosable) and understood mechanistically
+(polling-loop-vs-native-rate decoupling). **Not closed**: get one more recording where a
+large terminal h_z excursion actually occurs (the original investigation's reps clustered
+around a marker-overfill/near-grazing-ray condition -- IC1 close-in approaches were the
+recurring spike case), and confirm the correct-dt reconstruction tracks THAT too, not just
+a well-behaved landing. If it does, this closes the whole soft-touchdown perception-side
+investigation: the apparent h_z corruption was a REPLAY-TOOL artifact, and the live
+controller's actual behavior (subject to separate scrutiny of whether the polling-loop dt
+decoupling itself degrades control, a genuinely different question from "was my offline
+reconstruction right") needs to be evaluated on its own terms, not through this thread's
+prior (dt-wrong) reconstructions.
