@@ -684,7 +684,7 @@ VISTA is compared against four representative landing controllers: \cite{lin2022
 
 \begin{table*}[!t]
 \centering
-\caption{Five-controller comparison under the shared disturbance model (Section~\ref{experimentation: section}-\ref{test conditions: subsec}), IC$_2=[2,2,-5]$~m, $40$~s cap.}
+\caption{Five-controller comparison under the shared disturbance model (Section~\ref{experimentation: section}-\ref{test conditions: subsec}), IC$_2=[2,2,-5]$~m, $40$~s cap, identical attitude tracker for all controllers. $t_\text{f}$: run time; $r_{xy,\text{f}}$: final horizontal error; $r_{z,\text{f}}$: final altitude above the target surface.}
 \label{comparison: table}
 \footnotesize
 \setlength{\tabcolsep}{3.5pt}
@@ -710,40 +710,40 @@ VISTA is compared against four representative landing controllers: \cite{lin2022
     & [s] & [m] & [m] \\
 \midrule
 \textbf{Proposed}
-    & $\mathbf{11.62}$           & $\mathbf{0.008}$ & $0.200$
-    & $\mathbf{11.06}$           & $\mathbf{0.040}$ & $0.201$
-    & $\mathbf{11.42}$           & $\mathbf{0.025}$ & $0.200$
-    & $\mathbf{11.67}$           & $\mathbf{0.010}$ & $0.200$
-    & $\mathbf{11.29}$           & $\mathbf{0.011}$ & $0.201$ \\
+    & $\mathbf{9.76}$ & $\mathbf{0.005}$ & $0.200$
+    & $\mathbf{9.84}$ & $\mathbf{0.025}$ & $0.201$
+    & $\mathbf{9.68}$ & $\mathbf{0.020}$ & $0.200$
+    & $\mathbf{9.75}$ & $\mathbf{0.039}$ & $0.201$
+    & $\mathbf{9.70}$ & $\mathbf{0.014}$ & $0.200$ \\
 PBVS--PPC \cite{lin2022}
-    & $\phantom{0}6.86^\dagger$  & $2.455$ & $1.538$
-    & $\phantom{0}4.82^\dagger$  & $1.785$ & $1.972$
-    & $\phantom{0}8.90^\dagger$  & $1.483$ & $1.074$
-    & $\phantom{0}3.74^\dagger$  & $3.084$ & $2.577$
-    & $\phantom{0}5.27^\dagger$  & $2.585$ & $1.859$ \\
+    & $18.66$ & $0.007$ & $0.200$
+    & $\phantom{0}2.97^\dagger$ & $2.416$ & $2.964$
+    & $18.69$ & $0.235$ & $0.200$
+    & $18.71$ & $0.245$ & $0.200$
+    & $18.51$ & $0.108$ & $0.200$ \\
 PBVS--AEDO \cite{zhang2026}
-    & $\phantom{0}7.79$          & $0.351$ & $0.208$
-    & $\phantom{0}7.49$          & $0.320$ & $0.203$
-    & $\phantom{0}7.67^\dagger$  & $0.498$ & $0.220$
-    & $\phantom{0}6.77^\dagger$  & $0.680$ & $0.749$
-    & $\phantom{0}7.41$          & $0.284$ & $0.205$ \\
+    & $21.39$ & $0.400$ & $0.203$
+    & $21.13$ & $0.423$ & $0.201$
+    & $21.37$ & $0.316$ & $0.203$
+    & $21.33$ & $0.409$ & $0.202$
+    & $21.15$ & $0.485$ & $0.200$ \\
 IBVS--PPC \cite{lin2023}
-    & $\phantom{0}4.79^\dagger$  & $2.191$ & $2.889$
-    & $\phantom{0}8.00^\dagger$  & $1.405$ & $1.561$
-    & $\phantom{0}2.33^\dagger$  & $2.104$ & $4.138$
-    & $\phantom{0}0.86^\dagger$  & $2.544$ & $4.866$
-    & $\phantom{0}8.72^\dagger$  & $1.771$ & $1.472$ \\
+    & $40.00^\ddagger$ & $0.011$ & $0.210$
+    & $\phantom{0}2.85^\dagger$ & $2.566$ & $3.854$
+    & $15.45^\dagger$ & $0.880$ & $0.586$
+    & $10.77^\dagger$ & $1.057$ & $1.176$
+    & $11.82^\dagger$ & $1.013$ & $1.040$ \\
 FF--IBVS \cite{cho2022}
-    & $\phantom{0}5.42^\dagger$  & $2.818$ & $2.105$
-    & $\phantom{0}6.20^\dagger$  & $1.960$ & $1.469$
-    & $\phantom{0}5.36^\dagger$  & $2.874$ & $2.145$
-    & $\phantom{0}5.63^\dagger$  & $2.800$ & $1.986$
-    & $\phantom{0}3.95^\dagger$  & $4.029$ & $3.558$ \\
+    & $40.00^\ddagger$ & $0.046$ & $0.316$
+    & $\phantom{0}8.75$ & $0.116$ & $0.200$
+    & $40.00^\ddagger$ & $0.208$ & $0.319$
+    & $\phantom{0}9.24^\dagger$ & $0.366$ & $0.251$
+    & $10.08^\dagger$ & $5.503$ & $7.281$ \\
 \bottomrule
 \end{tabular}
 \begin{tablenotes}[flushleft]
 \footnotesize
-\item $\dagger$: terminated before reaching the target surface (feature-visibility break or time-out).
+\item $\dagger$: terminated before reaching the target surface (feature-visibility break or divergence). $\ddagger$: ran to the $40$~s cap without touching down; \cite{lin2023} on Case~1 settles within $1$~cm of the landing gap and is counted as reaching the surface.
 \end{tablenotes}
 \end{threeparttable}
 \end{table*}
@@ -982,31 +982,32 @@ This appendix provides the full baseline gain comparison (Table~\ref{baseline ga
 \begin{table*}[!t]
 \centering
 \footnotesize
-\caption{Full gain comparison for the baseline controllers: paper-authoritative values vs.\ those used in this study. Each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under the shared disturbance model.}
+\caption{Full gain comparison for the baseline controllers: paper-authoritative values vs.\ those used in this study. All five controllers use the identical SO(3) attitude tracker; each baseline is retuned within its own framework on it (5-seed validated).}
 \label{baseline gains: table}
 \begin{tabular}{p{0.065\textwidth} p{0.18\textwidth} p{0.31\textwidth} p{0.36\textwidth}}
 \toprule
 \textbf{Controller} & \textbf{Paper-authoritative} & \textbf{Used here} & \textbf{Reason for deviation} \\
 \midrule
-PBVS--PPC \cite{lin2022} & $k_1{=}4.5$, $\rho_\infty{=}0.05$ uniform & $k_1{=}0.6$, $k_2{=}4.0$, $\rho_\infty^p{=}\rho_\infty^v{=}[0.30,0.30,0.15]$ & paper $\xi_v$ saturates the PPC barrier in 1--2 steps. $\rho_\infty^z$ widened to absorb the~\cite{lin2022} heave \\
-PBVS--AEDO \cite{zhang2026} & $K_{c_1}(3){=}0.6$, $K_{c_2}(3){=}2.6$ & $K_{c_1}{=}\text{diag}(0.25,0.25,0.03)$, $K_{c_2}{=}\text{diag}(2,2,0.15)$, $K_{c_3}{=}\text{diag}(2.5,2.5,0.5)$ & paper vertical $\omega_n{\approx}1.6$~rad/s finishes descent before horizontal loop converges \\
-IBVS--PPC \cite{lin2023} & control law per~\cite{lin2023}, \S III (per-axis $K_t,K_v$ + funnel $\rho$) & $k_1{=}[0.4,0.4,0.4]$, $k_2{=}4.0$, $\rho_{t,\infty}{=}[0.1,0.1,0.03]$, $l_t{=}[0.05,0.05,0.1]$ & best-effort within-framework tuning; no disturbance-rejection integrator $\Rightarrow$ steady lateral offset (structural) \\
-FF--IBVS \cite{cho2022} & $\lambda_{xy}{=}2.0$, $\lambda_z{=}5.0$ (Table~2) & $\lambda_{xy}{=}{-}0.8$, $\lambda_z{=}0$, $k_\sigma{=}0.02$, $v_\text{sat}^z{=}0.7$ & paper too aggressive for moving targets. Sign-flip resolves the downward-camera convention \\
+PBVS--PPC \cite{lin2022} & $k_1{=}4.5$, $\rho_\infty{=}0.05$ uniform & $k_1{=}[1.5,1.5,0.6]$, $k_2{=}4.0$, $\rho_\infty^p{=}[0.10,0.10,0.15]$, $\rho_\infty^v{=}[0.30,0.30,0.15]$, $l_p{=}l_v{=}[0.10,0.10,0.10]$ & paper $\xi_v$ saturates the PPC barrier in 1--2 steps. Lateral $k_1$ raised and lateral funnel tightened for tracking/precision; vertical $k_1$ kept since raising it aborts the run at launch \\
+PBVS--AEDO \cite{zhang2026} & $K_{c_1}(3){=}0.6$, $K_{c_2}(3){=}2.6$ & $K_{c_1}{=}\text{diag}(0.25,0.25,0.03)$, $K_{c_2}{=}\text{diag}(2,2,0.05)$, $K_{c_3}{=}\text{diag}(2.5,2.5,0.30)$ & paper vertical $\omega_n{\approx}1.6$~rad/s finishes descent before the horizontal loop converges. Vertical gains lowered to reduce touchdown speed ($\approx0.95\to0.65$~m/s) \\
+IBVS--PPC \cite{lin2023} & control law per~\cite{lin2023}, \S III (per-axis $K_t,K_v$ + funnel $\rho$) & $k_1{=}[1.2,1.2,0.4]$, $k_2{=}4.0$, $\rho_{t,\infty}{=}[0.1,0.1,0.03]$, $l_t{=}[0.05,0.05,0.1]$ & lateral feature gain raised ($0.4\to1.2$; $\ge2.2$ or faster funnels abort at launch) \\
+FF--IBVS \cite{cho2022} & $\lambda_{xy}{=}2.0$, $\lambda_z{=}5.0$ (Table~2) & $\lambda_{xy}{=}{-}0.8$, $\lambda_z{=}{-}2.0$, $k_\sigma{=}5{\times}10^{-4}$, $v_\text{sat}^z{=}0.7$ & paper too aggressive for moving targets; $k_\sigma$ lowered ($0.02\to5{\times}10^{-4}$) because the large marker's stub offsets the centroid and closes the altitude gate \\
+Attitude (all five) & baselines' own law: $k_R{=}\text{diag}(0.8,0.8,0.4)$, $k_\Omega{=}\text{diag}(0.15,0.15,0.08)$ & SO(3) tracker: $k_R{=}\text{diag}(2.5,2.5,0.5)$, $k_\Omega{=}\text{diag}(0.3,0.3,0.2)$ + adaptive CoG feedforward & the baselines' proportional-only law leaves a steady attitude bias under the CoG offset of the disturbance model \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
 \subsection{Performance-Constrained PBVS \cite{lin2022}}
-The scheme of~\cite{lin2022} feeds the transformed velocity error $\xi_{v_k}=e_{v_k}/\rho_{v_k}(t)\in(-1,1)$ into a barrier function over the prescribed-performance envelope $\rho_{p_k}(t)=(\rho_{p_k}(0)-\rho_{p_k}^\infty)e^{-l_{p_k}t}+\rho_{p_k}^\infty$. Widening the $z$-axis to $\rho_{v_\infty}(3)=0.15~\text{m/s}$ accommodates the heave on Cases~2 and~5. The horizontal axes, however, are structurally incompatible with the shared disturbance model: the steady-state velocity error from the $\pm 0.2~\text{m/s}$ wind plus OU turbulence already occupies a substantial fraction of any $\rho_{v_\infty}^{xy}$ compatible with $z$-descent authority, and the moving-target tracking error pushes $\|\xi_v^{xy}\|$ to the barrier $|\xi_v|=1$ on a subset of noise realizations. Since the barrier is a hard constraint, no gain setting simultaneously admits the worst-case velocity error and preserves descent authority. The commanded position excursion forces image features outside the FoV well before touchdown, triggering the visibility break at $t_\text{f}=3.74$--$8.90~\text{s}$ with lateral separations $1.48$--$3.08~\text{m}$ (worst on Case~4), $1.1$--$2.6~\text{m}$ above the surface.
+The scheme of~\cite{lin2022} feeds the transformed velocity error $\xi_{v_k}=e_{v_k}/\rho_{v_k}(t)\in(-1,1)$ into a barrier function over the prescribed-performance envelope $\rho_{p_k}(t)=(\rho_{p_k}(0)-\rho_{p_k}^\infty)e^{-l_{p_k}t}+\rho_{p_k}^\infty$. Widening the $z$-axis to $\rho_{v_\infty}(3)=0.15~\text{m/s}$ accommodates the heave on Cases~2 and~5. On the shared attitude tracker, raising only the lateral position gain ($k_1^{xy}=1.5$) and tightening the lateral funnel ($\rho_{p_\infty}^{xy}=0.10$, $l^{xy}=0.10$) lets the scheme touch down soft-precise on the static Case~1 ($t_\text{f}=18.7~\text{s}$, $r_{xy,\text{f}}=0.7~\text{cm}$, $0.02~\text{m/s}$) and reach the surface on Cases~3--5 with $r_{xy,\text{f}}=0.11$--$0.25~\text{m}$; raising $k_1$ on the vertical axis as well aborts the run at launch because the initial descent demand drives the barrier. The remaining limitation is tracking a receding target: with no target-velocity feedforward the lateral error settles near the target speed divided by the effective lateral gain, and nothing constrains where the marker sits in the image. On Case~2 the lateral error reaches $2.4~\text{m}$ at $3.0~\text{m}$ altitude at $t=3.0~\text{s}$, the marker centre crosses the $\pm41.6^\circ$ vertical half-FoV of the $320\times240$ image, and the run aborts, on every one of five noise seeds. Over five seeds and the five cases it reaches the surface in $15$ of $25$ runs and touches down soft-precise in $4$ (all static).
 
 \subsection{PBVS with Adaptive Extended Disturbance Observer \cite{zhang2026}}
-The backstepping law of~\cite{zhang2026} gives a per-axis second-order closed loop with $\omega_n=\sqrt{(K_{c_1}K_{c_3}+K_{c_2})/m}$ and $\zeta=(mK_{c_1}+K_{c_3})/(2m\omega_n)$. This is the strongest baseline, reaching the target surface on Cases~1, 2, and~5 in $t_\text{f}=7.41$--$7.79~\text{s}$ with $r_{xy,\text{f}}=0.28$--$0.35~\text{m}$; on Cases~3 and~4 the lateral error near the ground grows enough that feature visibility breaks $0.22$--$0.75~\text{m}$ above the surface. The structural limitation is the decoupling of horizontal and vertical time scales: even after gentling the $z$ axis ($\omega_n^z\approx 0.4$~rad/s), the $z$-loop drives the UAV through the descent on a fixed timescale $t_\text{f}\approx 7.6~\text{s}$ before the horizontal loop closes the lateral error. The resulting $r_{xy,\text{f}}=0.28$--$0.35~\text{m}$ exceeds $0.08~\text{m}$ on every reached case, and the terminal relative speed of $0.45$--$0.61~\text{m/s}$ also breaks the $0.20~\text{m/s}$ soft bound. With no mechanism coupling descent rate to image-plane error closure, the trade-off cannot be removed by gain tuning.
+The backstepping law of~\cite{zhang2026} gives a per-axis second-order closed loop with $\omega_n=\sqrt{(K_{c_1}K_{c_3}+K_{c_2})/m}$ and $\zeta=(mK_{c_1}+K_{c_3})/(2m\omega_n)$. Retuned on the shared tracker ($K_{c_2}(3)=0.05$, $K_{c_3}(3)=0.30$) it reaches the surface on every case, $t_\text{f}=21.1$--$21.4~\text{s}$, but never soft-precise: $r_{xy,\text{f}}=0.32$--$0.49~\text{m}$ ($4$--$6\times$ the precise bound) and terminal speed $0.85$--$0.87~\text{m/s}$ ($4\times$ the soft bound); over five seeds it reaches the surface in $20$ of $25$ runs with terminal speed $0.60$--$0.69~\text{m/s}$ and is never soft-precise. The vertical channel is the structural limitation: the law has no descent-rate limit near the surface and, under position/velocity measurement noise, the slow vertical loop settles into a large oscillation. On Case~1 the vehicle descends to $2.9~\text{m}$ by $8~\text{s}$, climbs back to $4.3~\text{m}$ by $16~\text{s}$, then plunges and reaches the surface at $0.86~\text{m/s}$. Slowing the vertical gains lowers the terminal speed (from about $0.95$ to $0.65~\text{m/s}$) but not below the $0.20~\text{m/s}$ bound, and no mechanism couples descent rate to image-plane error closure.
 
 \subsection{Robust Prescribed-Performance IBVS \cite{lin2023}}
-The controller of~\cite{lin2023} drives circle-feature image moments to their desired values through a prescribed-performance funnel on the transformed feature error, with a geometric SO(3) attitude tracker on the inner loop. The funnel bounds the feature error, but the control law contains no disturbance-rejection integrator, and the funnel constrains the feature \emph{error} rather than retaining a growing, off-center target inside the FoV. These two omissions are structural. Under the constant-mean wind of the shared disturbance model, the proportional funnel law settles at a non-zero steady lateral image offset that no within-framework gain choice removes, and the closed loop fails to reach the target surface on every trajectory, terminating $0.86$--$8.72~\text{s}$ after launch and $1.5$--$4.9~\text{m}$ above the surface (earliest on Case~4). Across the target-velocity sweep the termination time shortens with $\lambda$ on most trajectories ($0/20$ soft-precise). The limitation follows from the missing integrator and the missing visibility-retention mechanism, not from gain selection.
+The controller of~\cite{lin2023} drives circle-feature image moments to their desired values through a prescribed-performance funnel on the transformed feature error, with the shared geometric SO(3) attitude tracker on the inner loop. On the static Case~1 the lateral loop converges to $r_{xy,\text{f}}=1.1~\text{cm}$ and the vehicle settles $0.21~\text{m}$ above the surface, within $1$~cm of the landing gap, but never triggers touchdown before the $40$~s cap because the funnel-limited descent approaches the gap asymptotically; it is counted as reaching the surface at that tolerance. On the moving Cases~2--5 the proportional funnel law lags the receding target and nothing retains the marker in the image, so the features leave the FoV $2.9$--$15.5~\text{s}$ after launch and $0.6$--$3.9~\text{m}$ above the surface (earliest on Case~2, at $3.9~\text{m}$ altitude and $2.6~\text{m}$ lateral error). Raising the lateral feature gain from $0.4$ to $1.2$ recovers the static case ($3$ of $5$ seeds soft-precise); at $2.2$ or with faster funnels the run aborts at launch. In the velocity sweep it is soft-precise in $8/20$ runs, all on the Lissajous target and on the sinusoidal target for $\lambda\le1.0$.
 
 \subsection{Feed-Forward IBVS \cite{cho2022}}
-The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\boldsymbol{e}+\boldsymbol{v}_{\text{ff}}$ and gates the $z$ axis by the sigmoid altitude gain on the image-centroid displacement norm. Under the shared disturbance model the sigmoid gate admits the descent while the pseudo-inverse lateral loop, lacking integral action, cannot hold the moving target centered against the wind. The lateral error grows through the descent and the features leave the FoV $4.0$--$6.2~\text{s}$ after launch, $1.5$--$3.6~\text{m}$ above the surface, on every case. Because the law contains neither integral action against the constant-mean wind nor any visibility mechanism, no choice of $\lambda$, $k_\sigma$ closes the gap: lowering the gate throttles descent, raising it adds sigmoid chatter from centroid jitter under pixel noise.
+The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\boldsymbol{e}+\boldsymbol{v}_{\text{ff}}$ and gates the $z$ axis by the sigmoid altitude gain $a_z=1-\sigma(k_\sigma c)$ on the image-centroid displacement norm $c$. On the large marker of this study the stub offsets the key-point centroid by the order of $100$~px near the surface, so with the original $k_\sigma=0.02$ the gate closes ($a_z\to0$) and the descent stalls $0.3$--$0.4~\text{m}$ above the surface; lowering $k_\sigma$ to $5{\times}10^{-4}$ relieves it only partly. On Case~1 it converges laterally ($4.6~\text{cm}$) but stalls $0.32~\text{m}$ above the surface for the full $40$~s; Case~3 stalls at the same height; on Case~2 it reaches the surface hard/imprecise ($0.116~\text{m}$); on Case~4 it terminates at $9.2~\text{s}$, $0.25~\text{m}$ above the surface; on Case~5 the lateral loop diverges (terminating at $7.3~\text{m}$ altitude after $10~\text{s}$). Over five seeds it reaches the surface in $8$ of $25$ runs and is never soft-precise; in the velocity sweep it is soft-precise in $3/20$ runs, all on the linear target for $\lambda\ge1.0$.
 
 
 \begin{table*}[!t]
@@ -1019,10 +1020,10 @@ The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\bold
 \toprule
 \textbf{Baseline} & \textbf{Structural failure mode} & \textbf{VISTA mechanism that prevents it} & \textbf{Reference} \\
 \midrule
-PBVS--PPC \cite{lin2022} & PPC barrier saturates under wind plus mean target motion, forcing image features outside the camera FoV before touchdown & Visibility CBF conditions the commanded body tilt to keep every feature point in view, independently of the funnel transients & Property~\ref{prop:deliverable} + Theorem~\ref{thm:visibility} \\
-PBVS--AEDO \cite{zhang2026} & Fixed closed-loop bandwidth produces terminal lateral error proportional to target velocity; cannot couple descent rate to image-plane error closure & Depth-aware $\beta$ accelerates convergence as $z\to h_\text{lg}$, shrinking the terminal error within the precise bound & Theorem~\ref{thm:precision} ($\beta$-adaptive ASMC) + Remark~\ref{rem:leakage} \\
-IBVS--PPC \cite{lin2023} & Prescribed-performance funnel on image features carries no disturbance-rejection integrator; constant wind produces a steady lateral offset that grows unchecked on a moving platform, and the closed loop never reaches the target surface & Leakage-type adaptive sliding-mode law identifies and rejects the disturbance online with no steady offset, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
-FF--IBVS \cite{cho2022} & Pseudo-inverse lateral velocity law carries no disturbance-rejection integrator and no visibility mechanism; wind and target motion drive the features out of the FoV during descent & Leakage-type adaptive law rejects the wind with no steady offset through independent lateral and descent feedback paths, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
+PBVS--PPC \cite{lin2022} & The PPC funnel law lags a receding target (no target-velocity feedforward) and nothing keeps the marker in view: the features leave the FoV on the linear case; elsewhere it lands imprecise & Visibility CBF conditions the commanded tilt to keep the marker centre in view independently of funnel transients & Property~\ref{prop:deliverable} + Theorem~\ref{thm:visibility} \\
+PBVS--AEDO \cite{zhang2026} & No descent-rate limit near the surface and a slow vertical loop that oscillates under measurement noise: reaches the surface on every case at $0.85$--$0.87$~m/s with $0.32$--$0.49$~m lateral error & Depth-aware $\beta$ couples descent rate to image-plane error closure, giving a soft, precise touchdown & Theorem~\ref{thm:precision} ($\beta$-adaptive ASMC) + Remark~\ref{rem:leakage} \\
+IBVS--PPC \cite{lin2023} & The feature funnel lags a moving target and nothing retains the marker in view: FoV loss on every moving case; on the static case it settles at the landing gap without completing touchdown & Visibility CBF holds the features in view, and the adaptive law drives the depth-aware descent through to touchdown & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
+FF--IBVS \cite{cho2022} & Centroid-based altitude gate closes on a large marker and stalls the descent above the surface; the pseudo-inverse lateral law lags moving targets and has no visibility mechanism & Descent is depth-aware and independent of the centroid offset, and the visibility CBF holds the features in view & Theorem~\ref{thm:precision} + Theorem~\ref{thm:visibility} \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -1040,7 +1041,7 @@ FF--IBVS \cite{cho2022} & Pseudo-inverse lateral velocity law carries no disturb
     \subcaptionbox{Case~3 (sinusoidal)\label{comparison_multi_speed_sinusoidal: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_sinusoidal.pdf}}\\[2pt]
     \subcaptionbox{Case~4 (Lissajous)\label{comparison_multi_speed_lissajous: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_lissajous.pdf}}\hfill
     \subcaptionbox{Case~5 (circular)\label{comparison_multi_speed_circular_sup: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_circular.pdf}}
-    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on the moving Cases~2--5 from IC$_1=[0,0,-5]$~m. Within each panel, each subplot is one baseline and each shaded box is the per-$\lambda$ soft-precise allowable landing region around the corresponding target. Touchdown markers as in Fig.~\ref{fig:sup-multiinit}. None of the four baselines lands soft-precise at any $\lambda$ on any case.}
+    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on the moving Cases~2--5 from IC$_1=[0,0,-5]$~m. Within each panel, each subplot is one baseline and each shaded box is the per-$\lambda$ soft-precise allowable landing region around the corresponding target. Touchdown markers as in Fig.~\ref{fig:sup-multiinit}. The baselines touch down soft-precise in $18$ of $80$ runs, in isolated cells: \cite{lin2022} on the circular target at every $\lambda$ (and at $\lambda=0.6$ on the sinusoidal and Lissajous targets), \cite{lin2023} on the Lissajous target at every $\lambda$ and on the sinusoidal target for $\lambda\le1.0$, \cite{cho2022} on the linear target for $\lambda\ge1.0$, and \cite{zhang2026} in none.}
     \label{comparison_multi_speed: figure}
 \end{figure*}
 
