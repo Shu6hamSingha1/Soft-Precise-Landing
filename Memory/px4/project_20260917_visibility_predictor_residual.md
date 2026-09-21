@@ -632,3 +632,80 @@ recommendation.
 - Whether this same mechanism explains the CBF drift-lead's "terminal-overfill" exposure
   flagged earlier this session -- plausible given the shared window, NOT yet verified with
   the same rigor applied here. Don't assume it's the same without checking.
+
+---
+
+## 2026-09-22: cond(A_reduced) reconstructed directly -- ill-conditioning FALSIFIED,
+## near-grazing-ray perspective-divide amplification CONFIRMED (a known, predicted,
+## never-confirmed mechanism)
+
+User: "go the extra step and reconstruct cond(A_reduced) precisely." Could not confirm
+whether the LIVE solve used the gyro-reduced 4-unknown path -- `Img_Data["IMU AngVel"]`
+is NaN across all 1347 frames of `IC1_rep1`, traced to a DIFFERENT, apparently-unwired
+log source (`self._pending_angvel`, distinct from `getAngVels()`'s `_angvel_deque` that
+`_solve_jacobian` actually receives) -- so this doesn't establish gyro availability either
+way. Computed the FULL 6-unknown `cond(A)` instead, which is well-defined regardless.
+
+### Reconstruction method
+Replicated `_getVirtualPts` + `_fill_A` + `np.linalg.lstsq`/`np.linalg.cond` exactly
+(script: scratchpad, not yet committed -- see Still Open) against the raw
+`Flow Points Prev/Curr Px` + `Quat` already saved in `Img_Data.npy`. Applied to
+`IC1_rep1` (gradual divergence) and `IC4_rep2` (sharp single-frame spike).
+
+### Result 1 -- FALSIFIED: `cond(A_full)` stays modest throughout
+IC1_rep1: 7.8-10.4 across the ENTIRE terminal window, no jump at the divergence onset.
+IC4_rep2: 7-16 through its spike window too. Neither shows the blow-up a genuine
+ill-conditioning/rank-deficiency event would produce. **The point-spread correlation found
+in the prior entry was real, but the mechanism it correlates with is NOT matrix
+ill-conditioning of the lstsq system.**
+
+### Result 2 -- CONFIRMED: near-grazing-ray perspective-divide amplification
+Discovered while checking `IC4_rep2`'s exact spike frame: the RAW single-frame solve's
+`Tz` jumps `-0.451 -> -1.860` in one ~16ms step (t=13.320->13.336) -- the logged (KF-state)
+`h_V_z` only shows `-0.126 -> -0.678` at the same transition, i.e. **the KF is DAMPING the
+raw spike, not amplifying it** (reverses an earlier worry about the KF being the
+corrupting stage). Simultaneously, `zv_min` (minimum per-point ray height above the
+gravity-leveled V-frame, `_getVirtualPts`'s own diagnostic) drops steadily through this
+exact window: 0.95->0.83->0.67->**0.60 (at the spike)**->0.47. `IC1_rep1` shows the
+identical, more gradual trend (0.97->0.87-0.89).
+
+**This is a mechanism the code's own 2026-08-02 comment already predicted and flagged as
+unconfirmed:** "A near-zero z_v blows up the perspective divide into a huge or sign-flipped
+point... without tripping any of the existing n_kept/cond/rel_resid diagnostics (those
+check the LSTSQ FIT, not the per-point PROJECTION that feeds it)." That is now confirmed
+directly, not inferred.
+
+### A partially-tested lever for exactly this already exists
+`CROSS_Z_V_MIN_FLOW` (default 0.0, drops only z_v<=0 behind-camera rays -- "unambiguously
+correct, can't starve the solve"). Comment: raising toward ~0.4 "ALSO drops amplified-but-
+not-flipped near-grazing rays -- TESTED at 0.4 bundled with the (reverted) angular window
+[`CROSS_FLOW_ANG_MAX`] and the pair regressed terminal h_x/h_y badly; **0.4 in ISOLATION is
+untested.**" The angular-window backfire is a SEPARATE, unrelated failure mode (once the
+marker fills the frame, a centered angular restriction leaves only 4-5 near-collinear
+survivors -> unbounded few-point Tx/Ty noise, worse than the edge-point bias it targeted)
+-- do not conflate the two knobs; my finding is specifically about `Z_V_MIN_FLOW`, not
+`FLOW_ANG_MAX`. My measured `zv_min` at the spike (0.47-0.6) is mostly ABOVE the
+previously-tried 0.4, so 0.4 alone likely would not have caught this case either --
+suggests something closer to 0.5-0.6, `Z_V_MIN_FLOW` ONLY, `FLOW_ANG_MAX` left at its
+inert 99 default.
+
+### Verdict / next step
+Root mechanism for the terminal loom (h_z) divergence: CONFIRMED as near-grazing-ray
+perspective-divide amplification, not matrix conditioning, not a KF artifact (KF damps
+it), not the extent/rel_resid correlation originally proposed (real but non-causal --
+elevated for the whole window, not discriminating). Next, well-scoped experiment:
+`CROSS_Z_V_MIN_FLOW` raised in isolation (~0.5-0.6) to drop near-grazing points from the
+loom solve specifically, leaving `FLOW_ANG_MAX` untouched. Should be checked first via the
+SAME offline replay method (re-run the geometry-rejection filter against the already-
+recorded point clouds, count how many spike frames it would have suppressed) before any
+live SITL test, matching this thread's now-established practice.
+
+### Still open
+- The offline reconstruction script lives only in scratchpad -- commit it (matching this
+  session's practice of shipping the tool alongside the claim) before relying on this
+  finding further.
+- Whether raising `Z_V_MIN_FLOW` alone actually helps needs to be checked by REPLAYING the
+  filter against recorded point clouds first (offline), then a live SITL gate -- not done.
+- The gyro-availability ambiguity (does the live solve actually run the reduced 4-unknown
+  path?) was not resolved and doesn't block this finding, but is worth resolving before
+  touching the gyro-derotation code path specifically.
