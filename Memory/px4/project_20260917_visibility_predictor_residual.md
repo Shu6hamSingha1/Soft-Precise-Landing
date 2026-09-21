@@ -709,3 +709,58 @@ live SITL test, matching this thread's now-established practice.
 - The gyro-availability ambiguity (does the live solve actually run the reduced 4-unknown
   path?) was not resolved and doesn't block this finding, but is worth resolving before
   touching the gyro-derotation code path specifically.
+
+---
+
+## CORRECTION 2026-09-22 (same session): CROSS_Z_V_MIN_FLOW does NOT fix the divergence,
+## on either test case -- the near-grazing-ray finding is real but insufficient/irrelevant
+
+User: "go ahead" (replay the filter offline before any SITL test). Built
+`tools/replay_zvmin_filter.py`, replicating the live `_geokeep` block +
+`MIN_FLOW_POINTS_SOLVE=4` count-floor fallback EXACTLY, and tested candidate
+`CROSS_Z_V_MIN_FLOW` thresholds {0.3,0.4,0.5,0.6,0.7} against both reps. Result is a clean
+negative on the proposed fix, for two DIFFERENT reasons per rep:
+
+**IC4_rep2 (the sharp spike):** filtering to Zv>=0.7 drops 43-121 of 143-179 points, but
+the spike barely moves -- at the exact spike frame (t=13.336): filtered sol_Tz=-1.864 vs
+unfiltered -1.860. Nearby frames show the same (t=13.352: -2.035 filtered vs -2.097
+unfiltered). **The near-grazing points are not the ones driving the blow-up -- the
+REMAINING, non-grazing points still jointly solve to a large Tz.** So while zv_min
+genuinely correlates with (and precedes) this spike, as the prior entry found, it is not
+a small-number-of-bad-points problem that point-exclusion can fix; something about the
+AGGREGATE fit changes, not a few outlier rays.
+
+**IC1_rep1 (the gradual divergence):** `zv_min` never drops below 0.87 anywhere in the
+whole terminal window -- the filter is a complete no-op at every threshold tested, up to
+0.7. Yet the divergence still happens (raw solve drifts -0.02->-0.20 over the same
+window). **The near-grazing-ray mechanism doesn't even apply here** -- z_v isn't remotely
+close to a relevant threshold for this rep's failure mode.
+
+**A further wrinkle, found while comparing raw-vs-KF across the two reps:** in IC4_rep2
+the KF DAMPS a large raw spike (raw -1.860, KF -0.678 at the same frame -- the previous
+entry's finding). In IC1_rep1 it's the OPPOSITE: the raw per-frame solve stays modest
+(max ~-0.2) throughout this window, while the KF-reported h_V_z grows much LARGER (-0.77)
+-- the KF's own STATE is more extreme than any single measurement feeding it. This points
+at the KF's own temporal dynamics (predict step, R-scheduling, or something accumulating
+across cycles) as the driver for the gradual case, not the per-frame geometry at all.
+
+### Corrected verdict
+`CROSS_Z_V_MIN_FLOW` is NOT the fix -- retracting that recommendation. The near-grazing-
+ray correlation from the prior entry is real (genuinely co-occurs with, and precedes, the
+sharp-spike case) but is not SUFFICIENT to explain it (excluding those points doesn't
+suppress the spike) and is IRRELEVANT to the more common gradual-divergence case entirely.
+Two apparently different failure SHAPES (sharp single-frame spike vs gradual multi-frame
+drift) may have two different root mechanisms, or a shared one that manifests differently
+-- not yet established.
+
+### Next direction (not yet investigated)
+The KF's own dynamics -- specifically the LOOM R SCHEDULE (`_loomRMult()`, adjusts r[2]
+by some already-computed multiplier every frame, mechanism not yet read), the predict-vs-
+update balance, and the coast/freeze logic -- are now the more promising lead, especially
+for the gradual-divergence case where the RAW per-frame solve doesn't show the problem at
+all but the KF STATE does. Have not yet read `_loomRMult()`'s implementation or traced the
+KF's predict step.
+
+### Tool
+`tools/replay_zvmin_filter.py` committed alongside this finding, replicating the exact
+live filter + fallback logic so the negative result is reproducible, not asserted.
