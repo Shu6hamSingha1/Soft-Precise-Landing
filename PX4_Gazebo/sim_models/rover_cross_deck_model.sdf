@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='rover_cross'>
+    <self_collide>false</self_collide>
+    <include merge='true'>
+      <uri>rover_ackermann</uri>
+    </include>
+    <!-- Ported from rover_aruco/model.sdf (2026-08-24): same jointed landing
+         platform (drone lands ON it, not on a floating massless marker -- see
+         rover_aruco's comment on the 2026-07-02 terminal-fly-away root cause),
+         with the marker swapped for the cross_marker fiducial texture at its
+         validated 3.0x3.0 size (see cross_marker/model.sdf: stroke needs
+         ~3m plane for reliable decode at typical hover altitudes) and forced
+         non-metallic PBR (see cross_marker/model.sdf: unspecified metalness
+         defaulted reflective and wiped out detection under Gazebo Harmonic). -->
+    <link name='landing_platform'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.022</ixx><iyy>0.022</iyy><izz>0.03</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name='platform_collision'>
+        <pose>0 0 0.30 0 0 0</pose>
+        <geometry><box><size>0.6 0.6 0.4</size></box></geometry>
+      </collision>
+      <visual name='platform_visual'>
+        <pose>0 0 0.30 0 0 0</pose>
+        <geometry><box><size>0.6 0.6 0.4</size></box></geometry>
+        <material>
+          <diffuse>0.6 0.6 0.6 1</diffuse>  <!-- 2026-09-01: was 0.25 0.25 0.3 (V~76) -> passed the cross detector's V<=100 dark gate, box side-walls became spurious Hough lines (centroid_mismatch). Mid-grey concrete V~153, gated out like the background. -->
+        </material>
+      </visual>
+      <visual name='marker_visual'>
+        <pose>0 0 0.501 0 0 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>3.0 3.0</size>
+          </plane>
+        </geometry>
+        <material>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.4 0.4 0.4 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://cross_marker/cross_marker.png</albedo_map>
+              <metalness>0.0</metalness>
+              <roughness>1.0</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+    <!-- DECK MOTION (2026-09-22): heave/roll/pitch chain replaces the fixed platform joint so
+         rover_drive.py can play the manuscript ship-deck cases (heave 0.2 sin .5t, roll 15deg sin .9t,
+         pitch 8deg sin(.6t+pi/3)). landing_platform origin == rover origin at rest (pose-index/altitude
+         offsets unchanged); visual/collision/marker offset +0.30 inside the link. Cmds: /deck/<joint>/cmd_pos -->
+    <link name='deck_heave_link'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial><mass>0.5</mass><inertia><ixx>0.05</ixx><iyy>0.05</iyy><izz>0.05</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+    </link>
+    <link name='deck_roll_link'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial><mass>0.5</mass><inertia><ixx>0.05</ixx><iyy>0.05</iyy><izz>0.05</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+    </link>
+    <joint name='deck_heave' type='prismatic'>
+      <parent>base_link</parent><child>deck_heave_link</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-0.4</lower><upper>0.4</upper><effort>2000</effort></limit>
+        <dynamics><damping>1.0</damping></dynamics></axis>
+    </joint>
+    <joint name='deck_roll' type='revolute'>
+      <parent>deck_heave_link</parent><child>deck_roll_link</child>
+      <axis><xyz>1 0 0</xyz><limit><lower>-0.6</lower><upper>0.6</upper><effort>300</effort></limit>
+        <dynamics><damping>1.0</damping></dynamics></axis>
+    </joint>
+    <joint name='deck_pitch' type='revolute'>
+      <parent>deck_roll_link</parent><child>landing_platform</child>
+      <axis><xyz>0 1 0</xyz><limit><lower>-0.6</lower><upper>0.6</upper><effort>300</effort></limit>
+        <dynamics><damping>1.0</damping></dynamics></axis>
+    </joint>
+    <plugin filename='gz-sim-joint-position-controller-system' name='gz::sim::systems::JointPositionController'>
+      <joint_name>deck_heave</joint_name><topic>/deck/deck_heave/cmd_pos</topic>
+      <p_gain>1500</p_gain><i_gain>0</i_gain><d_gain>80</d_gain>
+      <cmd_max>2000</cmd_max><cmd_min>-2000</cmd_min>
+    </plugin>
+    <plugin filename='gz-sim-joint-position-controller-system' name='gz::sim::systems::JointPositionController'>
+      <joint_name>deck_roll</joint_name><topic>/deck/deck_roll/cmd_pos</topic>
+      <p_gain>250</p_gain><i_gain>0</i_gain><d_gain>8</d_gain>
+      <cmd_max>300</cmd_max><cmd_min>-300</cmd_min>
+    </plugin>
+    <plugin filename='gz-sim-joint-position-controller-system' name='gz::sim::systems::JointPositionController'>
+      <joint_name>deck_pitch</joint_name><topic>/deck/deck_pitch/cmd_pos</topic>
+      <p_gain>250</p_gain><i_gain>0</i_gain><d_gain>8</d_gain>
+      <cmd_max>300</cmd_max><cmd_min>-300</cmd_min>
+    </plugin>
+  </model>
+</sdf>

@@ -55,15 +55,16 @@ import os
 import sys
 import asyncio
 import math
+import subprocess
 
 import rclpy
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 
 from mavsdk import System
-from mavsdk.offboard import OffboardError, PositionNedYaw
+from mavsdk.offboard import OffboardError, PositionNedYaw, VelocityNedYaw
 
-from rover_trajectory import eval_traj, TRAJECTORY_TYPES
+from rover_trajectory import eval_traj, deck_state, TRAJECTORY_TYPES
 from gz_subscriber import Clock_Node, GZ_Subscriber
 
 MAV_URL = os.environ.get("ROVER_MAV_URL", "udp://:14541")
@@ -73,11 +74,41 @@ YAW_MODE = os.environ.get("ROVER_YAW_MODE", "spec")
 RATE_HZ = float(os.environ.get("ROVER_RATE_HZ", "20"))
 MAX_T = os.environ.get("ROVER_MAX_T")
 MAX_T = float(MAX_T) if MAX_T else None
-# Ship-deck heave/roll/pitch (manuscript Cases 2/5) is now played by apps/deck_follower.py, a
-# SEPARATE process teleporting the standalone deck_platform model (see its docstring for why:
-# jointing it onto the rover chassis, tried first, stalled the rover's EKF). Nothing to do here.
+# Ship-deck heave/roll/pitch (manuscript Cases 2/5): apps/deck_publisher.py, a subprocess
+# publishing to the JOINTED rover_cross deck's JointPositionController topics (REAL physics the
+# whole time). A teleported/kinematic standalone platform (tried 2026-09-22) never achieves
+# genuine sustained collision contact in this Gazebo/ODE build -- confirmed by a bare-world
+# falling-ball test (a static OR kinematic body launched a resting dynamic ball away on its first
+# teleport, every time) -- so that approach was abandoned in favor of this one. Needs
+# sim_models/rover_cross_deck_model.sdf installed as the live rover_cross model (see
+# scripts/run_rover_landing.sh's DECK_MOTION handling). Default OFF; only started when
+# deck_state(t, TRAJ) is actually nonzero for this trajectory (Linear/Circular).
+DECK = os.environ.get("ROVER_DECK", "1") == "1"
 GATE_FILE = os.environ.get("ROVER_GATE_FILE", "")
 GATE_TIMEOUT = float(os.environ.get("ROVER_GATE_TIMEOUT", "180"))
+
+# ROVER_CTRL (2026-09-23, Memory/px4/project_20260922_ackermann_rover_loops_not_tracking.md):
+#   "pos" = stream the trajectory POSITION as offboard position setpoints (legacy). PX4's
+#           Ackermann offboardPositionMode() treats each point as an ARRIVAL point: inside
+#           NAV_ACC_RAD (0.5 m) it commands speed 0, outside it the speed is set from distance
+#           only and the setpoint velocity is ignored. At slow profile speeds the rover parks,
+#           the point drifts beside/behind it, and it drives a ~2 m/s re-approach loop.
+#   "vel" = stream offboard VELOCITY setpoints = the profile's own velocity (feedforward) plus a
+#           bounded position correction toward the reference, so the rover follows the path at
+#           the profile's speed (see _track_cmd). The path is anchored at the rover's position at
+#           the gate (the pre-gate hold is zero velocity, so it never drives to a start point).
+# Default "vel" for Lissajous only; other profiles stay "pos" so their existing experiments
+# are not silently changed -- set ROVER_CTRL=vel to opt in.
+CTRL = os.environ.get("ROVER_CTRL", "vel" if TRAJ == "Lissajous" else "pos")
+VEL_KP = float(os.environ.get("ROVER_VEL_KP", "0.5"))              # position-error gain [1/s]
+VEL_MAX = float(os.environ.get("ROVER_VEL_MAX", "0.4"))            # hard speed cap [m/s]
+VEL_MIN_FRAC = float(os.environ.get("ROVER_VEL_MIN_FRAC", "0.5"))  # along-track floor, x |v_ff|
+VEL_LAT_FRAC = float(os.environ.get("ROVER_VEL_LAT_FRAC", "0.5"))  # |cross-track| <= frac x along
+# vel mode: rotate the whole path (shape unchanged) about its start so its initial tangent matches
+# the rover's heading at the gate. The rover spawns facing North while e.g. Lissajous starts
+# heading ~83 deg East; without this the first ~15 s (the whole descent) are a turn-in transient
+# of up to ~0.5 m instead of the profile. 0 = keep the profile's own world orientation.
+VEL_ALIGN = os.environ.get("ROVER_VEL_ALIGN", "1") == "1"
 
 
 async def _wait_connected(rover):
@@ -112,6 +143,41 @@ async def _arm(rover):
             print(f"[rover_drive] arm() retry ({e})", flush=True)
             await asyncio.sleep(0.5)
     raise RuntimeError("rover did not arm within timeout")
+
+
+class _Ref:
+    """Reference state after anchoring: p = anchor + R(rot) (p_traj(t) - p_traj(0)),
+    v = R(rot) v_traj(t)."""
+    def __init__(self, s, s0, anchor, rot):
+        c, n = math.cos(rot), math.sin(rot)
+        dx, dy = s.x - s0.x, s.y - s0.y
+        self.x = anchor[0] + c * dx - n * dy
+        self.y = anchor[1] + n * dx + c * dy
+        self.vx = c * s.vx - n * s.vy
+        self.vy = n * s.vx + c * s.vy
+        self.speed = s.speed
+
+
+def _track_cmd(s, pos):
+    """Velocity command following reference s (+ anchor offset) from current NED position.
+
+    Split into along-track / cross-track w.r.t. the reference velocity so the command never
+    points backwards (a heading reversal is what forces an Ackermann loop): along-track speed is
+    |v_ff| + KP*e_along, clamped to [VEL_MIN_FRAC*|v_ff|, VEL_MAX]; the cross-track correction
+    is clamped to VEL_LAT_FRAC x the along-track speed (heading within ~27 deg of the tangent at
+    the default 0.5). Returns (vn, ve)."""
+    vff = math.hypot(s.vx, s.vy)
+    if vff < 1e-6:
+        return 0.0, 0.0
+    tx, ty = s.vx / vff, s.vy / vff
+    ex, ey = s.x - pos[0], s.y - pos[1]
+    e_t = ex * tx + ey * ty
+    e_n = -ex * ty + ey * tx
+    u_t = min(max(vff + VEL_KP * e_t, VEL_MIN_FRAC * vff), VEL_MAX)
+    lat = VEL_LAT_FRAC * u_t
+    u_n = min(max(VEL_KP * e_n, -lat), lat)
+    k = min(1.0, VEL_MAX / math.hypot(u_t, u_n))   # VEL_MAX caps the TOTAL speed
+    return k * (u_t * tx - u_n * ty), k * (u_t * ty + u_n * tx)
 
 
 async def _wait_for_sim_clock(time_node, timeout_s=10.0):
@@ -159,8 +225,36 @@ async def _run_with_clock(time_node):
     # Seed an initial offboard setpoint at the current (start) pose before
     # starting offboard, as PX4 requires.
     s0 = eval_traj(0.0, TRAJ, SPEED_MULT, YAW_MODE)
-    await rover.offboard.set_position_ned(
-        PositionNedYaw(s0.x, s0.y, 0.0, math.degrees(s0.yaw)))
+    pos = [None]   # latest NED (north, east) from telemetry, vel mode only
+    hdg = [0.0]    # latest heading [rad, NED]
+    if CTRL == "vel":
+        async def _pos_feed():
+            async for pv in rover.telemetry.position_velocity_ned():
+                pos[0] = (pv.position.north_m, pv.position.east_m)
+
+        async def _hdg_feed():
+            async for h in rover.telemetry.heading():
+                hdg[0] = math.radians(h.heading_deg)
+        hdg_task = asyncio.ensure_future(_hdg_feed())
+        try:
+            await rover.telemetry.set_rate_position_velocity_ned(RATE_HZ)
+        except Exception as e:
+            print(f"[rover_drive] set_rate_position_velocity_ned failed ({e}); using default rate",
+                  flush=True)
+        pos_task = asyncio.ensure_future(_pos_feed())
+        while pos[0] is None:
+            await asyncio.sleep(0.05)
+        print(f"[rover_drive] ctrl=vel kp={VEL_KP} vmax={VEL_MAX} "
+              f"start pos=({pos[0][0]:+.2f},{pos[0][1]:+.2f})", flush=True)
+
+    async def _hold():
+        if CTRL == "vel":
+            await rover.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, math.degrees(s0.yaw)))
+        else:
+            await rover.offboard.set_position_ned(
+                PositionNedYaw(s0.x, s0.y, 0.0, math.degrees(s0.yaw)))
+
+    await _hold()
     try:
         await rover.offboard.start()
         print("[rover_drive] offboard started.", flush=True)
@@ -187,8 +281,7 @@ async def _run_with_clock(time_node):
                 except Exception:
                     pass
                 return
-            await rover.offboard.set_position_ned(
-                PositionNedYaw(s0.x, s0.y, 0.0, math.degrees(s0.yaw)))
+            await _hold()
             await asyncio.sleep(dt)
         print("[rover_drive] gate open — starting trajectory.", flush=True)
 
@@ -198,7 +291,26 @@ async def _run_with_clock(time_node):
     # elapsed simulated time regardless of Gazebo's real-time factor.
     t0_sim = time_node.perf_counter()
     t = 0.0
+    # vel mode: anchor the path at where the rover actually is at the gate (and, with
+    # VEL_ALIGN, rotate it so it starts along the rover's current heading).
+    if CTRL == "vel":
+        anchor = pos[0]
+        rot = 0.0
+        if VEL_ALIGN and s0.speed > 1e-6:
+            rot = hdg[0] - math.atan2(s0.vy, s0.vx)
+        print(f"[rover_drive] path anchored at ({anchor[0]:+.2f},{anchor[1]:+.2f}), "
+              f"rotated {math.degrees(rot):+.1f} deg (rover heading {math.degrees(hdg[0]):+.1f})",
+              flush=True)
     prev_yaw = s0.yaw
+
+    deck = None
+    if DECK and deck_state(1.0, TRAJ) != (0.0, 0.0, 0.0):
+        deck = subprocess.Popen(
+            ["/usr/bin/python3", os.path.join(os.path.dirname(os.path.abspath(__file__)), "deck_publisher.py")],
+            stdin=subprocess.PIPE, text=True, bufsize=1,
+            env={**os.environ, "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION": "python"})
+        print("[rover_drive] deck motion ON (heave/roll/pitch, real physics joints)", flush=True)
+
     try:
         while MAX_T is None or t <= MAX_T:
             now_sim = time_node.perf_counter()
@@ -208,13 +320,31 @@ async def _run_with_clock(time_node):
             # rather than falling back to wall-clock pacing.
             s = eval_traj(t, TRAJ, SPEED_MULT, YAW_MODE, prev_yaw=prev_yaw)
             prev_yaw = s.yaw
-            await rover.offboard.set_position_ned(
-                PositionNedYaw(s.x, s.y, 0.0, math.degrees(s.yaw)))
+            if deck is not None:
+                try:
+                    deck.stdin.write("%.5f %.5f %.5f\n" % deck_state(t, TRAJ))
+                except BrokenPipeError:
+                    pass
+            if CTRL == "vel":
+                s = _Ref(s, s0, anchor, rot)
+                vn, ve = _track_cmd(s, pos[0])
+                await rover.offboard.set_velocity_ned(
+                    VelocityNedYaw(vn, ve, 0.0, math.degrees(math.atan2(ve, vn))))
+            else:
+                await rover.offboard.set_position_ned(
+                    PositionNedYaw(s.x, s.y, 0.0, math.degrees(s.yaw)))
             if abs((t / dt) % (RATE_HZ * 2) ) < 1:  # ~ every 2 s
-                print(f"[rover_drive] t={t:5.1f} p=({s.x:+.2f},{s.y:+.2f}) "
-                      f"v={s.speed:.2f} yaw={math.degrees(s.yaw):+.0f}", flush=True)
+                msg = (f"[rover_drive] t={t:5.1f} p=({s.x:+.2f},{s.y:+.2f}) "
+                       f"v={s.speed:.2f} yaw={math.degrees(math.atan2(s.vy, s.vx)):+.0f}")
+                if CTRL == "vel":
+                    err = math.hypot(s.x - pos[0][0], s.y - pos[0][1])
+                    msg += (f" | pos=({pos[0][0]:+.2f},{pos[0][1]:+.2f}) err={err:.2f} "
+                            f"cmd={math.hypot(vn, ve):.2f}")
+                print(msg, flush=True)
             await asyncio.sleep(dt)
     finally:
+        if deck is not None:
+            deck.terminate()
         print("[rover_drive] stopping offboard.", flush=True)
         try:
             await rover.offboard.stop()

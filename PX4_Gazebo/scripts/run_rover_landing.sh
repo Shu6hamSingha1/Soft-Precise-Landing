@@ -322,6 +322,14 @@ else
   echo "[run] NOTE: rover motion OFF (ROVER_MOTION!=1) — rover sits still (valid baseline)."
 fi
 
+# 4d) Ship-deck heave/roll/pitch (manuscript Cases 2/5): played by apps/rover_drive.py's own
+# deck_publisher.py subprocess (ROVER_DECK=1 default), driving REAL joints on the JOINTED
+# rover_cross model (sim_models/rover_cross_deck_model.sdf, installed as the live rover_cross
+# model when you want deck motion). Nothing to start here -- a STANDALONE teleported platform
+# (apps/deck_follower.py, tried 2026-09-22) never achieves genuine collision contact in this
+# Gazebo/ODE build and was abandoned; see apps/deck_publisher.py's docstring. Set ROVER_DECK=0
+# to disable (e.g. for the flat-platform no-deck cases).
+
 echo "[run] short settle (5s) before launching landing_test (arm() polls is_armable)..."
 sleep 5
 

@@ -13,7 +13,11 @@ Meant to run alongside a rover landing that has the chase camera bridged (the
 Env:
   CHASE_TOPIC     ROS topic to record (default /chase_image).
   RECORD_S        seconds to record ONCE recording starts (default 75).
-  CHASE_FPS       output video fps (default 30, matches the sensor update_rate).
+  CHASE_FPS       output video fps (default 20, matches the chase sensor's <update_rate> in
+                  worlds/rover_cross.sdf -- FIXED 2026-09-22, was hardcoded 30 while the sensor
+                  is 20Hz, which mis-tagged every recorded video's duration ~1.5x short and made
+                  make_landing_montage.py's playback-stretch mask a real render-thread stall as
+                  ordinary slow motion. Verify against the live SDF if the sensor rate changes.
   CHASE_OUT       output path (default test_data/Test_Videos/chase_<ts>.mp4).
   CHASE_GATE_FILE if set, do NOT record until this flag file appears (the
                   controller touches it at descent-start, so the chase video
@@ -34,7 +38,7 @@ from cv_bridge import CvBridge
 
 TOPIC = os.environ.get("CHASE_TOPIC", "/chase_image")
 RECORD_S = float(os.environ.get("RECORD_S", "75"))
-FPS = float(os.environ.get("CHASE_FPS", "30"))
+FPS = float(os.environ.get("CHASE_FPS", "20"))
 GATE_FILE = os.environ.get("CHASE_GATE_FILE", "")
 GATE_TIMEOUT = float(os.environ.get("CHASE_GATE_TIMEOUT", "120"))
 # CHASE_STOP_FILE: if set, stop recording the instant it appears (landing_test
