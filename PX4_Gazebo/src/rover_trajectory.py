@@ -89,7 +89,11 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         # speed is PRESERVED (v = r*wz held at the old 0.384*speed_mult) by scaling wz
         # down, so the speed envelope is unchanged; only the path curvature drops ~12x.
         # Both r and tangential speed are env-tunable.
-        r = float(os.environ.get("ROVER_CIRCLE_R", "10.0"))
+        # REDUCED 10->3 m (2026-09-22, user request, for a visibly tighter curve on video):
+        # still well clear of the rejected r=0.8m jerky zone (Ackermann min turn radius
+        # ~0.56m); v_tan unchanged so wz scales up ~3.3x (path curvature ~3.3x tighter than
+        # r=10, still ~3.75x gentler than the rejected r=0.8). NOT yet SITL-validated at r=3.
+        r = float(os.environ.get("ROVER_CIRCLE_R", "3.0"))
         v_tan = float(os.environ.get("ROVER_CIRCLE_VTAN", "0.384")) * speed_mult
         wz = v_tan / r
         x = -r * (math.cos(wz * t) - 1.0)
@@ -187,6 +191,20 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         # simply never triggers. Don't read k=0.1's success as proof that mechanism is fixed
         # -- it's a per-profile speed workaround, not a controller-side fix. All four knobs
         # are env-tunable for a future re-tune.
+        #
+        # ⚠ CORRECTION -- COMMANDED SPEED != TARGET SPEED (2026-09-22, GT + rover ulog): the
+        # Ackermann rover does NOT track these slow position setpoints. It parks ~0.5 m off the
+        # setpoint, then when the error grows drives a full re-approach LOOP at 1.5-2.2 m/s
+        # (stays in offboard, no failsafe). Every Lissajous_final rep (k=0.4/0.2/0.1, 11 reps)
+        # has GT target peaks of 1.6-2.8 m/s; at k=0.1 the setpoint moves 0.15 m/s but the GT
+        # target is either parked (0 m/s) or looping at ~2 m/s. So the speed conclusions above
+        # are about the COMMAND, not what the drone saw, and the "RESOLVED" k=0.1 rep (23-16-02,
+        # xy=0.013 m) landed on a rover PARKED for its final 6.5 s (it looped at up to 1.6 m/s
+        # only in t=0-3.5 s) -- effectively a static landing, not Lissajous tracking. Lowering
+        # w1/w2 does not slow the target, it only changes how often the loops happen. Fix is on
+        # the rover-drive side (velocity/feedforward setpoints, or speeds above the rover's
+        # minimum controllable speed); always verify with each rep's Ground_Truth.npy target
+        # speed. (Memory/px4/project_20260922_ackermann_rover_loops_not_tracking.md)
         A = float(os.environ.get("ROVER_LISS_A", "1.6"))
         B = float(os.environ.get("ROVER_LISS_B", "3.2"))
         w1 = float(os.environ.get("ROVER_LISS_W1", "-0.05")) * speed_mult
