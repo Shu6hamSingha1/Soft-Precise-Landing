@@ -67,3 +67,16 @@ anchored at the rover's position and rotated so its start tangent matches the ro
 PX4's RO_SPEED_TH=0.1 m/s measurement deadband at these low speeds. n=1 — not yet repeated.
 Caveat: at k=0.1 the ~10 s descent covers only ~1.5 m of a ~132 s-period curve, so on video the
 target path looks nearly straight.
+
+**FOLLOW-UP 2026-09-23 — `ROVER_SPEED_MULT=2` clears the low-speed creep-then-lurch residual.**
+The first `vel`-mode rep (above) had GT target speed dipping to 0.045-0.08 m/s (below PX4's
+`RO_SPEED_TH=0.1 m/s` rover-EKF deadband), causing a visible creep/catch-up cycle around t=5-7s
+(tracking error briefly 0.30 m, drone yaw overshot to -23 deg) even though the loop mechanism
+itself was fixed. At `ROVER_SPEED_MULT=2` (commanded ~0.3-0.6 m/s): GT target speed never drops
+below 0.146 m/s (median 0.284, max 0.404); `rover_drive.py` tracking error stays <=0.11 m
+throughout (vs 0.30 m at 1x); landing xy=0.015 m, rel_vel=0.22 m/s (precise, same as 1x) — visibly
+smoother continuous motion in the chase video, no creep-then-lurch.
+(`test_data/RecordGTFB_dev/Lissajous_velctrl_2x/Wed Sep 23 00-23-52 2026/`,
+`Test_Videos/chase_2026-09-23_00-22-46.mp4`). n=1 for both configs — not yet repeated at either.
+Recommend `ROVER_SPEED_MULT=2` (or higher) as the new Lissajous default over speed_mult=1 once
+repeated; 1x is usable but has this residual creep artifact at the low end of the Lissajous cycle.
