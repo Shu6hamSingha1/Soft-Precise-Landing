@@ -313,3 +313,25 @@ with a dated note. Committed: `627584d2`.
   config WOULD eventually hit one. If Lissajous is ever flown for longer than ~20s, pick a
   cusp-free phase first (see the analytic vx=vy=0 method above) or re-verify the cusp timing is
   still safely out of range.
+
+**FOLLOW-UP 2026-09-23 (same session) — checked whether the other trajectory profiles need the
+same `ROVER_CTRL=vel` fix.** Compared commanded speed (`rover_trajectory.eval_traj`) against
+actual recorded GT target speed (existing `pos`-mode reps in `test_data/Final/VISTA-GT/`):
+- **Static**: never moves, not applicable.
+- **Circular** (commanded 0.384 m/s) and **Sinusoidal** (0.4-0.64 m/s): recorded GT speed tracks
+  commanded reasonably closely (medians 0.32/0.56) with no alternating near-zero/multi-m/s
+  park-loop signature in the one rep each currently in `Final/`. Despite being just as slow as
+  Lissajous was, these do NOT show clear evidence of the same bug -- leave as `pos` mode for now.
+- **Linear** (commanded 1.556 m/s, well outside the naive "slow profile" danger zone): recorded
+  GT speed is only ~0.40 m/s median -- a genuine ~3-4x shortfall -- but STEADY, not alternating
+  park/loop. This looks like a DIFFERENT, separate issue (possibly an accel/jerk ramp never
+  reaching commanded speed, or a pure-pursuit/lookahead effect specific to a dead-straight path)
+  -- flagged but not diagnosed, don't conflate with the Ackermann park/loop mechanism.
+- **CircularYaw** (commanded 0.2 m/s -- slower than every other profile, slower than Lissajous's
+  original broken 0.15 m/s default) and **EightShape** (0.38-0.57 m/s): never recorded in
+  `Final/`, never live-tested under either mode this whole project. CircularYaw in particular was
+  the strongest suspect for the same park/loop bug (flagged, offered to test).
+- **User declined further testing of CircularYaw/EightShape (2026-09-23)** -- do not re-raise
+  this as an open task; if either is revisited for real (recorded to `Final/` or used for a
+  demo), check its GT target speed for the alternating near-zero/burst signature FIRST, the same
+  way this whole thread started, rather than assuming `pos` mode is fine.
