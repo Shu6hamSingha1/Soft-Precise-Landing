@@ -335,3 +335,19 @@ actual recorded GT target speed (existing `pos`-mode reps in `test_data/Final/VI
   this as an open task; if either is revisited for real (recorded to `Final/` or used for a
   demo), check its GT target speed for the alternating near-zero/burst signature FIRST, the same
   way this whole thread started, rather than assuming `pos` mode is fine.
+
+**CORRECTION 2026-09-23 (same session) — the "Linear has a ~3-4x speed shortfall" claim above
+was comparing against the WRONG baseline.** `Final/VISTA-GT/Linear` was deliberately recorded at
+a REDUCED speed (source: `RecordGTFB_dev/Linear_jointed/Tue Sep 22 20-52-01 2026/`, matched by
+`Start Time=34.504`), not the plain `Linear` formula's `speed_mult=1` default (1.556 m/s) --
+comparing the recorded GT speed against that unreduced default is what made it look like a
+shortfall. No env-var record of the exact commanded `ROVER_SPEED_MULT` survives for this
+historical rep (not logged with the data; run_logs/rover_drive.log is overwritten per-run and
+long gone). **Measured GT target speed for this rep**: median 0.412 m/s, mean 0.408, p5-p95
+0.30-0.50 m/s, net avg (start-to-end/duration) 0.344 m/s, diagonal path (0,0)->(2.51,2.63) over
+10.6s -- implies an effective `speed_mult` of roughly 0.22-0.27 if tracking was accurate (not
+confirmed). Crucially, this speed profile is STEADY, not the alternating near-zero/multi-m/s
+park-loop signature -- so `Final/VISTA-GT/Linear` does NOT show evidence of the Ackermann
+park/loop bug; the earlier flagged "shortfall" was a baseline-comparison artifact, not a real
+issue in this recording. Retract that part of the prior entry -- Linear's `pos`-mode reduced-speed
+recording looks fine as-is.
