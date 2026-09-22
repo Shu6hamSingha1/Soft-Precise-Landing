@@ -401,11 +401,19 @@ def _draw_3d(ax3d, fontsize=18, ticksize=13):
 def _draw_energy(ax, fontsize=16, title_fontsize=17, tick_fontsize=14):
     """Relative touchdown energy eta_E = (v_f/v_soft)^2, plotted as
     log10(eta_E) so VISTA's near-zero bars and Zhang's 5-9x bars share one
-    readable axis. Controllers that ever reach the surface only (VISTA,
-    Zhang 2026) -- no bar slots wasted on controllers that never land."""
+    readable axis. Controllers that ever reach the surface only -- no bar
+    slots wasted on controllers that never land.
+    Bar width now SCALES with len(REACHED_CTRLS) (fixed 2026-09-22) -- it was
+    a hardcoded 0.30, sized back when only 2 controllers ever reached the
+    surface; once the retuned baselines (2026-09-21) pushed REACHED_CTRLS to
+    all 5, that fixed width made adjacent bars overlap (spacing ~1/6 << 0.30).
+    Bars now fill a fixed 0.82-wide group per case, evenly split N ways, so
+    they're always equal width and never overlap regardless of N."""
     xb = np.arange(len(TRAJS))
-    width_b = 0.30
-    xj_off = np.linspace(-0.5, 0.5, len(REACHED_CTRLS) + 2)[1:-1] * width_b * 2
+    n_r = max(len(REACHED_CTRLS), 1)
+    group_w = 0.82
+    width_b = group_w / n_r
+    xj_off = (np.arange(n_r) - (n_r - 1) / 2.0) * width_b
     log_etas = []
     for j, name in enumerate(REACHED_CTRLS):
         eta = np.array([(METRICS[(tr, name)]["v_term"] / SOFT_V_REL_MPS) ** 2
@@ -814,8 +822,8 @@ if len(_b_handles) > 2:
     # maps every controller colour, so (b) keeps only the N/A swatch it alone needs.
     _b_handles, _b_labels = [], []
 _b_handles = _b_handles + [mpatches.Patch(facecolor="white", edgecolor="black",
-                                           linewidth=0.6, label="N/A")]
-_b_labels = _b_labels + ["N/A"]
+                                           linewidth=0.6, label="Not landed")]
+_b_labels = _b_labels + ["Not landed"]
 # Single row (ncol=3, one per entry), anchored below the "Only landed runs shown" footnote
 # (footnote itself sits at y=-0.36 in axes fraction -- legend placed further down still).
 ax3d.legend(_b_handles, _b_labels, loc="upper center", bbox_to_anchor=(0.5, -0.45),
