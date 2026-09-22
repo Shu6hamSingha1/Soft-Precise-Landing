@@ -1,6 +1,6 @@
 ---
 name: project_20260922_rover_moving_sp_investigation
-description: "2026-09-22: why rover_cross + GT-FB cannot reach SP on a MOVING target. Static rover 5/5 SP. Circular R=0.8 0/35 across default law, KP 0.3/0.1/0.02, retune, law-off. R>=1.6 8/9 precise 0/9 soft. Non-Circular sweep (Linear/Sinusoidal/Lissajous/EightShape/CircularYaw) 0/15 SP too -- SPEED, not curve shape, is the dominant variable (Linear straight-line at 2.17 m/s fails as hard as Circular; slowest profiles CircularYaw 0.35 m/s and Circular r>=1.6 ~0.55-0.6 m/s land precise but too fast for soft). Mechanism = ~1 s lateral tracking lag + descent not gated by lateral error -> terminal a_u blow-up + thrust sacrificed. SUPERSEDES the 09-18 '4/4 with yaw law off' discriminator (it also zeroed PLASMC_YAW_* and never was SP)."
+description: "2026-09-22: why rover_cross + GT-FB cannot reach SP on a MOVING target. Static rover 5/5 SP. ⭐ Re-run under fixed rover_drive.py clock pacing (see project_20260922_rover_drive_wallclock_pacing_bug): Circular R=0.8 (now exactly MATLAB's own 5/5 wz=0.48 baseline) still 0/3 FAIL -- cleanest evidence yet of a real platform gap, not a speed mismatch. R>=1.6 9/9 precise 0/9 soft. Sinusoidal 3/3 PRECISE-only (was falsely 0/3 catastrophic FAIL pre-fix -- clock artifact). EightShape 2/3 SOFT+PRECISE -- first genuine moving-target SP found. Lissajous still 0/3 FAIL with an UNRESOLVED ~3x speed-tracking gap that survives the clock fix (separate mechanism, not clock pacing). Mechanism for the remaining failures = ~1 s lateral tracking lag + descent not gated by lateral error -> terminal a_u blow-up + thrust sacrificed."
 metadata:
   type: project
 ---
@@ -34,6 +34,24 @@ Linear/Sinusoidal/Lissajous. CircularYaw (slow, gentle) is the best available ne
 case to tune a soft-touchdown fix against first before re-testing the harder profiles.
 
 ⚠ **2026-09-22 caveat found AFTER this sweep**: the target speeds in this table (and the earlier Circular r-sweep) are not controlled values -- `rover_drive.py` paces its trajectory reference off WALL-CLOCK (`asyncio.sleep`), not Gazebo's simulated `/clock`, so measured GT speed can diverge from the commanded `ROVER_SPEED_MULT`/formula value depending on real-time factor at run time (confirmed code-level, measured 28-250% higher than commanded across Sinusoidal/Lissajous/Circular this session). See [[project_20260922_rover_drive_wallclock_pacing_bug]]. The qualitative "speed dominates" conclusion still holds (it's based on measured GT speed, the real physical stress the drone faced) but don't treat the table's speed column as a settable/reproducible experimental variable.
+
+✅ **2026-09-22 RESOLVED — re-run under the fixed pacing** (`test_data/ClockFixRerun/20260922-144249`, same profiles/radii, n=3 each, [[project_20260922_rover_drive_wallclock_pacing_bug]]'s fix applied). Controlled speeds now match commanded values closely for every profile except Lissajous (see below). Results CHANGED substantially for two profiles -- do not cite the pre-fix Sinusoidal/EightShape numbers above any more:
+
+| profile/R | controlled speed med (m/s) | result (was, pre-fix) |
+|---|---|---|
+| Circular R=0.8 (wz=0.48, matches MATLAB's own 5/5 baseline exactly) | 0.45-0.50 | **0/3 FAIL**, xy 0.31-0.47m, rel_vel 0.43-1.58 (was 0/35 across many arms) |
+| Circular R=1.6/3.2/6.4 (v_tan constant by design) | 0.40-0.42 | 9/9 PRECISE-only, 0/9 soft (was 8/9 precise, matches) |
+| Linear | 1.65-1.68 | 0/3 FAIL (was 0/3 FAIL) -- unchanged |
+| **Sinusoidal** | 0.58-0.61 | **3/3 PRECISE-only** (was 0/3 FAIL, 2.4-3.5m errors -- THAT RESULT WAS A CLOCK-PACING ARTIFACT, not a real control failure) |
+| Lissajous | 1.44-1.56 (commanded ~0.51 -- STILL a ~3x gap, unlike every other profile) | 0/3 FAIL (was 0/3 FAIL) -- still bad |
+| **EightShape** | 0.45-0.48 | **2/3 SOFT+PRECISE** (was 0/3 SP) -- first genuine moving-target SP this whole investigation |
+| CircularYaw | 0.26-0.28 | 1/3 FAIL, 2/3 PRECISE-only (was 0/3 SP, 3/3 precise -- roughly similar) |
+
+**Two new findings:**
+1. **The single cleanest MATLAB-vs-PX4 comparison available**: Circular R=0.8 now runs at EXACTLY MATLAB's own validated wz=0.48 rad/s (v_tan=0.384 m/s constant by construction), yet PX4 still fails 0/3, all genuine crashes not just "not soft." This is no longer explainable by a speed-mismatch artifact -- it is direct evidence of a real platform/architecture gap (PX4's real actuation lag + Gazebo physics vs MATLAB's largely-idealized plant, per [[project_matlab_px4_lag_model_2026_09_10]]-class reasoning) at the exact condition MATLAB itself proved works.
+2. **Lissajous has a SEPARATE, still-unexplained speed-tracking gap** (~3x over commanded, survives the clock fix) that every other profile does not show. Working hypothesis, NOT confirmed: Lissajous's two-frequency path with frequent sharp direction reversals may exceed the rover's pure-pursuit steering controller's ability to track curvature cleanly (20 Hz setpoint stream may under-sample the curve's fastest direction changes), causing real physical overshoot/corner-cutting rather than a software pacing bug. Needs its own investigation before trusting any Lissajous conclusion.
+
+**How to apply (updated):** the earlier "speed dominates, not curvature" conclusion is now MORE precisely supported for Circular/Sinusoidal/EightShape/CircularYaw (all now at controlled, closely-matched speeds) but Lissajous should be EXCLUDED from that generalization until its own speed-tracking gap is understood -- its measured speed was never actually controlled, before or after the clock fix. EightShape's SP success and Sinusoidal's correction are the most promising newly-available directions to pursue for a general moving-target fix.
 
 ---
 
