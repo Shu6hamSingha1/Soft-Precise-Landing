@@ -91,9 +91,12 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         # Both r and tangential speed are env-tunable.
         # REDUCED 10->3 m (2026-09-22, user request, for a visibly tighter curve on video):
         # still well clear of the rejected r=0.8m jerky zone (Ackermann min turn radius
-        # ~0.56m); v_tan unchanged so wz scales up ~3.3x (path curvature ~3.3x tighter than
-        # r=10, still ~3.75x gentler than the rejected r=0.8). NOT yet SITL-validated at r=3.
-        r = float(os.environ.get("ROVER_CIRCLE_R", "3.0"))
+        # ~0.56m). SITL-validated at r=3: landed SoftPrecise, xy=0.097m/vel=0.380m/s
+        # (test_data/Final/Circular). REDUCED FURTHER 3->1.5 m (same day, user request):
+        # still ~1.9x the rejected r=0.8m radius; v_tan unchanged so wz scales up
+        # correspondingly (path curvature ~6.7x tighter than r=10). NOT yet SITL-validated
+        # at r=1.5.
+        r = float(os.environ.get("ROVER_CIRCLE_R", "1.5"))
         v_tan = float(os.environ.get("ROVER_CIRCLE_VTAN", "0.384")) * speed_mult
         wz = v_tan / r
         x = -r * (math.cos(wz * t) - 1.0)

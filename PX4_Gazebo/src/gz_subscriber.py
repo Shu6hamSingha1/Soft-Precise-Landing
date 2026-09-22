@@ -60,6 +60,30 @@ class PoseData:
         self.UAV = None
         self.target = None
 
+def _compose(parent, local):
+    """World pose of a link given its parent MODEL pose and the link pose relative to that model
+    (geometry_msgs Pose x2 -> Pose). p = p_par + R_par p_loc ; q = q_par * q_loc."""
+    from geometry_msgs.msg import Pose
+    qp, ql = parent.orientation, local.orientation
+    x1, y1, z1, w1 = qp.x, qp.y, qp.z, qp.w
+    vx, vy, vz = local.position.x, local.position.y, local.position.z
+    # rotate local position by parent quaternion: v' = v + 2w(u x v) + 2 u x (u x v)
+    tx = 2.0 * (y1 * vz - z1 * vy); ty = 2.0 * (z1 * vx - x1 * vz); tz = 2.0 * (x1 * vy - y1 * vx)
+    rx = vx + w1 * tx + (y1 * tz - z1 * ty)
+    ry = vy + w1 * ty + (z1 * tx - x1 * tz)
+    rz = vz + w1 * tz + (x1 * ty - y1 * tx)
+    out = Pose()
+    out.position.x = parent.position.x + rx
+    out.position.y = parent.position.y + ry
+    out.position.z = parent.position.z + rz
+    x2, y2, z2, w2 = ql.x, ql.y, ql.z, ql.w
+    out.orientation.w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    out.orientation.x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    out.orientation.y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    out.orientation.z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    return out
+
+
 class Pose_Node(Node):
     """
     This ROS2 node subscribes to the ground truth value of the pose of the UAV and target models in gazebo world.
@@ -90,11 +114,22 @@ class Pose_Node(Node):
         # Inspect ordering with: gz topic -t /world/<world>/pose/info -e
         self._uav_idx = int(os.environ.get("POSE_IDX_UAV", "2"))
         self._target_idx = int(os.environ.get("POSE_IDX_TARGET", "1"))
+        # POSE_IDX_TARGET_LOCAL (deck-motion rover_cross model, 2026-09-22): index of a LINK
+        # whose pose in /pose is reported RELATIVE to its parent model (Gazebo nests link poses).
+        # When set, the target pose = model pose (POSE_IDX_TARGET) composed with that local link
+        # pose, so heave/roll/pitch of the platform appear in the GT target pose. Live index of
+        # rover_cross_1::landing_platform is 11 (order: ground_plane, rover, x500, x500 link, ...).
+        _tl = os.environ.get("POSE_IDX_TARGET_LOCAL", "")
+        self._target_local_idx = int(_tl) if _tl else None
 
     def pose_callback(self, data):
         try:
             self._pose.UAV = data.poses[self._uav_idx]
-            self._pose.target = data.poses[self._target_idx]
+            if self._target_local_idx is None:
+                self._pose.target = data.poses[self._target_idx]
+            else:
+                self._pose.target = _compose(data.poses[self._target_idx],
+                                             data.poses[self._target_local_idx])
             # Display the message on the console
             # self.get_logger().info(f"Model Pose: {self._pose}")
             # time.sleep(0.01)  # Sleep for a short time to avoid high CPU usage
