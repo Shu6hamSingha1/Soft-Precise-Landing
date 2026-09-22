@@ -36,3 +36,20 @@ compute it from each rep's `Ground_Truth.npy` `Target Pose` (dedupe stale sample
 window). Candidate fix (untested): velocity/feedforward setpoints in `rover_drive.py`, or keep
 commanded speed above the rover's minimum controllable speed. pyulog isn't in env2025 — use a
 scratch venv to read the rover ulog.
+
+**Root cause (verified in PX4 source + rover ulog `rootfs/1/log/2026-09-22/17_44_49.ulg`, rep 23-16-02).**
+`rover_drive.py` sends `set_position_ned` only → PX4 `AckermannPosVelControl::offboardPositionMode()`
+(`~/PX4-Autopilot/src/modules/rover_ackermann/AckermannPosVelControl/AckermannPosVelControl.cpp`):
+- `distance_to_target <= NAV_ACC_RAD` (=0.5 m) → speed setpoint **0** (the park). The trajectory's
+  velocity and yaw fields are ignored in this mode (it treats every setpoint as an arrival point).
+- beyond 0.5 m → speed = `computeMaxSpeedFromDistance(RO_JERK_LIM=15, RO_DECEL_LIM=6, d)` (≈0.59 m/s
+  at 0.5 m, 1.12 at 1.0, 1.42 at 1.3), heading = pure-pursuit toward the point.
+- By the time a 0.15 m/s setpoint leaves the 0.5 m circle it is beside/behind the parked rover
+  (relative bearing −110° to +150°); min turn radius = 0.321/tan(30°) = 0.556 m, so the rover must
+  circle, distance grows while it turns, speed rises (d=1.3 m → 1.56 m/s) → the ~2 m/s loop.
+- 23-16-02: stopped t=3.5 s when d fell to 0.48; the setpoint then drifted THROUGH the 0.5 m circle
+  (d 0.50→0.16→0.48, bearing −64°→+145°), a ~1 m chord at 0.15 m/s ≈ 7 s parked, covering touchdown
+  (~t=10.0); exited at t≈10.3 and was already doing 1.03 m/s at t=10.5.
+**Fix direction:** stop sending bare position points — velocity setpoints with feedforward +
+P-correction on position error (rover_drive has telemetry), or a lead/carrot point kept >0.5 m ahead
+along the path. Just shrinking NAV_ACC_RAD won't stop the loops: a sideways point still forces a turn.
