@@ -8,6 +8,8 @@ metadata:
   modified: 2026-09-18T11:18:20.498Z
 ---
 
+> ⛔ **2026-09-22 SUPERSEDED (root-cause claim):** the 4/4 'yaw law off' arm also zeroed PLASMC_YAW_* and TERMINAL_COMMIT=0 (heading held) and was not SP; law-off alone fails 0/5 (4 fly-aways) and default law + KP 0.3/0.1/0.02 all fail 0/15. See [[project_20260922_rover_moving_sp_investigation]].
+
 ## ⛔⛔ 2026-09-18: ALL ArUco-rover curve test data and findings from this thread REMOVED
 
 **User instruction, verbatim intent: ArUco is an obsolete approach for the moving-rover
