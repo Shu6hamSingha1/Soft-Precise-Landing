@@ -241,3 +241,42 @@ ask was specifically about LOOKING Lissajous, and the landing, while not precise
 (min_alt=0.51m normal touchdown, just imprecise+fast). If future work needs BOTH a good landing
 AND a clearly-Lissajous-looking path, the cusp-free-phase fix above is the next thing to try
 before further mult tuning.
+
+**CORRECTION 2026-09-23 (same session) -- the earlier "phi=30 is an exact cusp, likely the
+crash cause" claim above is WRONG in its causal part (the cusp itself is real, confirmed
+below, but it never occurred during any live test).** Two errors compounded:
+1. **Unit/formula bug in the period math**: hand-derived `T=2*pi/k` with `k=2*pi/T_target`
+   repeatedly conflated `w2` with `k` (since `w2=3k`), giving T values 3x too SMALL every time
+   it was used (claimed T=44s/22s for the safe/medium configs; the CORRECT, `eval_traj`-verified
+   formula is `T(rm,sm) = 132 * rm/sm` seconds, giving T=132s/66s respectively -- so "% of period
+   shown in one ~10.5s descent" was also wrong throughout: actually ~8%/~16%, not ~24%/~48%).
+   **Do not hand-derive `w1,w2,T` from `RADIUS_MULT`/`speed_mult` again -- extract them from
+   `rover_trajectory.eval_traj` directly (position/velocity match) and verify numerically
+   (measure the period from when the path returns to its start) before trusting any formula.**
+2. **The v^2/R "medium config" value quoted to the user as 0.88 was also wrong** (same
+   hand-derivation bug); the correct, `eval_traj`-cross-checked value is 0.333.
+
+**The cusp is real but irrelevant to what happened.** Solving `vx=vy=0` exactly (analytically,
+then numerically confirmed to 1e-6) for `phi=30 deg` at the rm=4/sm=8 operating point: BOTH
+components hit exactly zero at t=27.5s and t=60.5s within the 66s period -- genuine cusps, exist
+at phi in {30,90,150} mod 180 for this -2:3 ratio, independent of rm/sm (confirmed by the
+analytic vx=vy=0 solve, matching the very first derivation). But every live descent in this
+session only ran the first ~10.5s -- nowhere near t=27.5s. **The cusp never fired in any test
+run to date; it did not cause the rm=3/sm=10 crash (that crash happened at t~6-7s).**
+
+**Corrected, reliable picture (analytic curvature, `eval_traj`-verified, phi=30 unchanged
+throughout -- no phase fix was actually needed):**
+| config | v^2/R (correct) | outcome |
+|---|---|---|
+| rm=3,sm=10 | 0.694 | CRASHED (tilt 28+ deg) |
+| rm=4,sm=8  | 0.333 | landed, NOT precise (xy=0.160m), fast (rel_vel=1.18) |
+| **rm=5,sm=7** | **0.204** | **PRECISE (xy=0.111m), tilt<=3.5 deg, 0 clipped frames** |
+| rm=6,sm=6 | 0.125 | PRECISE (xy=0.072m), least visible curve |
+
+**Best config found: `ROVER_SPEED_MULT=7 ROVER_LISS_RADIUS_MULT=5`** (same
+B=0.96/W1=-0.095170/W2=0.142755/PHI=30/KP=3.0/ROT_DEG=-45.5, VEL_MAX=2.0).
+`test_data/RecordGTFB_dev/Lissajous_23ratio_v2r02/Wed Sep 23 04-07-09 2026/`,
+`Test_Videos/chase_2026-09-23_04-06-05.mp4`. Precise landing, safe tilt, AND the recorded GT
+path still shows a clear S-curve (comparable visual quality to the rm=4/sm=8 rep, better than
+rm=6/sm=6's near-straight arc). This is the config to use going forward for this profile, not
+the earlier "safe" (rm=6/sm=6) or "medium" (rm=4/sm=8) reps.
