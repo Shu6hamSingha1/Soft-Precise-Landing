@@ -158,3 +158,38 @@ sweep, exactly what was observed. NOT caused by today's RADIUS_MULT/ROT_DEG/SPEE
 those only rescale amplitude/rate together or add a rigid rotation, neither touches the w1:w2
 ratio. Unresolved: if a genuine multi-lobed Lissajous LOOK is wanted, the ratio needs to change
 (e.g. toward 1:2), which reopens the cusp/curvature-margin analysis for the new ratio -- not done.
+
+**FOLLOW-UP 2026-09-23 (same session) — genuine multi-lobed Lissajous, re-recorded.** Fixed the
+w1:w2 ratio (see prior entry) to -2:3 (base `ROVER_LISS_W1=-0.095170 ROVER_LISS_W2=0.142755`,
+`ROVER_LISS_PHI_DEG=30`, `ROVER_LISS_B=0.96` for B/A=0.6 -- phase and B/A amplitude ratio
+grid-searched for the gentlest curvature at this frequency ratio, minimizing worst-case v^2/R
+over one period). Confirmed genuinely non-elliptical: one full period is a self-crossing curve
+(teardrop with a crossing point); a 10-15s descent shows a visible direction-reversal "S-hook",
+not a monotonic one-direction sweep.
+
+⚠ FIRST ATTEMPT CRASHED despite a LOWER worst-case v^2/R (0.695) than the proven-safe ellipse
+case (~0.92): `ROVER_SPEED_MULT=10 ROVER_LISS_RADIUS_MULT=3` gave real tilt climbing past 28 deg
+by t=6s (same signature as the earlier crash), rover tracking itself fine (<=0.14m). So v^2/R
+(peak lateral acceleration) alone does NOT fully predict controller safety for this trajectory
+family -- the DIRECTION-REVERSAL itself (this shape's yaw swings ~50->176->-141 deg over 8s, vs
+the ellipse-arc's gentler ~66 deg over similar time) appears to be an independent stressor, not
+captured by the curvature-radius metric alone. Worth flagging alongside the existing I_a_z/I_a_xy
+cannibalization mechanism finding -- possibly the RATE of lateral direction change, not just its
+peak magnitude.
+
+**WORKING, SAFE config** (`ROVER_SPEED_MULT=6 ROVER_LISS_RADIUS_MULT=6 ROVER_VEL_KP=3.0
+ROVER_VEL_MAX=2.0 ROVER_VEL_ROT_DEG=-45.5`, same B/A/W1/W2/PHI as above):
+`test_data/RecordGTFB_dev/Lissajous_23ratio_slow/Wed Sep 23 01-07-45 2026/`,
+`Test_Videos/chase_2026-09-23_01-06-39.mp4`. True tilt stayed <=3.3 deg the whole descent;
+landing PRECISE (xy=0.072 m), not soft (rel_vel=0.805 m/s). Chase framing: reused the ellipse
+case's `ROVER_VEL_ROT_DEG=-45.5` unchanged (camera-fit coefficients are pose-only, not
+trajectory-shape-dependent) -- held up fine, ZERO clipped frames, bbox grew only modestly
+(~19% over the last 3s) despite not being re-derived for this shape. n=1.
+
+**Trade-off, same as noted for the ellipse case:** slowing down (both mults raised) to reach
+safety also lengthens the period (T=39.6s -> reduces to a smaller fraction of one period per
+descent -- this run's 10.5s window shows visibly LESS of the loop/hook than the failed faster
+attempt would have). The recorded video shows a real, unambiguous direction-reversal, but not
+(within one descent) the full closed self-crossing curve -- that would need either a longer
+controlled descent or a faster/less-safe profile, which isn't available without a controller-side
+fix (see the I_a_z/I_a_xy mechanism entry).
