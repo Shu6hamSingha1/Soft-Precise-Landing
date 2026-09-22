@@ -1,11 +1,11 @@
 ---
 name: project_20260922_ackermann_rover_loops_not_tracking
-description: "2026-09-22: at slow position setpoints (~0.15 m/s Lissajous) the Ackermann rover does NOT track -- it parks ~0.5 m off then drives re-approach loops at 1.5-2.2 m/s. All 11 Lissajous_final reps have GT target peaks 1.6-2.8 m/s. The k=0.1 'SOFT+PRECISE' (23-16-02) landed on a rover parked for its final 6.5 s. Invalidates the Lissajous speed-retune conclusions."
+description: "⭐ FULL ARC 2026-09-22/23, read top-to-bottom (chronological, each entry supersedes/extends the last). ROOT CAUSE: PX4 Ackermann offboard POSITION mode parks within NAV_ACC_RAD=0.5m and loops at 1.5-2.2 m/s -- invalidated all prior Lissajous speed-retune conclusions (target speed != commanded speed). FIX: rover_drive.py ROVER_CTRL=vel (velocity-tracking, tracking err <=0.05m). Then found+fixed: (1) net-speed-x10 crashed the DRONE via lateral accel, fixed with ROVER_LISS_RADIUS_MULT (wider turns, same speed); (2) chase-camera framing (target closing on camera -> clipped) fixed with ROVER_VEL_ROT_DEG; (3) the Lissajous w1:w2 ratio was ~1:1 (an ELLIPSE, not a real figure) -- corrected to 2:3; (4) a v^2/R sweet spot (0.204, ROVER_SPEED_MULT=7/RADIUS_MULT=5) gives BOTH a precise landing (xy=0.111m) AND a visibly curving path -- promoted to test_data/Final/VISTA-GT/Lissajous/. ⚠ Two of my own hand-derived-formula bugs are documented and corrected inline (a period-formula 3x error, and a false 'exact cusp caused the crash' claim -- the cusp is real but never occurred within any tested descent window) -- read those corrections, don't stop at the first draft of either claim."
 metadata:
   node_type: memory
   type: project
   originSessionId: eb3af863-38fc-4d7b-86dd-b7c9bc16b44d
-  modified: 2026-09-22T17:56:52.860Z
+  modified: 2026-09-22T23:04:08.472Z
 ---
 
 **Finding (2026-09-22, from GT `Target Pose` + the rover's PX4 ulog `rootfs/1/log/2026-09-22/17_36_42.ulg`).**
@@ -280,3 +280,36 @@ B=0.96/W1=-0.095170/W2=0.142755/PHI=30/KP=3.0/ROT_DEG=-45.5, VEL_MAX=2.0).
 path still shows a clear S-curve (comparable visual quality to the rm=4/sm=8 rep, better than
 rm=6/sm=6's near-straight arc). This is the config to use going forward for this profile, not
 the earlier "safe" (rm=6/sm=6) or "medium" (rm=4/sm=8) reps.
+
+**CLOSING 2026-09-23 (same session) — promoted to `test_data/Final/VISTA-GT/Lissajous/`.**
+The old rep there (`Tue Sep 22 23-16-02 2026`, xy=0.0128m, from the very first entry above) was
+replaced -- it's the exact "parked rover" rep this whole thread started by diagnosing, so it was
+never a valid Lissajous demo to begin with. Old set backed up to
+`Obsolete/test_data/Lissajous_VISTA-GT_v1_parked_rover_20260923/` (not git-tracked, local only).
+New promoted rep: `RecordGTFB_dev/Lissajous_23ratio_v2r02/Wed Sep 23 04-07-09 2026` (the
+`v^2/R=0.204` config from the entry above). Regenerated `Lissajous_overlay_s_alpha.mp4`,
+`Lissajous_overlay_h.mp4` (`tools/overlay_image_features.py --split`, note: `--out` MUST include
+an extension, e.g. `Lissajous_overlay.mp4` -- passing an extension-less stem makes cv2.VideoWriter
+silently fail via a `CvVideoWriter_Images` fallback, discovered live) and `Lissajous_montage.mp4`
+(`tools/make_landing_montage.py --drone <s_alpha> --drone2 <h> --chase --run --out`); verified the
+montage's 3D target-path plot shows a genuinely curving line. `test_data/Final/MANIFEST.md` updated
+with a dated note. Committed: `627584d2`.
+
+**Where things stand for future work:**
+- Live-validated Lissajous config: `ROVER_CTRL=vel ROVER_SPEED_MULT=7 ROVER_LISS_RADIUS_MULT=5
+  ROVER_LISS_B=0.96 ROVER_LISS_W1=-0.095170 ROVER_LISS_W2=0.142755 ROVER_LISS_PHI_DEG=30
+  ROVER_VEL_KP=3.0 ROVER_VEL_MAX=2.0 ROVER_VEL_ROT_DEG=-45.5`. n=1, precise not soft
+  (rel_vel=0.821 vs 0.2 target).
+- `ROVER_CTRL=vel` and its knobs (`ROVER_VEL_KP/MAX/MIN_FRAC/LAT_FRAC/ALIGN/ROT_DEG`) default to
+  legacy `pos` mode for every OTHER trajectory (`Static/Linear/Circular/EightShape/Sinusoidal/
+  CircularYaw`) -- none of them have been re-tested under `vel` mode; the original park/loop bug
+  this thread found is generic to ALL of them (any slow-enough moving profile), not Lissajous-
+  specific, so the same fix likely helps there too if/when they're revisited.
+  `ROVER_LISS_RADIUS_MULT`/`ROVER_LISS_W1/W2/PHI_DEG`/`ROVER_VEL_ROT_DEG` are Lissajous-shape-
+  specific and don't carry over as-is.
+- The exact cusps at phi in {30,90,150} deg (mod 180, for the -2:3 ratio) are UNFIXED -- the live
+  config above uses phi=30 and is only safe because no tested descent reaches t=27.5s/60.5s where
+  they occur. A LONGER descent (or a different IC/altitude giving more descent time) at this exact
+  config WOULD eventually hit one. If Lissajous is ever flown for longer than ~20s, pick a
+  cusp-free phase first (see the analytic vx=vy=0 method above) or re-verify the cusp timing is
+  still safely out of range.
