@@ -208,10 +208,30 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         # the rover-drive side (velocity/feedforward setpoints, or speeds above the rover's
         # minimum controllable speed); always verify with each rep's Ground_Truth.npy target
         # speed. (Memory/px4/project_20260922_ackermann_rover_loops_not_tracking.md)
-        A = float(os.environ.get("ROVER_LISS_A", "1.6"))
-        B = float(os.environ.get("ROVER_LISS_B", "3.2"))
-        w1 = float(os.environ.get("ROVER_LISS_W1", "-0.05")) * speed_mult
-        w2 = float(os.environ.get("ROVER_LISS_W2", "0.0475")) * speed_mult
+        #
+        # SPEED FIX 2026-09-23: rover_drive.py's ROVER_CTRL=vel mode now tracks the target
+        # velocity directly (see its own docstring), so speed_mult finally controls what the
+        # drone actually sees, not just the setpoint. That unblocked a genuine 10x net-speed
+        # request (ROVER_SPEED_MULT=10 -> GT target median 1.2 m/s, max ~1.7 m/s) -- but the
+        # DRONE now tumbles (tilt 10deg->155deg over t=0-5s, xy_err=3.79m) even though rover
+        # tracking itself stays tight (<=0.08m). Curvature radius here is a PURE GEOMETRY
+        # property of A,B alone (see the note above) -- it does NOT change with speed_mult,
+        # so the ~0.85m radius was already fixed at every speed tested (1x-10x); this rules out
+        # "the turn is too sharp for this speed" as the geometric mechanism (radius unaffected
+        # by speed), and is consistent with the drone-side mechanism already on file
+        # (Memory/px4/project_20260922_lissajous_cbf_and_divergence_mechanism.md: I_a_z
+        # cannibalized by I_a_xy, driven by SUSTAINED lateral speed, not by curvature alone).
+        # RADIUS_MULT nonetheless eases lateral ACCELERATION (v^2/R) at fixed speed and is
+        # cheap to try (user request, 2026-09-23): scaling A,B by m and w1,w2 (pre-speed_mult)
+        # by 1/m retraces a GEOMETRICALLY LARGER path (radius x m) at the SAME net speed (v =
+        # A*w is invariant under this joint rescaling -- verified: kappa ~ B/A^2 depends only
+        # on the A,B ratio, cancels w entirely, matching the "curvature is pure geometry"
+        # derivation above). Default 1.0 = unchanged behavior.
+        RADIUS_MULT = float(os.environ.get("ROVER_LISS_RADIUS_MULT", "1.0"))
+        A = float(os.environ.get("ROVER_LISS_A", "1.6")) * RADIUS_MULT
+        B = float(os.environ.get("ROVER_LISS_B", "3.2")) * RADIUS_MULT
+        w1 = float(os.environ.get("ROVER_LISS_W1", "-0.05")) / RADIUS_MULT * speed_mult
+        w2 = float(os.environ.get("ROVER_LISS_W2", "0.0475")) / RADIUS_MULT * speed_mult
         phi = math.radians(float(os.environ.get("ROVER_LISS_PHI_DEG", "104.0")))
         x = A * math.sin(w1 * t + phi)
         y = B * math.sin(w2 * t)

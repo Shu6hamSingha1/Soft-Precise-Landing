@@ -80,3 +80,41 @@ smoother continuous motion in the chase video, no creep-then-lurch.
 `Test_Videos/chase_2026-09-23_00-22-46.mp4`). n=1 for both configs — not yet repeated at either.
 Recommend `ROVER_SPEED_MULT=2` (or higher) as the new Lissajous default over speed_mult=1 once
 repeated; 1x is usable but has this residual creep artifact at the low end of the Lissajous cycle.
+
+**FOLLOW-UP 2026-09-23 (same session) — net-speed 10x crashed the DRONE, not the rover; fixed
+by widening the Lissajous turning radius, not by slowing down.** `ROVER_SPEED_MULT=10` (GT
+target median 1.2 m/s, max ~1.7 m/s) gave clean rover tracking (err <=0.08 m, matching the
+offline bicycle-model prediction) but the DRONE tumbled: xy_err=3.79 m, min_alt=0.08 m
+(effectively a crash). ⚠ Root-cause correction: my first read used a raw-quaternion tilt metric
+(2*acos(|w|)) that conflates YAW with actual tip-over; recomputed properly (angle of the body
+z-axis from world vertical) the real tilt still clearly diverges (0.7 deg at t=0 -> 33 deg and
+climbing at t=5s, when it hit the ground) -- a genuine, still-unresolved-at-1x-radius mechanism,
+just not as extreme as the flawed 155 deg first reported. See `diagnose-flight-data` skill:
+compute signals properly, don't reuse a metric that conflates two rotations.
+
+**Fix (user-directed): widen the turning radius at fixed net speed, `ROVER_LISS_RADIUS_MULT`**
+(new `rover_trajectory.py` knob, Lissajous only): scales amplitude A,B by m and the base
+w1,w2 by 1/m before speed_mult is applied. Curvature is a pure function of A,B (independent
+of w -- see the "curvature is pure geometry" note already on file), so this leaves NET SPEED
+UNCHANGED (v=A*w invariant) while multiplying the minimum curvature radius by m: verified
+offline, radius_mult=1/2/3/5 -> min radius (t<15s window) 0.85/1.70/2.55/4.35 m at essentially
+the same commanded speed (median ~1.2, max ~1.53 m/s throughout).
+
+`ROVER_SPEED_MULT=10 ROVER_LISS_RADIUS_MULT=3 ROVER_VEL_KP=3.0 ROVER_VEL_MAX=2.0` — LIVE
+RESULT (GT-FB, IC2, `test_data/RecordGTFB_dev/Lissajous_velctrl_10x_r3/Wed Sep 23 00-43-14
+2026/`, `Test_Videos/chase_2026-09-23_00-42-10.mp4`): true tilt stays 0.7-6.6 deg (vs 33 deg+
+climbing at radius_mult=1), rover tracking error 0.02-0.05 m (even tighter than at radius_mult=1,
+despite the ~8x bigger absolute excursion), landing PRECISE (xy=0.146 m) but not soft
+(rel_vel=0.894 m/s vs 0.2 m/s target) -- touchdown speed is still high at 10x net speed, expected
+and separate from the tilt/crash mechanism this fixes. n=1, not yet repeated; radius_mult=1/2
+not tested live (only offline) so the exact margin needed is unbisected -- 3 was chosen directly
+per user request for "a bigger radius", not as a minimal fix.
+
+**Read as one finding, not two competing explanations:** curvature radius does NOT change with
+speed_mult alone (verified: it's a fixed 0.85 m at 1x/2x/10x, a pure function of A,B), so "the
+turn was too sharp for the speed" was never literally about the OLD radius scaling WITH speed --
+but the sustained lateral ACCELERATION (v^2/R) at a fixed 0.85 m radius does scale as speed^2,
+and that is what the wider radius directly relieves. Consistent with, and does not contradict,
+the earlier-documented I_a_z/I_a_xy cannibalization mechanism -- it just shows lateral
+acceleration (not raw speed alone) is a real lever on it, worth testing on other trajectories
+(Circular/EightShape) that hit the same family of failures.
