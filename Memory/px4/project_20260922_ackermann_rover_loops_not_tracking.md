@@ -193,3 +193,51 @@ attempt would have). The recorded video shows a real, unambiguous direction-reve
 (within one descent) the full closed self-crossing curve -- that would need either a longer
 controlled descent or a faster/less-safe profile, which isn't available without a controller-side
 fix (see the I_a_z/I_a_xy mechanism entry).
+
+**FOLLOW-UP 2026-09-23 (same session, 2nd re-record) — user correctly flagged the first
+"corrected" re-record still didn't look Lissajous.** Root cause: the safe config
+(`speed_mult=6/radius_mult=6`) only showed 24% of the actual period (T=44s) in a ~10.5s
+descent -- mostly a near-straight diagonal with one subtle bend, easy to mistake for non-
+Lissajous motion. Also found along the way: **phi=30 deg (the phase used for this -2:3 ratio) is
+an EXACT geometric cusp** (vx=vy=0 simultaneously; analytically, cusps recur at phi in
+{30,90,150} deg mod 180 for THIS frequency ratio, independent of amplitude/aspect -- confirmed
+both by solving the vx=vy=0 condition and by a high-resolution (n=40000) numerical curvature
+scan; my EARLIER coarse phase search (2-3 deg steps, n=4000) under-resolved this exact point and
+reported a falsely large Rmin there, which is how phi=30 got picked as "best" in the first place
+-- same category of bug the original 2026-09-22 cusp thread already flagged once for the 1:1 case.
+Despite that, the phi=30 config still worked live at low speed (tilt<=3.3-4.3 deg in both the
+"safe" and "medium" reps below) -- so the cusp, while a real geometric defect, wasn't fatal at
+these speeds; **overall speed/lateral-accel (v^2/R) remains the dominant live-tested driver**,
+not exclusively the cusp. A cleaner phase (avoiding {30,90,150}) was NOT used in the end (time
+budget) -- worth doing before this profile is used for anything beyond a demo video.
+
+The FIRST FAILED live attempt at this ratio (`speed_mult=10/radius_mult=3`, v^2/R=0.695, real
+tilt to 28+ deg, see the entry above) sits BETWEEN two configs that both later worked fine
+(v^2/R=0.33 and v^2/R=0.88) -- so v^2/R alone is not a clean monotonic predictor either; n=3
+live points is too few to fit a real threshold, treat any single v^2/R cutoff quoted here as
+indicative only.
+
+**Final config used for the re-record** (`ROVER_SPEED_MULT=8 ROVER_LISS_RADIUS_MULT=4`, same
+B/A=0.6/W1/W2/PHI=30/KP=3.0/ROT_DEG=-45.5 as before, `ROVER_VEL_MAX=2.2`): v^2/R=0.88 (close to
+the known-safe ellipse reference), period=22s, 10.5s descent covers ~48% of it.
+`test_data/RecordGTFB_dev/Lissajous_23ratio_med/Wed Sep 23 01-16-51 2026/`,
+`Test_Videos/chase_2026-09-23_01-15-46.mp4`. Result: real tilt stayed <=4.3 deg (no crash,
+min_alt=0.51m normal touchdown) but landing classification FAIL (xy=0.160 m, just over the 0.15m
+threshold; rel_vel=1.178 m/s, well over the 0.2 soft target) -- a genuine precision/speed cost
+for showing more of the figure. Recorded GT path now shows a clear MULTI-LOBE S-wave (two visible
+inflections), a qualitative improvement over the "safe" rep's single subtle bend -- confirmed
+both in the GT plot and visually in the chase video (platform orientation visibly curves and
+re-curves). Zero clipped frames (the -45.5 deg rotation still holds for this shape too).
+
+**Net summary of the 3-rep progression this sub-thread:**
+| config | v^2/R | period | %shown/10.5s | tilt | landing |
+|---|---|---|---|---|---|
+| sm=10,rm=3 | 0.695 | 13.2s | 80% | 28+deg, CRASHED | FAIL, min_alt=0.18 |
+| sm=6,rm=6 | 0.330 | 44.0s | 24% | <=3.3deg | PRECISE (xy=0.072) |
+| sm=8,rm=4 | 0.880 | 22.0s | 48% | <=4.3deg | FAIL (xy=0.160), not soft |
+
+No single config is best on all axes; sm=8/rm=4 was kept as the final re-record because the user's
+ask was specifically about LOOKING Lissajous, and the landing, while not precise, was NOT a crash
+(min_alt=0.51m normal touchdown, just imprecise+fast). If future work needs BOTH a good landing
+AND a clearly-Lissajous-looking path, the cusp-free-phase fix above is the next thing to try
+before further mult tuning.
