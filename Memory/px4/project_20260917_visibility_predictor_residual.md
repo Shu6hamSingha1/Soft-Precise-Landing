@@ -1,6 +1,6 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain, and the latter now has a CONCRETE, EVIDENCE-BACKED mechanism (cont'd 7): the main LK flow path has NO forward-backward consistency check (only OpenCV's coarse forward-status flag) -- direct testing on real overfill-window video frames shows ~49% of 'successfully tracked' points fail a standard FB round-trip check near touchdown vs 23.5% mid-descent, explaining the diffuse rel_resid elevation. A ready-made FB-consistency helper (_bgf_lk_fb) already exists but is wired only into the opt-in CROSS_BG_FLOW alt-path, not the main one. NOT YET implemented/validated as a fix -- mechanism confirmed, offline replay-with-filtering and a live gate are the next steps. See the SESSION CLOSE section for the full index."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain, and the latter now has a CONCRETE, EVIDENCE-BACKED mechanism (cont'd 7): the main LK flow path has NO forward-backward consistency check (only OpenCV's coarse forward-status flag) -- direct testing on real overfill-window video frames shows ~49% of 'successfully tracked' points fail a standard FB round-trip check near touchdown vs 23.5% mid-descent, explaining the diffuse rel_resid elevation. ⛔ CORRECTED 2026-09-22 (cont'd 8): CROSS_BG_FLOW/HYBRID/FB are actually ALL default-ON (a stale in-file comment misled the prior finding) -- confirmed via the "BgFlow Health" log field that FB-filtered bgflow ran successfully every frame of the spike window, with its OWN rel_resid (0.64-0.92) if anything worse than the plain reconstruction. FB-consistency is ALREADY SHIPPED and CONFIRMED INSUFFICIENT for this exact problem -- not an unimplemented fix. ALL FIVE candidate fixes examined this session are now ruled out or already-shipped-and-insufficient. Two genuinely unexplored questions remain (FB threshold tightness at overfill's larger displacement scale; a possible rigid-planar-model mismatch unrelated to tracking noise) -- see cont'd 8 for detail. See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
@@ -1470,3 +1470,71 @@ filtering to a real terminal-window point set (needs raw frame pairs, so a fresh
 FB round-trip error as a new shadow diagnostic for the NEXT recording) and check whether
 `rel_resid`/reconstructed `h_z` improve once contaminated correspondences are excluded,
 before touching the live default.
+
+## ===== 2026-09-22 (cont'd 8) -- CORRECTION: FB-consistency is already default-on and doesn't fix it =====
+
+User asked to check why the "fix" (FB-consistency) was rejected, since it appeared to
+already mostly exist in the codebase. This surfaced a real error in the prior entry.
+
+**Correction: `CROSS_BG_FLOW` defaults to ON (`"1"`), not OFF.** The prior entry's claim
+("wired only into the opt-in, default-OFF CROSS_BG_FLOW alternative path") was WRONG --
+based on a STALE in-file comment at the `_compute_hw` call site (`process_frame()`,
+~line 2995-2996: "Opt-in (default OFF)") that contradicts the actual env default one
+scrolls up to see (`CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"`, baked
+default-ON 2026-08-27 by explicit user direction, GT-correlation-validated r=0.66-0.76).
+`CROSS_BG_FLOW_HYBRID` (adds CLAHE normalization + the FB-consistency rejection via
+`_bgf_lk_fb`) is ALSO default-ON, since 2026-08-28. So in the actual default runtime
+config, `_compute_hw_bgflow` (WITH FB-consistency already applied) is what runs FIRST
+every frame `det.ok` is true; the FB-less `_compute_hw` is only the fallback when bgflow
+itself can't produce a result.
+
+**Checked whether bgflow was actually active during the confirmed spike window (not just
+assumed from the default), using the `"BgFlow Health"` log field** (`_bgflow_health =
+(rel_resid, n_points)`, reset to `(inf, 0)` at the top of `process_frame` and only
+overwritten if a solve method actually ran this frame). On `IC1_rep3`'s terminal 0.8s
+(the same window used throughout this thread): **finite values every frame** (n=80-143
+points, rel_resid 0.64-0.92) -- `_compute_hw_bgflow` ran successfully and produced a
+result EVERY frame in the spike window, never fell back to the FB-less path. Confirmed no
+env override in this rep's `Img_Params.txt` (`CROSS_BG_FLOW`/`CROSS_BGF_*` unset -> pure
+defaults). `"Flow Points Prev/Curr Px"` (what every replay tool in this thread has been
+reconstructing from) is set by `_compute_hw_bgflow` itself (`self._last_flow_prev_px =
+prev_pts.copy()`, same attribute the FB-less path also writes to) -- i.e. **every
+reconstruction this whole thread has done was ALREADY working from FB-filtered
+correspondences**, not a naive unfiltered set.
+
+**Conclusion: FB-consistency filtering is already active in production on this exact
+window, and it does NOT fix the elevated rel_resid.** `BgFlow Health`'s own rel_resid
+(0.64-0.92) is if anything HIGHER than my earlier plain reconstruction's read (0.48-0.77)
+on the same window -- the FB-passing survivor points still don't fit a rigid-body model
+well. This means the prior entry's proposed fix is not a fix at all: it's already shipped,
+and the mechanism it targets (FB-inconsistent points contaminating the fit) is NOT what's
+driving the residual, or FB filtering at the current 0.7px threshold isn't tight enough to
+catch it. The earlier illustrative video test (49% FB-fail rate near touchdown) demonstrated
+that badly-mistracked points EXIST at overfill, which is real and still true -- but the
+production system already removes the ones its own FB check catches, and the fit is still
+bad on what's left. **This closes "improve the rigid-body fit via FB-consistency" as a
+dead end too, for the same reason as the other two candidates: the fix already exists (in
+some form) and doesn't solve the terminal overfill problem.**
+
+### Genuinely still open (not yet investigated): WHY does the fit stay bad even after FB filtering
+Two untested candidate explanations, neither checked yet:
+1. The FB threshold itself (`_BGF_FB_THRESH_PX=0.7`) may not be tight enough specifically
+   in the overfill regime (displacement magnitudes are ~9x larger there, per the prior
+   entry -- a fixed absolute px threshold may pass points whose ERROR is proportionally
+   still large relative to that larger signal).
+2. A genuine model mismatch unrelated to point-tracking noise at all -- e.g. the rigid
+   planar-motion assumption itself breaking down at extreme close range (real geometric/
+   lens effects not captured by the 6-DOF image Jacobian), which no amount of correspondence
+   filtering would fix since the model, not the data, would be wrong.
+Neither has been checked against real data. This is where a future session should pick up,
+not by re-proposing FB-consistency (already shipped, already insufficient).
+
+### Net across this whole candidate-fix investigation (this session)
+All identifiable candidates for the stationary terminal-overfill h_z divergence have now
+been examined and found insufficient or already-shipped-and-insufficient: sensor-cal
+(ruled out, not the mechanism), CROSS_SCALE_RATE_FUSE (ruled out, gated off exactly this
+window by design), line-width (ruled out, same terminal-window failure independently
+documented), terminal hold/clamp (untested but confirmed stationary-only, doesn't transfer
+to rover), and FB-consistency (already shipped by default, confirmed insufficient on real
+data). The two remaining open threads are the FB-threshold-tightness question and the
+model-mismatch question above -- both genuinely unexplored, not previously-tried-and-failed.
