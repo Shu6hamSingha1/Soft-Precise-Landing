@@ -1,11 +1,11 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain untested. See the SESSION CLOSE section for the full index."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain, and the latter now has a CONCRETE, EVIDENCE-BACKED mechanism (cont'd 7): the main LK flow path has NO forward-backward consistency check (only OpenCV's coarse forward-status flag) -- direct testing on real overfill-window video frames shows ~49% of 'successfully tracked' points fail a standard FB round-trip check near touchdown vs 23.5% mid-descent, explaining the diffuse rel_resid elevation. A ready-made FB-consistency helper (_bgf_lk_fb) already exists but is wired only into the opt-in CROSS_BG_FLOW alt-path, not the main one. NOT YET implemented/validated as a fix -- mechanism confirmed, offline replay-with-filtering and a live gate are the next steps. See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-22T05:16:50.018Z
+  modified: 2026-09-22T05:21:36.003Z
 ---
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
@@ -1378,3 +1378,95 @@ Only "improve the rigid-body fit itself at overfill" remains untested and unrule
 and even that needs to avoid re-deriving a point-position-statistics-based trust metric
 (origin_ratio's proven failure mode above). No fix has been implemented; this entry is
 narrowing scope, not proposing an implementation.
+
+## ===== 2026-09-22 (cont'd 7) -- rigid-body fit degradation mechanism found: no FB-consistency check on the main LK path =====
+
+Investigated the last remaining candidate ("improve the rigid-body fit itself at overfill")
+with the explicit constraint from the prior entry: avoid re-deriving a point-position-
+statistics-based trust metric (the proven-dead-end class, per origin_ratio).
+
+**Step 1 -- checked whether elevated rel_resid correlates with a spatial/geometric
+discriminant** (edge proximity, per-point displacement magnitude) on `IC1_rep3`'s actual
+spike frame (t_rel=-0.212s, the exact frame used for the earlier reconstruction check):
+NO correlation with distance-to-frame-edge (`corr=0.03`), and only a weak/inconsistent
+relationship with per-point displacement bucket (relative residual highest at SMALL
+displacement, a denominator-amplification artifact of the ratio itself, not a real
+per-point quality signal). **Residual elevation is diffuse across the point set**, not
+concentrated in an identifiable spatial or kinematic subset -- so a smarter per-point
+WEIGHTING scheme based on position or displacement has no obvious lever.
+
+**Step 2 -- checked the physical driver: per-point pixel displacement jumps ~9x near
+touchdown** (mean 0.25px mid-descent -> mean 2.34px at the spike frame, same rep, real
+logged `Flow Points Prev/Curr Px`) -- expected, since apparent motion scales up as the
+marker fills more of the frame at closer range. This raised the question of whether
+ordinary KLT/LK tracking accuracy degrades at these larger inter-frame displacements (a
+well-documented real limitation of Lucas-Kanade, unrelated to this codebase's own bugs).
+
+**Step 3 -- found the main production LK path has NO forward-backward (FB) consistency
+check.** `_compute_hw` (`cross_marker_perception.py:~2547`, what `_solve_jacobian` actually
+consumes) calls `cv2.calcOpticalFlowPyrLK` FORWARD ONLY, filtering only on OpenCV's own
+binary `status` flag + on-mask membership. A ready-made FB-consistency helper,
+`_bgf_lk_fb()` (module-level, ~line 386), backward-tracks and rejects any point whose
+round-trip error exceeds `_BGF_FB_THRESH_PX=0.7` -- but it's wired ONLY into the opt-in,
+default-OFF `CROSS_BG_FLOW` alternative flow path, never into the main one.
+
+**Step 4 -- direct empirical test, entirely self-contained (no video/Img_Data alignment
+needed): ran real FB-consistency checking on consecutive RAW VIDEO FRAMES** from the
+`IMG_RECORD=1` rep (`test_data/Test_Videos/Tue Sep 22 10-27-36 2026.mp4`), comparing a
+mid-descent pair (frames 199->200, GFT-seeded fresh, `cv2.calcOpticalFlowPyrLK` forward
+then backward, same `LK_WIN`/`LK_MAX_LEVEL` as production) against the visually-confirmed
+overfill pair (frames 295->296, the same near-touchdown frame visually validated in the
+prior entry). Threshold: the SAME `0.7px` already used/validated for `_bgf_lk_fb`.
+
+| | mid-descent (199->200) | near-touchdown (295->296) |
+|---|---|---|
+| forward-only status pass rate | 200/200 | 198/200 |
+| mean round-trip (FB) error | 0.90px | **10.1px** |
+| p90 round-trip error | 2.17px | **41.5px** |
+| frac failing FB@0.7px | 23.5% | **48.9%** |
+| mean displacement | 1.59px | 12.4px |
+
+**Decisive: forward-only status catches almost nothing at either frame (198-200/200 "pass"),
+but FB-consistency reveals ~half the near-touchdown correspondences are genuinely mistracked
+-- more than double the mid-descent baseline rate.** This directly explains the diffuse
+elevated `rel_resid` (Step 1): the rigid-body solve is fitting a point set roughly half-
+contaminated with bad correspondences at overfill, which no existing gate (forward-status,
+on-mask, `origin_ratio`, near-grazing-ray z_v, cond(A)) catches, because none of them
+measure per-point TRACKING QUALITY directly -- they measure either binary tracking success
+(too coarse) or point-POSITION statistics (architecturally blind to this, and separately
+already proven unusable for cross-marker's churning point identity).
+
+**Why this sidesteps the origin_ratio dead end**: FB-consistency is a TRACKING-QUALITY
+metric (does this specific point's flow reverse cleanly), evaluated per-point and
+independent of where in the frame or in the point cloud it sits -- it does not require
+persistent point identity ACROSS frames (each frame's FB check is self-contained: forward
+then immediately backward, same frame pair), so it isn't vulnerable to the "no fixed
+physical identity" architectural argument that killed origin_ratio and any future point-
+position-based gate.
+
+### Caveats (honest, not yet a validated fix)
+- This test used FRESH GFT-reseeded points on recorded video frames (which have a small
+  debug overlay burned in, `CROSS_RING_OVERLAY_DBG` circles at prior tracked-point
+  locations) -- not a byte-exact replay of `_sample_flow_points`'s ring-sampling logic or
+  the exact point set the live solve used that frame. It demonstrates the MECHANISM
+  (FB error genuinely spikes near overfill) on real imagery, not a certified before/after
+  fix. Video-frame-index to `Img_Data` index alignment remains unresolved (per the prior
+  entry's two false starts) -- this test deliberately avoided needing that alignment by
+  staying entirely within the video's own frame sequence.
+- Wiring `_bgf_lk_fb`'s FB check into the MAIN `_compute_hw` path (not just the opt-in
+  bgflow alternative) is a real code change, untested for regressions elsewhere in the
+  flight (FB rejection at 0.7px could shed valid points mid-descent too, at the 23.5%
+  baseline rate found above -- need to check this doesn't starve the solve of the
+  `MIN_FLOW_POINTS_SOLVE=4` floor or bias the resulting point set the way `_scale_fuse`'s
+  overfill collapse did). Needs an offline replay (reconstruct rel_resid/h_z WITH FB
+  filtering applied to real recorded terminal-window correspondences) before considering
+  a live SITL gate -- not done yet, this entry stops at mechanism confirmation.
+
+### Net: this is the most concrete, evidence-backed, not-yet-ruled-out lever found this
+### session for the stationary terminal-overfill h_z divergence.
+Next step, if picked up: build an offline replay that applies `_bgf_lk_fb`-style FB
+filtering to a real terminal-window point set (needs raw frame pairs, so a fresh
+`IMG_RECORD=1` rep with resolved index alignment, or instrumenting the live code to log
+FB round-trip error as a new shadow diagnostic for the NEXT recording) and check whether
+`rel_resid`/reconstructed `h_z` improve once contaminated correspondences are excluded,
+before touching the live default.
