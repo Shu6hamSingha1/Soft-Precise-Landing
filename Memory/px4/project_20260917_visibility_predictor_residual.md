@@ -1,11 +1,11 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain, and the latter now has a CONCRETE, EVIDENCE-BACKED mechanism (cont'd 7): the main LK flow path has NO forward-backward consistency check (only OpenCV's coarse forward-status flag) -- direct testing on real overfill-window video frames shows ~49% of 'successfully tracked' points fail a standard FB round-trip check near touchdown vs 23.5% mid-descent, explaining the diffuse rel_resid elevation. ⛔ CORRECTED 2026-09-22 (cont'd 8): CROSS_BG_FLOW/HYBRID/FB are actually ALL default-ON (a stale in-file comment misled the prior finding) -- confirmed via the "BgFlow Health" log field that FB-filtered bgflow ran successfully every frame of the spike window, with its OWN rel_resid (0.64-0.92) if anything worse than the plain reconstruction. FB-consistency is ALREADY SHIPPED and CONFIRMED INSUFFICIENT for this exact problem -- not an unimplemented fix. ALL FIVE candidate fixes examined this session are now ruled out or already-shipped-and-insufficient. (9) CLOSED 2026-09-22: both remaining hypotheses tested and ruled out as fixable-via-filtering -- FB threshold tightening (even to the 10 best-tracked points, near-zero round-trip error) does NOT reduce rel_resid; a third hypothesis (drone's own static hardware contaminating the edge-grown overfill search mask, VERIFIED real on production data: 11/111 edge points at the spike vs 0 mid-descent) also does not move rel_resid when excluded. Evidence now converges on a MODEL-level limitation (the image-Jacobian flow fit is a linearization, likely breaking down as inter-frame displacement grows ~9x near touchdown), not a fixable data-selection problem -- no per-point filtering scheme can fix this if true. NOT yet directly proven (would need a synthetic-dt isolation test). This closes the entire 'improve the rigid-body fit' candidate-fix thread (cont'd 6-9): every mitigation examined this session is now ruled out, already-shipped-and-insufficient, or points to a redesign-scale fix beyond 'improve the fit.' See the SESSION CLOSE section for the full index."
+description: "⭐ SESSION CLOSED 2026-09-22 (multi-day thread from 09-17). Four threads: (1) visibility-CBF predictor residual measured (informational). (2) axis-transposed CBF barrier found+FIXED+BAKED (96271ba6), SITL-validated 14/14. (3) touchdown-detect flow-freeze false-positive found+FIXED+BAKED (2177670b), SITL-validated 22%->0%. (4) Soft-touchdown investigation: the ~5.6x reconstruction gap that drove extensive mechanism-hunting was CLOSED -- a dt bug in this investigation's OWN offline tooling (dt=Time-delta vs the live dt=1/fps, fixed a1ffbf02), not a live-controller bug. The underlying terminal h_z perception error is CONFIRMED REAL against independent GT and video evidence (marker genuinely overfills the frame, flow-solve rel_resid roughly doubles), but is UNFIXED: five candidate mitigations (sensor-cal, CROSS_SCALE_RATE_FUSE, line-width, terminal hold/clamp [stationary-only], FB-consistency filtering) were all ruled out or found already-shipped-and-insufficient. Evidence converges on a MODEL-level (flow-Jacobian linearization) limitation, not a fixable data-selection problem -- not yet directly proven. Touchdown-detect already ignores h_z in this regime by design, so this may already be adequately mitigated in practice. See the SESSION CLOSE section (top of file) for the full index and open items."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-22T05:21:36.003Z
+  modified: 2026-09-22T05:43:40.122Z
 ---
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
@@ -128,7 +128,9 @@ still has ZERO positive evidence across 43 combined reps now -- the fix removes 
 does not prove the path earns its ongoing complexity. Worth revisiting once the rover
 thread can produce a genuine off-marker settle to test against.
 
-### 4. Soft-touchdown investigation -- OPEN, root cause only partially identified
+### 4. Soft-touchdown investigation -- root cause of the RECONSTRUCTION gap CLOSED;
+### the terminal perception error itself CONFIRMED REAL and DIAGNOSED to a model-level
+### limitation; no fix shipped
 User's premise ("GT-FB achieves soft touchdown, so tune the vertical adaptive law") was
 RIGHT to push on -- an earlier framing in this thread ("soft touchdown looks structural")
 was WRONG and is the exact mistake `feedback_dont_conclude_lag_floor` exists to prevent
@@ -147,62 +149,118 @@ was WRONG and is the exact mistake `feedback_dont_conclude_lag_floor` exists to 
   p_hinf retune (25-IC gate, 25/25 SP), and REVERTED h_rd back to -0.30 (PX4's original
   value) with that retune in place -- superseding the h_rd=-0.38 recommendation. Neither
   retune is yet ported+validated on PX4 (gain VALUES don't port directly,
-  `feedback_matlab_gains_not_portable`) and neither addresses the perception-side finding
-  below, which is PX4-real-camera-specific and has no MATLAB analog.
-- **Root-caused (partially) the actual mechanism**: perceived `h_z` genuinely diverges
-  from ground truth in the terminal ~150-450ms before touchdown (confirmed via
-  `tools/gt_optical_flow.py`, Z_REG-regularized, sync-verified -- GT loom stays smooth
-  and even flares naturally, matching clean GT-FB; perceived `h_z` diverges to ~1.6x the
-  true value over the same window). Cross-validated by a second, independent signal
-  within the SAME pipeline (`Width Loom Rate`/`Scale Loom Rate`, a different sensing
-  principle, ALSO stay flat through the identical window).
-- **Five candidate mechanisms tested for WHY it diverges, in order, each via direct
-  offline reconstruction against real recorded data (not inferred from correlation
-  alone)**:
-  1. Matrix ill-conditioning (`cond(A)`) -- FALSIFIED. Stays modest (7-16) throughout,
-     both a gradual-divergence rep and a sharp-spike rep.
-  2. Near-grazing-ray perspective-divide amplification (small `z_v`) -- REAL, confirmed
-     directly (a mechanism the code's own 2026-08-02 comment predicted but never
-     confirmed), but does NOT survive point-exclusion testing: filtering out the
-     grazing points (`CROSS_Z_V_MIN_FLOW`, isolated from the unrelated
-     `CROSS_FLOW_ANG_MAX` knob that backfired before) barely changes the sharp-spike
-     case and is a complete no-op for the gradual case (z_v never gets low enough
-     there). Retracted as a proposed fix.
-  3. KF constant-velocity rate-buildup -- REAL, directionally confirmed by replaying
-     `_kf_step`'s exact math, but only accounts for ~1/5.6 of the observed magnitude,
-     even after correcting to the RIGHT solve path (see next item).
-  4. Loom R-schedule / scale-rate fusion / hard loom backstop / loom innovation gate --
-     all RULED OUT directly against already-logged fields (each inactive by default in
-     this data, or the innovation gate's slew-based trigger is the wrong shape for a
-     gradual ~450ms ramp vs the single-frame spike it's built to catch).
-  5. Gyro-availability for the reduced 4-unknown solve -- RESOLVED (gyro was live the
-     whole flight, confirmed via `Telemetry_Data.npy`'s `Angular Velocity FRD`, not
-     inferred from a dead log field) -- but redoing the KF replay with the CORRECT
-     solve path barely changed the reconstruction, so this was not the missing piece
-     either.
-- **Net: none of the five fully explains the divergence.** ~5.6x of the observed
-  magnitude remains unaccounted for after the most careful reconstruction attempted.
-  Flagged to the user as diminishing returns on mechanism-hunting at this layer.
+  `feedback_matlab_gains_not_portable`).
+
+- **MID-SESSION ~5.6x reconstruction gap: FOUND TO BE A BUG IN THIS INVESTIGATION'S OWN
+  TOOLING, NOT THE LIVE CONTROLLER -- CLOSED.** Five mechanisms were tested first
+  (ill-conditioning falsified; near-grazing rays real but insufficient and non-surviving
+  under point-exclusion; KF rate-buildup real but ~1/5.6 of the magnitude; R-schedule/
+  scale-fuse/backstop/gate all ruled out; gyro-availability resolved as live-the-whole-
+  flight but didn't close the gap either) -- **the actual answer was mechanism #6**: every
+  offline replay tool in this thread computed the raw flow solve's `dt` as
+  `Img_Data["Time"][i]-Time[i-1]`, but the LIVE `process_frame()` actually uses
+  `dt=1/fps`, which differs from the log-timestamp delta by **3-8x in the terminal
+  window** (the `run()` polling loop's call cadence decouples from the camera's native
+  frame-pair rate near touchdown). `Img_Data["FPS"]` (and `"IMU AngVel"`, `"Stamp"`) were
+  themselves DEAD/always-NaN since the 2026-08-12 dt/frame-pairing rewrite --
+  `self._pending_fps`/`_pending_angvel`/`_pending_stamp` were read via
+  `getattr(..., default)` but NEVER ASSIGNED anywhere in the file, despite an in-file
+  comment claiming they were. **FIXED** (`a1ffbf02`): sets all three from
+  `process_frame`'s own real arguments. Redoing the raw-solve reconstruction with the
+  CORRECT `dt` on fresh recordings -- including a genuine large spike, `IC1_rep3`'s KF
+  state ramping -0.21->-0.68 -- now matches the logged `h_V_z` to within 0.000-0.013
+  throughout, closing the gap. **This means much of the earlier "unexplained divergence"
+  was this investigation's own measurement artifact, not necessarily a live bug** --
+  but see below, because the underlying perception error turned out to be real too, just
+  smaller/differently-shaped than the pre-dt-fix numbers suggested.
+
+- **Terminal `h_z` perception error: CONFIRMED REAL against independently-computed GT**
+  (not a reconstruction artifact -- checked per the `diagnose-flight-data` skill's hard
+  rule, comparing against `gt_optical_flow.py`'s GT loom, never the controller's own
+  internal reference). GT loom stays bounded and actually DECELERATES approaching
+  touchdown (physically correct); measured `h_z` overshoots by up to 2.4x in the same
+  window (`IC1_rep3`: GT=-0.258 vs meas=-0.670 at the worst point). Verified this isn't a
+  post-touchdown-static-tail artifact by checking GT ALTITUDE directly (not just loom) --
+  genuinely still descending (0.269->0.199m) throughout the window in both evidence reps.
+  **Video-validated** (`IMG_RECORD=1` rep, frame-by-frame): the marker's cross ARMS
+  visibly extend past all four frame edges near touchdown, matching `MARKER_EXTENT_PX`'s
+  claimed 318px saturation (>240px `frame_min`) -- confirmed on real recorded imagery, not
+  just a logged number. (Two false starts during video validation, both self-corrected:
+  a naive frame-index-to-time mapping bug, and mistaking a post-landing static tail for
+  the touchdown moment on a DIFFERENT rep than the evidence reps -- neither affected the
+  core GT-comparison finding.)
+
+- **Mechanism: correlates with marker overfill and elevated flow-solve `rel_resid`
+  (~2x rise, poor rigid-body fit), NOT with near-grazing rays or ill-conditioning** (both
+  stay healthy in this window even with the corrected dt). Error direction is NOT
+  consistent across reps (overshoot in one, undershoot in another under the same frozen
+  extent) -- rules out a simple sign-bias fix.
+
+- **Five candidate fixes systematically examined and ALL ruled out or found
+  already-shipped-and-insufficient** (the practical payoff of this thread, even without a
+  working fix):
+  1. Sensor-calibration matrix -- ruled out cleanly: applied downstream (in the getter) of
+     the logged (already-raw, pre-cal) `h_V` field, so no unit-mismatch explanation is
+     possible.
+  2. `CROSS_SCALE_RATE_FUSE` -- ruled out: has its own `max_ext=310px` cutoff that
+     deliberately excludes exactly the confirmed 318px spike window by design (already
+     regressed the IC gate hard once when tried default-ON in 2026-09).
+  3. Line-width -- ruled out via the existing closed thread
+     [[project_20260908_line_width_loom_investigation]]: same terminal-window sign-
+     inversion limitation (marker fragments/exits FOV, arm fits latch onto background).
+  4. Terminal hold/clamp on `h_z` -- confirmed STATIONARY-ONLY, does not transfer to
+     rover: [[project_20260901_rover_cross_perception_diagnosis]] explicitly shows
+     rover's own `h_z` is FAITHFUL to GT (corr +0.89) through its overfill window --
+     rover's actual terminal stall is an unrelated lateral centroid-spike -> CBF/thrust
+     cascade.
+  5. Forward-backward (FB) LK consistency filtering -- **already shipped and confirmed
+     insufficient**, not an unimplemented fix as first thought: `CROSS_BG_FLOW` and
+     `CROSS_BG_FLOW_HYBRID` (which includes FB-consistency via `_bgf_lk_fb`) are BOTH
+     default-ON (a stale in-file comment claiming "opt-in, default OFF" was misleading);
+     verified via the `"BgFlow Health"` log field that FB-filtered bgflow ran
+     successfully every frame of the real spike window, with its OWN `rel_resid`
+     (0.64-0.92) if anything worse than the unfiltered reconstruction. Further tightening
+     the FB threshold (even to the 10 best-tracked points, near-zero round-trip error)
+     did not reduce `rel_resid` at all. A related hypothesis (the overfill-grown search
+     mask admitting the drone's own static visible hardware at frame edges) was verified
+     REAL on production data (11/111 edge points at the spike vs 0 mid-descent) but
+     excluding that margin also didn't move `rel_resid`.
+- **Convergent conclusion (not yet directly proven)**: every point-selection strategy
+  tried fails to move the residual, which is the signature of a MODEL-level limitation
+  (the image-Jacobian flow fit is a linearization, likely breaking down as inter-frame
+  pixel displacement grows ~9x near touchdown), not a fixable data-selection problem. If
+  true, no per-point filtering scheme -- however clever -- can fix this; a real fix would
+  need either a smaller effective `dt` in the terminal window (hardware/polling-limited,
+  not just a flag) or a non-differential motion estimator for the overfill regime
+  specifically (a redesign, not a tweak).
 
 **Tools committed this thread** (all read-only, reproducible, documented with their own
 replication scope/limits): `tools/scan_vis_safeset.py`, `measure_vis_predictor_residual.py`
 (thread 1); `tools/replay_touchdown_flowfreeze_gate.py` (thread 3);
 `tools/replay_flow_solve_conditioning.py`, `replay_zvmin_filter.py`, `replay_hw_kf.py`,
-`replay_hw_kf_gyro.py` (thread 4's mechanism-hunting).
+`replay_hw_kf_gyro.py`, `replay_flow_solve_correct_dt.py` (thread 4's mechanism-hunting
+and dt-bug closure).
 
 **What's genuinely open for a future session:**
-- Thread 4's root cause remains ~5.6x unexplained. Untried candidates: the sensor
-  calibration matrix's end-to-end effect with the KF in the loop (dismissed early as
-  "too small" via its diagonal value alone, never rigorously verified with the KF
-  active); a `dt`/jitter discrepancy between this offline replay and the live
-  controller's actual per-frame timing.
-- A practical mitigation not requiring full mechanism attribution may be more tractable
-  than continuing to chase it: e.g. damping the KF's rate-state growth specifically in
-  the terminal/high-extent window, or a simple proximity-triggered hold/clamp on `h_z`.
+- The model-linearization hypothesis for the terminal `h_z` error is CONVERGENTLY
+  SUPPORTED but NOT DIRECTLY PROVEN -- the natural next check is a synthetic-dt isolation
+  test (does the residual shrink if the SAME correspondences are evaluated at an
+  artificially smaller inter-frame step), not another point-selection variant.
+- No practical fix currently exists for the terminal overfill `h_z` error. The touchdown
+  detector already correctly ignores `h_z` in this regime (uses n_corners/extent/flow-
+  freeze instead, per the closed line-width thread's own finding -- "every landing in
+  every gate latched via [overfill]/[flow-freeze]"), so this may already be adequately
+  mitigated in practice even without a perception-side fix -- worth confirming explicitly
+  before investing in a redesign-scale solution.
 - The coordinated MATLAB adaptive-law retune (`7476400a`) is not yet ported or
   SITL-validated on PX4.
 - Thread 3's flow-freeze path still has zero positive evidence for its own stated
   purpose, across 43 combined reps.
+- Rover's terminal stall mechanism (lateral centroid-spike -> CBF/thrust cascade,
+  `project_20260901_rover_cross_perception_diagnosis`) traces through the pre-2026-09-09
+  joint-QP's `CBF_AZ_COST_GAIN` relief term, which may be superseded by the later
+  `visibility_projection.py` Tier-1 rewrite -- NOT re-verified against current code, flag
+  before trusting that specific causal chain as still-live.
 
 ---
 
