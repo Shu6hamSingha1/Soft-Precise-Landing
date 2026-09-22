@@ -118,3 +118,27 @@ and that is what the wider radius directly relieves. Consistent with, and does n
 the earlier-documented I_a_z/I_a_xy cannibalization mechanism -- it just shows lateral
 acceleration (not raw speed alone) is a real lever on it, worth testing on other trajectories
 (Circular/EightShape) that hit the same family of failures.
+
+**FOLLOW-UP 2026-09-23 (same session) — chase-camera framing: `ROVER_VEL_ROT_DEG` knob.**
+User noticed `chase_2026-09-23_00-42-10.mp4` (the radius_mult=3 fix above) shows the target
+moving TOWARD the fixed chase camera (closing distance) rather than laterally, so it balloons
+in apparent size and gets clipped near touchdown. Diagnosed by tracking the chase video's pixel
+centroid/bbox (OpenCV threshold+contour) and fitting it against GT `Target Pose` world position:
+`cx ~ 61.2*East -20.9*North + c`, `size ~ 26.0*East -85.5*North + c` (this run's ENU-ish
+`Target Pose` fields; camera is `<pose>8 -8 3.5 0 0.250 2.216</pose>` in
+`~/PX4-Autopilot/Tools/simulation/gz/worlds/rover_cross.sdf`, fixed, aimed at ~(2.7,2.5)). Net
+motion that run was NED heading ~119 deg (mostly size growth, weak cx change); solving for the
+direction with zero size-growth (pure lateral, constant camera distance) gives NED heading ~73
+deg -- a -45.5 deg rotation offset from what VEL_ALIGN alone produces.
+
+Added `ROVER_VEL_ROT_DEG` to `rover_drive.py` (additive on top of `ROVER_VEL_ALIGN`'s
+heading-match rotation; 0 = old behavior). Live-tested at
+`ROVER_VEL_ROT_DEG=-45.5` (same speed/radius config as above,
+`test_data/RecordGTFB_dev/Lissajous_velctrl_10x_r3_rot/Wed Sep 23 00-52-50 2026/`,
+`Test_Videos/chase_2026-09-23_00-51-46.mp4`): bbox area at touchdown ~3x its value 5s earlier
+(was ~50-60x before this fix); pixel-tracked: NOT clipped by the right frame edge until the very
+last 2 of 204 frames (~0.1s, at touchdown itself) -- vs clipped/oversized for several seconds
+before. Landing unaffected (xy=0.159 m vs 0.146 m before, both precise-class, not soft --
+control physics is orientation-invariant as expected, this knob only changes framing).
+⚠ This rotation is specific to the CURRENT chase camera pose + this Lissajous shape/anchor;
+re-derive with the same pixel-tracking method (see this entry) if either changes. n=1.

@@ -109,6 +109,17 @@ VEL_LAT_FRAC = float(os.environ.get("ROVER_VEL_LAT_FRAC", "0.5"))  # |cross-trac
 # heading ~83 deg East; without this the first ~15 s (the whole descent) are a turn-in transient
 # of up to ~0.5 m instead of the profile. 0 = keep the profile's own world orientation.
 VEL_ALIGN = os.environ.get("ROVER_VEL_ALIGN", "1") == "1"
+# ROVER_VEL_ROT_DEG (2026-09-23): additive rotation on TOP of VEL_ALIGN, for steering the path's
+# framing in the fixed CHASE camera without touching the profile's speed/curvature. Chosen
+# empirically per chase_2026-09-23_00-42-10.mp4 (Lissajous, ROVER_SPEED_MULT=10 RADIUS_MULT=3):
+# fit chase-video pixel centroid (cx) and apparent size (depth proxy) against GT target world
+# position gave cx ~ 61.2*East -20.9*North + c, size ~ 26.0*East -85.5*North + c -- net motion
+# this run (NED heading ~119 deg) mostly grew SIZE (closing distance -> "moving toward us",
+# cropped near touchdown) with a weaker rightward (cx) component. Solving for the direction with
+# zero size growth (pure lateral motion, no distance change) gives NED heading ~73 deg, a -45.5
+# deg offset from this run's ~119 deg net heading. Re-derive (same method, tools/rover-video pixel
+# fit) if the chase camera pose or the trajectory profile changes.
+VEL_ROT_DEG = float(os.environ.get("ROVER_VEL_ROT_DEG", "0"))
 
 
 async def _wait_connected(rover):
@@ -298,6 +309,7 @@ async def _run_with_clock(time_node):
         rot = 0.0
         if VEL_ALIGN and s0.speed > 1e-6:
             rot = hdg[0] - math.atan2(s0.vy, s0.vx)
+        rot += math.radians(VEL_ROT_DEG)
         print(f"[rover_drive] path anchored at ({anchor[0]:+.2f},{anchor[1]:+.2f}), "
               f"rotated {math.degrees(rot):+.1f} deg (rover heading {math.degrees(hdg[0]):+.1f})",
               flush=True)
