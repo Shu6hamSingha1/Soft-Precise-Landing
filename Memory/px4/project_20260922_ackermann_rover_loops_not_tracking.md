@@ -53,3 +53,17 @@ scratch venv to read the rover ulog.
 **Fix direction:** stop sending bare position points — velocity setpoints with feedforward +
 P-correction on position error (rover_drive has telemetry), or a lead/carrot point kept >0.5 m ahead
 along the path. Just shrinking NAV_ACC_RAD won't stop the loops: a sideways point still forces a turn.
+
+**FIX IMPLEMENTED 2026-09-23 — `apps/rover_drive.py` `ROVER_CTRL=vel` (default for Lissajous only; other
+profiles still `pos` so peers' experiments aren't silently changed).** Offboard VELOCITY setpoints =
+profile velocity (feedforward) + bounded position correction (`_track_cmd`: along-track speed
+clamped to [0.5|v_ff|, ROVER_VEL_MAX=0.4], cross-track ≤ 0.5× along-track → never reverses heading,
+so no Ackermann loops). Pre-gate hold = zero velocity (rover stays at spawn); at the gate the path is
+anchored at the rover's position and rotated so its start tangent matches the rover heading
+(`ROVER_VEL_ALIGN=1`; shape unchanged). First live rep (GT-FB, IC2,
+`test_data/RecordGTFB_dev/Lissajous_velctrl/Wed Sep 23 00-05-47 2026`): GT target speed median
+0.135, max 0.285 m/s (was 2.2), tracking error ≤0.13 m; landing xy=0.018 m, rel_vel=0.20 m/s
+(precise; soft only under the harness's relaxed 0.5 m/s). Residual speed surging 0.05-0.27 m/s is
+PX4's RO_SPEED_TH=0.1 m/s measurement deadband at these low speeds. n=1 — not yet repeated.
+Caveat: at k=0.1 the ~10 s descent covers only ~1.5 m of a ~132 s-period curve, so on video the
+target path looks nearly straight.
