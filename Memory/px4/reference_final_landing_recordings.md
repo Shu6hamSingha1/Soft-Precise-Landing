@@ -1,25 +1,58 @@
 ---
 name: reference_final_landing_recordings
-description: test_data/Final/ — curated & committed IC1-5 perception-mode cross-marker landing recordings (montage + cams + full datasets)
+description: "test_data/Final/ — curated & committed IC1-5 landing recordings (montage + cams + full datasets). ⭐ REPLACED 2026-09-23 (commit 85faa9f1): now GT-FB rover_cross-world cross-marker, 5/5 SoftPrecise (xy 0.009-0.030m, rel_vel 0.095-0.111m/s), first launch attempt each. The prior perception-mode cross_marker set (1/5 verified precise, IC5's precise flag was a mid-air false-positive per the 2026-09-02 correction below) is REMOVED from Final/ but recoverable from git history (pre-85faa9f1)."
 metadata: 
   node_type: memory
   type: reference
   originSessionId: 7e5acaee-84eb-407d-8d98-d20cb3002914
-  modified: 2026-09-01T03:45:33.258Z
+  modified: 2026-09-23T00:00:00.000Z
 ---
+
+## ⭐ CURRENT (2026-09-23, commit `85faa9f1`, replaces everything below)
+
+**Config:** main @ `5b342689`. `PLASMC_GT_FEEDBACK=1` (GT-fed s/h, isolates CONTROL from
+PERCEPTION — NOT the old perception-mode path), `WORLD=rover_cross ROVER_MODEL=rover_cross
+ROVER_MOTION=0` (stationary target on the rover platform, not `cross_marker` world),
+`MARKER_TYPE=cross`, default params, 1280x960 chase cam.
+
+**Layout unchanged**: `Final/IC1/ … Final/IC5/` + `Final/MANIFEST.md`, same 5-file-per-IC
+pattern (`IC<n>_montage.mp4`, `IC<n>_onboard_cam.mp4`, `IC<n>_chase_cam.mp4`,
+`IC<n>_overlay_s_alpha.mp4`, `IC<n>_overlay_h.mp4` [renamed from `_overlay_h_w.mp4`],
+`dataset/`). Built via the [[reference_finalized_montage_video_layout]] recipe
+(`tools/overlay_image_features.py` x2 + `tools/make_landing_montage.py`,
+`--tail-s 1.0 --chase-crop-touchdown 0.5 --chase-crop-ramp-s 3.0`).
+
+**Per-IC outcome — ALL 5 SoftPrecise on the FIRST launch attempt, no retries:**
+| IC | init ENU | xy_err | rel_vel | source run |
+|----|----------|--------|---------|------------|
+| IC1 | 0,0,5  | 0.0093 m | 0.105 | `Tue Sep 22 23-34-24 2026` |
+| IC2 | 2,2,5  | 0.0125 m | 0.095 | `Tue Sep 22 23-35-44 2026` |
+| IC3 | -2,2,5 | 0.0298 m | 0.100 | `Tue Sep 22 23-37-06 2026` |
+| IC4 | 2,2,7  | 0.0215 m | 0.105 | `Tue Sep 22 23-38-31 2026` |
+| IC5 | 2,2,3  | 0.0138 m | 0.111 | `Tue Sep 22 23-39-48 2026` |
+
+All 5 clear the manuscript's strict 0.08m/0.2m/s thresholds directly (not just the
+0.10m/0.5m relaxed harness gate). Chase video verified frame-by-frame on IC1 (0/213
+identical consecutive frame pairs) — no freeze artifact; a same-day peer-session concern
+about a chase-cam render-stall bug (from a resolution-drop A/B) was raised then RETRACTED
+(bad whole-frame-mean-diff methodology masked real motion against a static background;
+re-checked properly, 0/206 pairs were actually identical) — no such bug exists, don't
+re-raise it.
+
+**Why this replaced the perception-mode set**: same 5 spawn positions, but the OLD set
+missed precise/soft on IC1/IC3/IC4 (see below) while this GT-FB set lands all 5 cleanly —
+strong evidence those misses were perception-side (calibration/overfill/etc.), not a
+control-law weakness at these ICs. If a perception-vs-control comparison is ever needed
+again, the removed data is at git commit `a6f288c9` (parent of the replacement) or earlier.
+
+---
+
+## HISTORICAL (perception-mode set, REMOVED from Final/ 2026-09-23, recoverable from git
+## history pre-`85faa9f1` — kept below for its own correction, not as current state)
 
 **Location:** `PX4_Gazebo/test_data/Final/` — git-tracked (NOT under the per-subdir
 `test_data` gitignore rules), committed + pushed 2026-09-01 (commit `b89f66b8`, main).
 271 MB, 56 files, no LFS.
-
-**Layout:** `Final/IC1/ … Final/IC5/`, plus `Final/MANIFEST.md`. Each `IC<n>/` holds:
-- `IC<n>_montage.mp4` — combined view: onboard s/alpha overlay + onboard h/w overlay
-  + chase cam + rel-position / rel-velocity / 3D-trajectory plot panel (built by
-  `tools/overlay_image_features.py --split --draw-w` then `tools/make_landing_montage.py`).
-- `IC<n>_onboard_cam.mp4`, `IC<n>_chase_cam.mp4` — raw source videos.
-- `IC<n>_overlay_s_alpha.mp4`, `IC<n>_overlay_h_w.mp4` — the two overlay components.
-- `dataset/` — full run: `Control_Data.npy`, `Control_Params.npy`, `Ground_Truth.npy`,
-  `Img_Data.npy`, `Img_Params.txt`, `Telemetry_Data.npy`.
 
 **Config for all runs:** main @ `4d7bc210` (post-`ebb8093c`-revert baseline),
 perception feedback (NO `PLASMC_GT_FEEDBACK`), `MARKER_TYPE=cross`,
