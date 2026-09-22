@@ -1,12 +1,73 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "⭐ SESSION CLOSED 2026-09-22 (multi-day thread from 09-17). Four threads: (1) visibility-CBF predictor residual measured (informational). (2) axis-transposed CBF barrier found+FIXED+BAKED (96271ba6), SITL-validated 14/14. (3) touchdown-detect flow-freeze false-positive found+FIXED+BAKED (2177670b), SITL-validated 22%->0%. (4) Soft-touchdown investigation: the ~5.6x reconstruction gap that drove extensive mechanism-hunting was CLOSED -- a dt bug in this investigation's OWN offline tooling (dt=Time-delta vs the live dt=1/fps, fixed a1ffbf02), not a live-controller bug. The underlying terminal h_z perception error is CONFIRMED REAL against independent GT and video evidence (marker genuinely overfills the frame, flow-solve rel_resid roughly doubles), but is UNFIXED: five candidate mitigations (sensor-cal, CROSS_SCALE_RATE_FUSE, line-width, terminal hold/clamp [stationary-only], FB-consistency filtering) were all ruled out or found already-shipped-and-insufficient. Evidence converges on a MODEL-level (flow-Jacobian linearization) limitation, not a fixable data-selection problem -- not yet directly proven. Touchdown-detect already ignores h_z in this regime by design, so this may already be adequately mitigated in practice. See the SESSION CLOSE section (top of file) for the full index and open items."
+description: "⭐ SESSION CLOSED 2026-09-22 (multi-day thread from 09-17). Four threads: (1) visibility-CBF predictor residual measured (informational). (2) axis-transposed CBF barrier found+FIXED+BAKED (96271ba6), SITL-validated 14/14. (3) touchdown-detect flow-freeze false-positive found+FIXED+BAKED (2177670b), SITL-validated 22%->0%. (4) Soft-touchdown investigation: the ~5.6x reconstruction gap that drove extensive mechanism-hunting was CLOSED -- a dt bug in this investigation's OWN offline tooling (dt=Time-delta vs the live dt=1/fps, fixed a1ffbf02), not a live-controller bug. The underlying terminal h_z perception error is CONFIRMED REAL against independent GT and video evidence (marker genuinely overfills the frame, flow-solve rel_resid roughly doubles), but is UNFIXED: five candidate mitigations (sensor-cal, CROSS_SCALE_RATE_FUSE, line-width, terminal hold/clamp [stationary-only], FB-consistency filtering) were all ruled out or found already-shipped-and-insufficient. Evidence converges on a MODEL-level (flow-Jacobian linearization) limitation, not a fixable data-selection problem -- not yet directly proven by a clean isolation test -- 2026-09-22 follow-up: the naive interpolation-based synthetic-dt test is mathematically vacuous (rel_resid is scale-invariant under uniform rescaling of a linear least-squares target); a valid substitute (regressing rel_resid against REAL displacement/dt vs extent, 4 reps) WEAKENS the linearization hypothesis further (residual tracks extent/overfill, reverses sign vs displacement outside overfill) without fully refuting it. Touchdown-detect already ignores h_z in this regime by design, so this may already be adequately mitigated in practice. See the SESSION CLOSE section (top of file) for the full index and open items."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
   modified: 2026-09-22T05:43:40.122Z
 ---
+
+
+## ===== 2026-09-22 (cont'd 10) -- synthetic-dt isolation test run; linearization hypothesis WEAKENED, overfill/rigid-body mismatch reinforced =====
+
+**Ran the flagged next check** ("does the residual shrink at a smaller synthetic dt,
+same correspondences"). First attempt (linear interpolation of the same two measured
+points to a fractional displacement + proportionally smaller dt) was DISCARDED as
+mathematically vacuous before drawing any conclusion from it: `rel_resid =
+||A@sol-b||/||b||` is scale-invariant under any uniform positive rescaling of the
+velocity vector `b` for a linear least-squares system (rescaling b by k rescales the OLS
+solution and the residual by the same k, so the ratio is invariant by construction) --
+confirmed numerically (rel_resid identical to 4 decimals across frac in {1, .5, .25,
+.125, .0625} on every frame tested, IC1_rep1 terminal window). No interpolation-based
+synthetic-dt construction can move this ratio; a real test needs an independent
+smaller-time-step measurement, which the recording doesn't contain (no sub-frame-rate
+data). Script kept for reference (`synthetic_dt_test.py` shows this null-by-construction
+result) but its numbers are not evidence.
+
+**Valid substitute: regressed rel_resid against the REAL displacement/dt magnitude
+already varying frame-to-frame across the whole flight** (not synthetic), controlling
+for marker extent (`real_dt_regression.py`, offline, 4 reps: `ICValidation/
+20260922-032613/IC1_rep{1,2,3,4}`, all post-`a1ffbf02` so FPS is live). If the
+linearization hypothesis is right, larger real per-point pixel displacement should
+predict WORSE rel_resid independent of overfill (error is a property of the (dt,
+displacement) regime). Result is the opposite pattern, consistent across all 4 reps:
+- Whole-flight corr(rel_resid, extent_px) = 0.50-0.56, consistently higher than
+  corr(rel_resid, disp_px) = 0.25-0.30 -- extent predicts the residual better than raw
+  displacement does, and the two are confounded (corr(disp,extent) = 0.63-0.68, both
+  naturally grow together as altitude drops).
+- **In the LOW-extent (no-overfill) half of each flight, rel_resid goes DOWN as
+  displacement goes UP** (small-disp-half median 0.29-0.32 vs big-disp-half 0.19-0.20,
+  all 4 reps) -- the OPPOSITE sign from what linearization predicts. Likely explanation:
+  tiny pixel displacements are noise-floor-dominated (the LK/correspondence error is a
+  larger fraction of a smaller true signal), so the "linearization error grows with
+  displacement" story doesn't even hold directionally outside overfill.
+- Decile-binned view (IC1_rep1): rel_resid falls monotonically from bin0 (smallest disp)
+  to bin7 (0.415->0.136), then reverses sharply only in bins 8-9 (highest disp AND
+  highest extent, 0.32-0.35) -- a U-shape driven by the overfill tail, not a monotonic
+  displacement effect.
+- Within the HIGH-extent (>=p90, overfill) subset alone, median rel_resid is already
+  0.83-0.84 (vs 0.24-0.25 overall) and stays roughly flat there regardless of
+  within-subset displacement variation -- consistent with a threshold-like overfill/
+  rigid-body-fit breakdown, not a smoothly displacement-scaling linearization error.
+
+**Verdict: this weakens, does not fully refute, the linearization hypothesis.** The
+correlational design can't cleanly separate displacement from extent (they co-vary
+naturally with altitude), so it isn't the "clean isolation" the original flag asked for
+-- but every angle available from existing data points the same way: the residual
+tracks overfill/extent, not raw displacement magnitude, and reverses sign vs the
+linearization prediction outside the overfill regime. Reinforces the SESSION CLOSE
+mechanism note ("correlates with marker overfill... NOT with near-grazing rays or
+ill-conditioning") with one more independent angle, now also ruling out plain
+displacement-magnitude/dt as the standalone driver. A fully clean test (genuinely
+independent smaller-dt correspondences) would need either higher native camera framerate
+data or a raw-video multi-skip re-tracking exercise (as the illustrative-video tests in
+cont'd-9 did) -- not done here; flagging as the honest residual gap rather than closing it.
+
+**Tools added (offline, read-only, reproducible):** `synthetic_dt_test.py` (kept for the
+negative/vacuous-by-construction result, documented in its own header),
+`real_dt_regression.py` (the valid substitute). Neither committed to the repo yet --
+scratch-only pending a decision whether this thread reopens further.
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
 
