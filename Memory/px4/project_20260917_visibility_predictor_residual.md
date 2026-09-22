@@ -1,6 +1,6 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain, and the latter now has a CONCRETE, EVIDENCE-BACKED mechanism (cont'd 7): the main LK flow path has NO forward-backward consistency check (only OpenCV's coarse forward-status flag) -- direct testing on real overfill-window video frames shows ~49% of 'successfully tracked' points fail a standard FB round-trip check near touchdown vs 23.5% mid-descent, explaining the diffuse rel_resid elevation. ⛔ CORRECTED 2026-09-22 (cont'd 8): CROSS_BG_FLOW/HYBRID/FB are actually ALL default-ON (a stale in-file comment misled the prior finding) -- confirmed via the "BgFlow Health" log field that FB-filtered bgflow ran successfully every frame of the spike window, with its OWN rel_resid (0.64-0.92) if anything worse than the plain reconstruction. FB-consistency is ALREADY SHIPPED and CONFIRMED INSUFFICIENT for this exact problem -- not an unimplemented fix. ALL FIVE candidate fixes examined this session are now ruled out or already-shipped-and-insufficient. Two genuinely unexplored questions remain (FB threshold tightness at overfill's larger displacement scale; a possible rigid-planar-model mismatch unrelated to tracking noise) -- see cont'd 8 for detail. See the SESSION CLOSE section for the full index."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain, and the latter now has a CONCRETE, EVIDENCE-BACKED mechanism (cont'd 7): the main LK flow path has NO forward-backward consistency check (only OpenCV's coarse forward-status flag) -- direct testing on real overfill-window video frames shows ~49% of 'successfully tracked' points fail a standard FB round-trip check near touchdown vs 23.5% mid-descent, explaining the diffuse rel_resid elevation. ⛔ CORRECTED 2026-09-22 (cont'd 8): CROSS_BG_FLOW/HYBRID/FB are actually ALL default-ON (a stale in-file comment misled the prior finding) -- confirmed via the "BgFlow Health" log field that FB-filtered bgflow ran successfully every frame of the spike window, with its OWN rel_resid (0.64-0.92) if anything worse than the plain reconstruction. FB-consistency is ALREADY SHIPPED and CONFIRMED INSUFFICIENT for this exact problem -- not an unimplemented fix. ALL FIVE candidate fixes examined this session are now ruled out or already-shipped-and-insufficient. (9) CLOSED 2026-09-22: both remaining hypotheses tested and ruled out as fixable-via-filtering -- FB threshold tightening (even to the 10 best-tracked points, near-zero round-trip error) does NOT reduce rel_resid; a third hypothesis (drone's own static hardware contaminating the edge-grown overfill search mask, VERIFIED real on production data: 11/111 edge points at the spike vs 0 mid-descent) also does not move rel_resid when excluded. Evidence now converges on a MODEL-level limitation (the image-Jacobian flow fit is a linearization, likely breaking down as inter-frame displacement grows ~9x near touchdown), not a fixable data-selection problem -- no per-point filtering scheme can fix this if true. NOT yet directly proven (would need a synthetic-dt isolation test). This closes the entire 'improve the rigid-body fit' candidate-fix thread (cont'd 6-9): every mitigation examined this session is now ruled out, already-shipped-and-insufficient, or points to a redesign-scale fix beyond 'improve the fit.' See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
@@ -1538,3 +1538,78 @@ documented), terminal hold/clamp (untested but confirmed stationary-only, doesn'
 to rover), and FB-consistency (already shipped by default, confirmed insufficient on real
 data). The two remaining open threads are the FB-threshold-tightness question and the
 model-mismatch question above -- both genuinely unexplored, not previously-tried-and-failed.
+
+## ===== 2026-09-22 (cont'd 9) -- both remaining hypotheses tested; converges on a model-level (not data-level) limitation =====
+
+Tested the two genuinely-unexplored questions flagged at the end of the prior entry.
+
+### Hypothesis 1 (FB threshold too loose at overfill's larger displacement scale) -- RULED OUT
+Used the `IMG_RECORD=1` rep's raw video frames (self-contained illustrative test, same
+caveat as before: fresh GFT reseed, not a byte-exact replay) at the visually-confirmed
+overfill frame pair. Progressively tightened the correspondence filter far beyond the
+production `0.7px` FB threshold -- proportional (`rt_err < 0.1*disp`), then the cleanest
+20% by round-trip error (n=38, max rt_err=0.093px), then the cleanest 10 points outright
+(max rt_err=0.019px, essentially perfect tracking): **rel_resid stayed flat at 0.53-0.62
+throughout, not trending toward zero even at near-perfect tracking accuracy.** A threshold
+problem would show monotonic improvement as filtering tightens; it doesn't. Ruled out.
+
+### A third, more specific hypothesis (contamination from the drone's own static visible
+### hardware at frame edges) -- also tested and RULED OUT, directly on real production data
+Noticed in the illustrative video frames that small gray objects (plausibly landing-
+gear/motor housing, rigidly fixed to the airframe, hence STATIC in-camera-frame regardless
+of marker motion) sit near the left/right image edges. Checked whether `IC1_rep3`'s actual
+production `"Flow Points Prev Px"` (not the illustrative video test) admits points there:
+**yes** -- 11/111 points fall in a `<15px` or `>225px` margin at the spike frame vs
+**0** at a mid-descent frame, i.e. the production bgflow search mask (which grows toward
+the FULL FRAME at deep overfill, per `extent_mask_from_detection`'s `WHOLE_PLATE_SCALE`
+clipped to frame bounds) genuinely starts admitting edge-region points only once overfill
+sets in -- a real, verified structural change in what gets sampled, and a plausible source
+of a second, different rigid motion (near-static airframe hardware) contaminating the
+single-body model. **But excluding this exact margin from three real spike frames changed
+rel_resid by nothing** (0.488->0.488, 0.610->0.616, 0.774->0.795, if anything slightly
+worse) -- so while the edge-admission behavior change is real and verified, it is NOT the
+driver of the elevated residual either.
+
+### Hypothesis 2 (rigid-planar-model mismatch, unrelated to which points are chosen) --
+### now the only hypothesis consistent with ALL evidence; not yet directly proven, but
+### convergently supported
+Every point-SELECTION strategy tried across this whole thread -- tightest-FB subset,
+proportional threshold, edge-margin exclusion, and (earlier entries) displacement-bucket
+and edge-distance correlation checks -- failed to move `rel_resid` meaningfully. The
+residual is not concentrated in ANY identifiable subset by any criterion tested. This is
+the signature of a MODEL-level limitation, not a data-quality one. The most physically-
+motivated remaining candidate (not yet directly isolated/proven): the image-Jacobian
+6-DOF flow fit is a LINEARIZATION -- valid for small/infinitesimal inter-frame motion --
+approximated here via a FINITE DIFFERENCE between two discrete frames. Inter-frame pixel
+displacement grows ~9x near touchdown (mean 0.25px mid-descent -> 2.3-12px terminal,
+confirmed on real data multiple times this thread) as the same physical motion projects to
+much more pixel motion at closer range. A large discrete step used to approximate an
+instantaneous-velocity model introduces genuine second-order linearization error --
+independent of tracking accuracy (explaining why perfect-FB points still show elevated
+residual) and roughly uniform across the point set (explaining the diffuse pattern,
+since every point on a rigid body sees a proportionally similar breakdown of the
+small-motion approximation, not a spatially-localized one).
+
+### Practical implication if this holds (not yet certain, flagged honestly)
+No per-point trust/filtering scheme -- however clever, however it's built -- can fix a
+model-level linearization error, because it's a property of the (dt, displacement) regime
+the solve runs in, not of which specific correspondences are chosen. This would mean the
+whole "improve the rigid-body fit via better point selection" direction (the entire
+candidate-fix thread of this and the prior 3 entries) is fundamentally the wrong lever.
+Two categories of a REAL fix, if this diagnosis is confirmed, are much larger undertakings
+than anything tried so far: (a) reduce dt specifically in the terminal window (circles back
+to the earlier-closed dt/fps investigation -- dt is already what the hardware/polling loop
+delivers, not freely tunable down further without new instrumentation work), or (b) replace
+the differential/linearized flow-Jacobian estimator with a genuinely different, non-
+differential motion estimate (e.g. direct pose/homography estimation between frame pairs)
+specifically for the overfill regime -- a substantial redesign, not a fix.
+
+### Net: closes the "improve the rigid-body fit" candidate-fix thread
+Every mitigation examined across cont'd 6/7/8/9 (sensor-cal, CROSS_SCALE_RATE_FUSE,
+line-width, terminal hold/clamp [stationary-only], FB-consistency [already shipped], FB
+threshold tightening, edge-margin exclusion) is ruled out or insufficient. The evidence now
+converges on a genuine model-level (linearization) explanation rather than a fixable
+data-selection problem, though that specific explanation itself has not been DIRECTLY
+isolated/proven (e.g. by synthetically testing the same points at a smaller synthetic dt to
+show the residual shrinks) -- that would be the natural next check for a future session, not
+another point-selection variant.
