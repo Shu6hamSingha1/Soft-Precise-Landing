@@ -1,11 +1,11 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. THREE candidate fixes identified but NOT YET tested: terminal hold/clamp on h_z at overfill, enabling/tuning the already-existing CROSS_SCALE_RATE_FUSE (default off) which may already be positioned to help, or improving the rigid-body fit itself at overfill. See the SESSION CLOSE section for the full index."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. Of the three candidate fixes named: CROSS_SCALE_RATE_FUSE and line-width are now BOTH RULED OUT (see the 2026-09-22 cont'd 6 entry) -- only terminal hold/clamp on h_z (stationary-only, does NOT transfer to rover) and improving the rigid-body fit itself remain untested. See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-22T04:46:55.883Z
+  modified: 2026-09-22T05:16:50.018Z
 ---
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
@@ -1312,3 +1312,69 @@ The dt-bug closure (session's earlier entries) and the GT-vs-measured divergence
 are both unaffected by the two false starts above (neither used the flawed video-alignment
 or this rep's own tail-confused `Time[-1]`). The overfill mechanism is now visually
 confirmed, not just numerically inferred.
+
+## ===== 2026-09-22 (cont'd 6) -- both remaining candidate fixes narrowed: 2 ruled out, hold/clamp stationary-only =====
+
+Follow-up on the three candidate mitigations named in the prior entry, checking each
+against existing code/memory before proposing any as a next action.
+
+### CROSS_SCALE_RATE_FUSE -- RULED OUT for this exact window, not just generally cautioned
+Read the full mechanism in `cross_marker_perception.py` (~1247-1345, 1793-1825). It's a
+second sequential KF correction on the flow-KF's loom channel using a "scale-rate" signal
+(marker-size growth rate, extent-dominated: `0.3*ln(width) + 0.7*ln(extent)`), correlates
+0.84-0.98 with GT loom mid-descent. **Already tried default-ON once (2026-09-09,
+`2a400929`+2): regressed the IC gate hard** (3 PRECISE / 1 SOFT+PRECISE / 8 FAIL / 1
+NOT_LANDED vs a clean fuse-OFF baseline) because scale-rate is biased, not just noisy
+(over-reads GT slope ~2.4x in 0.5-2m band, ~10x above 2m). Flipped back OFF; three fixes
+(band-limit, affine de-bias, looser r) built behind the still-off flag but never
+re-gate-validated. **Critically: the fusion has its own `_scale_fuse_max_ext=310px` cutoff,
+deliberately excluding it from firing above that extent** ("skip the fusion above this so
+the terminal window is left entirely to the primary loom + the touchdown detector") --
+because scale-rate itself COLLAPSES toward 0 once the marker overfills, same failure class
+as the primary signal. Our confirmed spike window sits at extent=318px, ABOVE this cutoff.
+**So even fully re-validated and enabled, this mechanism is designed to never touch the
+exact window we're investigating.** Correctly retracted as a candidate (was proposed too
+quickly two turns ago without reading the actual gating code first).
+
+### Line-width -- ALSO ruled out, same terminal-window limitation, documented independently
+Full history lives in [[project_20260908_line_width_loom_investigation]] (⛔ CLOSED
+2026-09-09, 910 lines, read in full). Static line-width VALUE is good (0.89-1.00 corr vs GT
+altitude) but unused (shadow-only). Pure line-width RATE is a dead end on its own (~0.22
+corr in-band, noise elsewhere) -- what actually works is the SAME extent-dominated
+`"Scale Loom Rate"` signal CROSS_SCALE_RATE_FUSE uses (line-width itself only contributes a
+0.3 weight for worst-rep robustness). That file's own terminal-window verdict, independently
+derived: "Unrecoverable for ANY size-derived loom... the genuine last ~0.3m has a real SIGN
+INVERSION (width shrinks during the fastest drop) because the marker fragments/exits the FOV
+and the arm fits latch onto background." Also contains a deeper, architectural finding worth
+carrying forward: cross-marker's flow points have NO persistent physical identity
+frame-to-frame (unlike ArUco's fixed 4 corners) -- proven (not just observed) to make ANY
+point-position-statistics-based conditioning metric (origin_ratio, and by the same argument
+any future point-cloud-derived gate) structurally unable to separate real conditioning
+collapse from routine tracking churn. Relevant caution for candidate #3 (improving the rigid-
+body fit itself): a fix that leans on point-position statistics to decide which
+correspondences to trust is fighting this same architectural fact, not a fresh idea.
+
+### Terminal hold/clamp on h_z -- works ONLY for the STATIONARY case; does NOT transfer to rover
+Checked against [[project_20260901_rover_cross_perception_diagnosis]] (2026-09-01) before
+assuming the mechanism generalizes. **The rover's terminal stall (~1.1m, higher onset than
+stationary's ~0.5m) is NOT an h_z-corruption problem at all** -- that file explicitly
+RETRACTS an earlier "Cluster B = terminal overfill loom collapse" attribution after checking
+against the run's own GT: `h_V[Tz]` tracks GT loom at **corr +0.89 through the overfill
+window; both go to ~0 together as the descent stalls**. h_z is FAITHFUL there, the opposite
+of the stationary IC1_rep3/4 finding this session. Rover's actual documented mechanism is a
+single-frame LATERAL centroid spike (`s_x` 0.16->0.91->0.16, recurring ~every 0.3s once
+extent saturates) -> `dh_d_x`/`theta_desired` blowup (92 deg) -> the (pre-2026-09-09,
+possibly-superseded by the visibility_projection.py Tier-1 rewrite -- NOT re-verified
+against current code) joint-QP's `CBF_AZ_COST_GAIN` relief folding ~5 m/s^2 upward accel
+into `I_a[2]` -> `B_T` collapse -> descent stall. `CROSS_S_JUMP_GATE` (already default-ON)
+targets this correctly and removed the EARLY spike-stall, but didn't fix the landing (0/4
+moving still stalled) -- rover's terminal stall + tracking-lag remain open, via a
+completely different mechanism than the stationary h_z divergence this thread has been
+chasing. **A stationary-only h_z clamp would be solving a problem the rover case doesn't
+have, while leaving its actual (lateral/CBF-chain) problem untouched.**
+
+### Net: candidate-fix list for the stationary terminal-overfill h_z divergence is now down to one
+Only "improve the rigid-body fit itself at overfill" remains untested and unruled-out --
+and even that needs to avoid re-deriving a point-position-statistics-based trust metric
+(origin_ratio's proven failure mode above). No fix has been implemented; this entry is
+narrowing scope, not proposing an implementation.
