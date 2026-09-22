@@ -1,8 +1,328 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Measured the visibility CBF's own one-step predictor against realized centre motion on the IC1-5 gate (25 reps, ~24k frame pairs, attitude time-aligned with a proven self-check). Three results: (1) the predictor's meaningful horizon is the ~125-144 ms ATTITUDE-REALIZATION time, not one control step -- at 1 step it is WORSE than assuming no motion (p95 0.0183 vs null 0.0152) because L_e amplifies attitude noise when dy~0; (2) buffer b=0.15 covers the bulk but not the tail -- residual p95 0.084 vs per-axis buffer [0.133,0.178], but p99 0.194 and p99.9 0.307 both EXCEED it, over-buffer on 1.2% of frames (consistent with the independently measured 0.27% buffered-set exits / 0% sensor exits); (3) the tau*d drift term is a MODEST MEDIAN correction only -- reduces residual on 54.1% of frames, mean 9.9%, p50 0.0194->0.0169, but does NOT improve the safety-relevant tail (over-buffer 1.235%->1.319%). So tau's SCALE is a plant property (attitude-realization horizon), but tau*d is not a fix for the frames that matter."
-metadata:
+description: "⭐ SESSION CLOSED 2026-09-22 (multi-day thread from 09-17). Four threads: (1) visibility-CBF predictor residual measured (informational). (2) axis-transposed CBF barrier found+FIXED+BAKED (96271ba6), SITL-validated 14/14. (3) touchdown-detect flow-freeze false-positive found+FIXED+BAKED (2177670b), SITL-validated 22%->0%. (4) Soft-touchdown investigation: the ~5.6x reconstruction gap that drove extensive mechanism-hunting was CLOSED -- a dt bug in this investigation's OWN offline tooling (dt=Time-delta vs the live dt=1/fps, fixed a1ffbf02), not a live-controller bug. The underlying terminal h_z perception error is CONFIRMED REAL against independent GT and video evidence (marker genuinely overfills the frame, flow-solve rel_resid roughly doubles), but is UNFIXED: five candidate mitigations (sensor-cal, CROSS_SCALE_RATE_FUSE, line-width, terminal hold/clamp [stationary-only], FB-consistency filtering) were all ruled out or found already-shipped-and-insufficient. Evidence converges on a MODEL-level (flow-Jacobian linearization) limitation, not a fixable data-selection problem -- not yet directly proven by a clean isolation test -- 2026-09-22 follow-up: the naive interpolation-based synthetic-dt test is mathematically vacuous (rel_resid is scale-invariant under uniform rescaling of a linear least-squares target); a valid substitute (regressing rel_resid against REAL displacement/dt vs extent, 4 reps) WEAKENS the linearization hypothesis further (residual tracks extent/overfill, reverses sign vs displacement outside overfill) without fully refuting it. Touchdown-detect already ignores h_z in this regime by design, so this may already be adequately mitigated in practice. See the SESSION CLOSE section (top of file) for the full index and open items."
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
+  modified: 2026-09-22T05:43:40.122Z
+---
+
+
+## ===== 2026-09-22 (cont'd 10) -- synthetic-dt isolation test run; linearization hypothesis WEAKENED, overfill/rigid-body mismatch reinforced =====
+
+**Ran the flagged next check** ("does the residual shrink at a smaller synthetic dt,
+same correspondences"). First attempt (linear interpolation of the same two measured
+points to a fractional displacement + proportionally smaller dt) was DISCARDED as
+mathematically vacuous before drawing any conclusion from it: `rel_resid =
+||A@sol-b||/||b||` is scale-invariant under any uniform positive rescaling of the
+velocity vector `b` for a linear least-squares system (rescaling b by k rescales the OLS
+solution and the residual by the same k, so the ratio is invariant by construction) --
+confirmed numerically (rel_resid identical to 4 decimals across frac in {1, .5, .25,
+.125, .0625} on every frame tested, IC1_rep1 terminal window). No interpolation-based
+synthetic-dt construction can move this ratio; a real test needs an independent
+smaller-time-step measurement, which the recording doesn't contain (no sub-frame-rate
+data). Script kept for reference (`synthetic_dt_test.py` shows this null-by-construction
+result) but its numbers are not evidence.
+
+**Valid substitute: regressed rel_resid against the REAL displacement/dt magnitude
+already varying frame-to-frame across the whole flight** (not synthetic), controlling
+for marker extent (`real_dt_regression.py`, offline, 4 reps: `ICValidation/
+20260922-032613/IC1_rep{1,2,3,4}`, all post-`a1ffbf02` so FPS is live). If the
+linearization hypothesis is right, larger real per-point pixel displacement should
+predict WORSE rel_resid independent of overfill (error is a property of the (dt,
+displacement) regime). Result is the opposite pattern, consistent across all 4 reps:
+- Whole-flight corr(rel_resid, extent_px) = 0.50-0.56, consistently higher than
+  corr(rel_resid, disp_px) = 0.25-0.30 -- extent predicts the residual better than raw
+  displacement does, and the two are confounded (corr(disp,extent) = 0.63-0.68, both
+  naturally grow together as altitude drops).
+- **In the LOW-extent (no-overfill) half of each flight, rel_resid goes DOWN as
+  displacement goes UP** (small-disp-half median 0.29-0.32 vs big-disp-half 0.19-0.20,
+  all 4 reps) -- the OPPOSITE sign from what linearization predicts. Likely explanation:
+  tiny pixel displacements are noise-floor-dominated (the LK/correspondence error is a
+  larger fraction of a smaller true signal), so the "linearization error grows with
+  displacement" story doesn't even hold directionally outside overfill.
+- Decile-binned view (IC1_rep1): rel_resid falls monotonically from bin0 (smallest disp)
+  to bin7 (0.415->0.136), then reverses sharply only in bins 8-9 (highest disp AND
+  highest extent, 0.32-0.35) -- a U-shape driven by the overfill tail, not a monotonic
+  displacement effect.
+- Within the HIGH-extent (>=p90, overfill) subset alone, median rel_resid is already
+  0.83-0.84 (vs 0.24-0.25 overall) and stays roughly flat there regardless of
+  within-subset displacement variation -- consistent with a threshold-like overfill/
+  rigid-body-fit breakdown, not a smoothly displacement-scaling linearization error.
+
+**Verdict: this weakens, does not fully refute, the linearization hypothesis.** The
+correlational design can't cleanly separate displacement from extent (they co-vary
+naturally with altitude), so it isn't the "clean isolation" the original flag asked for
+-- but every angle available from existing data points the same way: the residual
+tracks overfill/extent, not raw displacement magnitude, and reverses sign vs the
+linearization prediction outside the overfill regime. Reinforces the SESSION CLOSE
+mechanism note ("correlates with marker overfill... NOT with near-grazing rays or
+ill-conditioning") with one more independent angle, now also ruling out plain
+displacement-magnitude/dt as the standalone driver. A fully clean test (genuinely
+independent smaller-dt correspondences) would need either higher native camera framerate
+data or a raw-video multi-skip re-tracking exercise (as the illustrative-video tests in
+cont'd-9 did) -- not done here; flagging as the honest residual gap rather than closing it.
+
+**Tools added (offline, read-only, reproducible):** `synthetic_dt_test.py` (kept for the
+negative/vacuous-by-construction result, documented in its own header),
+`real_dt_regression.py` (the valid substitute). Neither committed to the repo yet --
+scratch-only pending a decision whether this thread reopens further.
+
+## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
+
+**Resumed the soft-touchdown investigation** ("Investigate to find the Soft-touchdown
+root cause"), picking up the two untried candidates flagged at session close: the sensor
+calibration matrix's end-to-end effect, and a `dt`/jitter discrepancy between the offline
+replay and the live controller's actual per-frame timing.
+
+**Sensor-cal candidate: RULED OUT cleanly.** Traced `getOptFlowAngVel()` = `_sensor_cal_hw
+@ getRawOptFlowAngVel()` (line ~3180) -- the cal gain is applied in the GETTER, i.e.
+downstream of `self._hw` (the coast+freeze KF's own state). But `Img_Data.npy`'s logged
+`"h_V"` field is `self._perception._hw_log`, populated from `self._hw` directly (line
+~3020), with its own inline comment confirming "optical flow (raw, before cal)". So the
+logged `h_V_z` this whole thread has been comparing against is ALREADY raw/uncalibrated --
+the same units every replay tool (`replay_hw_kf.py`, `replay_hw_kf_gyro.py`,
+`replay_flow_solve_conditioning.py`) has been producing. No unit mismatch, no cal-gain
+explanation possible for the ~5.6x gap. This closes the sensor-cal candidate definitively,
+not just "dismissed as small."
+
+**dt/jitter candidate: found a real bug, but it makes the hypothesis UNTESTABLE
+retroactively, not ruled out.** `process_frame(img_prev, img_curr, t, fps, ...)`
+(cross_marker_perception.py ~2714) computes `dt = 1.0/fps` and uses THAT to divide pixel
+displacement into velocity for the raw flow solve -- NOT `t - prev_t` from consecutive
+calls. Every replay tool in this thread instead used `Img_Data["Time"][i] -
+Img_Data["Time"][i-1]` (the log's own consecutive timestamps), because that's the only
+dt available -- `Img_Data["FPS"]` reads `getattr(self, '_pending_fps', np.nan)`
+(~line 3118), on a comment claiming `CrossMarkerNode.run()` sets `self._pending_fps` "just
+before calling process_frame()". **Grepped for the assignment: it does not exist anywhere
+in the file.** Same for `_pending_angvel` (feeds the already-known-dead "IMU AngVel" log
+field from earlier in this thread) and `_pending_stamp`. All three have been silently dead
+since the 2026-08-12 dt/frame-pairing rewrite -- `process_frame` receives `fps`/`angvel_*`/
+`t` as its own direct call arguments and never stored them back onto `self._pending_*`.
+
+Checked one specific rep (`ICValidation/20260921-144320/IC1_rep1`, the exact rep this
+thread's `-0.771` KF number came from): `Img_Data["FPS"]` is NaN for all 1347 frames,
+confirming the dead path there directly. (A DIFFERENT, older rep,
+`ICValidation/20260917-224720/IC1_rep1`, showed a constant `62.5` instead of NaN -- not
+live per-call data either given the confirmed-absent assignment; some other stale/constant
+source, not verification of the hypothesis. Do not treat that number as real.)
+
+**This means the dt/jitter hypothesis was never actually tested in this thread** --
+every reconstruction to date implicitly assumed `dt_replay == dt_live`, and that assumption
+itself was unverifiable with the logging as it stood. It remains a live, untested candidate
+for the ~5.6x gap, not a ruled-out one.
+
+**Fix applied** (`src/cross_marker_perception.py`, top of `process_frame`): sets
+`self._pending_fps = fps`, `self._pending_stamp = t`, `self._pending_angvel = angvel_curr`
+from the call's own real arguments, so `Img_Data["FPS"]`/`["Stamp"]`/`["IMU AngVel"]` will
+finally hold real values on the NEXT recording. Pure logging fix -- does not touch any
+control/perception math, `process_frame`'s dt computation is unchanged, just now observable.
+Compiled clean (`py_compile`). **NOT yet SITL-validated** -- a peer session (`soft-precise-
+landing-53`) was running a headless rover SITL gate and asked to hold SITL at the time this
+fix was made, so no new recording was taken this session. `_kf_step`'s own internal dt
+(`t - prev_t`, general-purpose, line ~422) is unaffected either way -- only the RAW
+per-frame flow solve's dt was ever in question.
+
+### Next step for whoever picks this up
+Get ONE new perception-mode IC1-5 recording (any WORLD=cross_marker MARKER_TYPE=cross run
+is enough, doesn't need to be a full gate) with this fix in place, then compare
+`Img_Data["FPS"][i]` against `1.0/(Img_Data["Time"][i]-Img_Data["Time"][i-1])` directly in
+the terminal touchdown window. If they diverge meaningfully (as the OLD, unverifiable
+62.5-constant rep hinted they might, at a ~2x ratio in one spot-check before this fix), redo
+`replay_flow_solve_conditioning.py`'s raw solve using the REAL logged `dt=1/fps` instead of
+`Time` deltas and see if that closes some/all of the ~5.6x gap. If they match closely, this
+6th candidate is also ruled out and the mechanism remains genuinely open.
+
+## ===== SESSION CLOSE 2026-09-22 -- READ THIS FIRST =====
+
+Four threads, in chronological order. Each has its own detailed trail below (headed by
+`##` date-stamped sections) -- this block is the map, not a replacement for it.
+
+### 1. Visibility-CBF predictor residual (2026-09-17) -- DONE, informational
+Measured the visibility CBF's one-step predictor (`c_next = r~ + L_e*dy`) against
+realized centre motion, IC1-5 gate, 25 reps. Meaningful horizon is ~125-144ms (the
+attitude-realization time), not one control step -- at 1 step the predictor is WORSE
+than assuming no motion. Buffer `b=0.15` covers the bulk (p95) but not the tail (p99/
+p99.9 exceed it on 1.2% of frames). `tau*d` (the moving-target lead) is a ~10% MEDIAN
+correction only, does not improve the safety-relevant tail. `tau` is correctly understood
+as a PLANT property (the realization horizon), not a scenario one -- applies to
+stationary targets too.
+
+### 2. Visibility-CBF axis-transposition bug -- FOUND, FIXED, BAKED (`96271ba6`)
+`marker_tangent()` applies a `_SWAP` to the measured centre `c`; `fov_limit()` did NOT
+apply the same swap to the barrier `phi` -- one image axis's barrier sat OUTSIDE the
+physical sensor edge (permanently inert), the other was 36% over-tight. Found while
+implementing a per-axis buffer (§1's own follow-up). Fixed at 3 sites (the CBF itself,
+`controller.py`'s drift-off trigger, and the validator's own oracle -- the oracle carried
+the SAME transposition, which is why "15/15" never caught it). SITL-validated:
+WORLD=cross_marker MARKER_TYPE=cross explicit (a §19-class trap independently found the
+same session), PD-FB, IC1-5 gate -- 14/14 genuine touchdowns (`terminal_state_ok`), no
+regression vs the pre-fix baseline (11/14 vs ~17/21 precise, both ~79-81%).
+**Retracted along the way:** a proposed "degenerate deliverability ball" fix (`y_max=0`
+when `a_z>=a_cap`) -- implementing it broke the validator's deliverability-by-construction
+checks; `y_max=0` there is the mathematically CORRECT answer (the feasible set is
+genuinely empty), not a bug.
+
+### 3. Touchdown-detect flow-freeze false-positive -- FOUND, FIXED, BAKED (`2177670b`)
+Found while validating fix #2: the IC1-5 gate showed 4/18 reps (22%) never reaching the
+surface at all (a live-reporting gotcha caught along the way -- `run_ic_validation.sh`'s
+`landed` column means "a recording was saved," not "touchdown occurred"; the authoritative
+field is `Ground_Truth.npy`'s `SoftPrecise.terminal_state_ok`). All 4 false touchdowns
+fired via the SAME path (`_touchdownDetectV2`'s flow-freeze), root-caused to THREE
+independent defects: (a) `ff_hi`/`ff_lo` were hardcoded px thresholds sitting INSIDE the
+normal background-flow noise floor at the current focal length (51-81% of ordinary
+frames already below `ff_lo`); (b) no confidence gate on the flow solve (unlike its
+sibling `condition_drift`, which already gates the same `rel_resid` signal); (c) no LIVE
+check the marker is actually absent -- `_td_ext_armed` is a stale one-time flag, so the
+path could (and did) fire while the marker was continuously tracked, directly violating
+its own documented purpose ("catches a soft OFF-marker settle"). Fixed all three
+(resolution-invariant tangent units, `rel_resid` confidence gate, `FEATURE_IS_VISIBLE`
+live-visibility gate -- NOT a minimum-extent gate, which was considered and rejected: a
+genuine off-marker settle has extent -> 0, so requiring HIGH extent would exclude the
+real target case). SITL-validated: 25/25 genuine touchdowns, ZERO flow-freeze firings,
+22%->0% false-touchdown rate. Self-audited against the `diagnose-flight-data` skill right
+after pushing (timestamp-verified the trigger-frame matches, checked for frozen-field
+artifacts) -- audit confirmed rather than overturned the fix.
+**Open, not done:** flow-freeze's OWN theoretical niche (genuine soft off-marker settle)
+still has ZERO positive evidence across 43 combined reps now -- the fix removes a bug, it
+does not prove the path earns its ongoing complexity. Worth revisiting once the rover
+thread can produce a genuine off-marker settle to test against.
+
+### 4. Soft-touchdown investigation -- root cause of the RECONSTRUCTION gap CLOSED;
+### the terminal perception error itself CONFIRMED REAL and DIAGNOSED to a model-level
+### limitation; no fix shipped
+User's premise ("GT-FB achieves soft touchdown, so tune the vertical adaptive law") was
+RIGHT to push on -- an earlier framing in this thread ("soft touchdown looks structural")
+was WRONG and is the exact mistake `feedback_dont_conclude_lag_floor` exists to prevent
+(a masked failure is a tuning target, not proof of an architectural ceiling).
+
+- **Confirmed the premise**: GT-FB, `h_rd=-0.38` (MATLAB's then-current value), IC1 n=3:
+  3/3 soft+precise, rel_vel 0.014-0.023 m/s (10x under threshold).
+- **N_z (kappa-ODE adaptation rate) explored, then correctly ABANDONED before its planned
+  gate**: offline kappa-ODE replay confirmed a real, too-slow-to-respond mechanism
+  (17.4x disturbance in 10% of kappa_z's own tau); small-n live trial (N_z=0.3) showed no
+  ratchet but a weak, statistically-lost-in-noise effect. Abandoned once the REAL driver
+  was found (below) -- a faster-responding kappa reacting to an already-wrong signal
+  would apply an even LARGER erroneous correction, not a softer landing.
+- **Parallel peer session (`7476400a`, MATLAB) independently converged on the SAME
+  kappa-sensitivity mechanism**, went much further with a coordinated N/Pleak/E/chi_z/
+  p_hinf retune (25-IC gate, 25/25 SP), and REVERTED h_rd back to -0.30 (PX4's original
+  value) with that retune in place -- superseding the h_rd=-0.38 recommendation. Neither
+  retune is yet ported+validated on PX4 (gain VALUES don't port directly,
+  `feedback_matlab_gains_not_portable`).
+
+- **MID-SESSION ~5.6x reconstruction gap: FOUND TO BE A BUG IN THIS INVESTIGATION'S OWN
+  TOOLING, NOT THE LIVE CONTROLLER -- CLOSED.** Five mechanisms were tested first
+  (ill-conditioning falsified; near-grazing rays real but insufficient and non-surviving
+  under point-exclusion; KF rate-buildup real but ~1/5.6 of the magnitude; R-schedule/
+  scale-fuse/backstop/gate all ruled out; gyro-availability resolved as live-the-whole-
+  flight but didn't close the gap either) -- **the actual answer was mechanism #6**: every
+  offline replay tool in this thread computed the raw flow solve's `dt` as
+  `Img_Data["Time"][i]-Time[i-1]`, but the LIVE `process_frame()` actually uses
+  `dt=1/fps`, which differs from the log-timestamp delta by **3-8x in the terminal
+  window** (the `run()` polling loop's call cadence decouples from the camera's native
+  frame-pair rate near touchdown). `Img_Data["FPS"]` (and `"IMU AngVel"`, `"Stamp"`) were
+  themselves DEAD/always-NaN since the 2026-08-12 dt/frame-pairing rewrite --
+  `self._pending_fps`/`_pending_angvel`/`_pending_stamp` were read via
+  `getattr(..., default)` but NEVER ASSIGNED anywhere in the file, despite an in-file
+  comment claiming they were. **FIXED** (`a1ffbf02`): sets all three from
+  `process_frame`'s own real arguments. Redoing the raw-solve reconstruction with the
+  CORRECT `dt` on fresh recordings -- including a genuine large spike, `IC1_rep3`'s KF
+  state ramping -0.21->-0.68 -- now matches the logged `h_V_z` to within 0.000-0.013
+  throughout, closing the gap. **This means much of the earlier "unexplained divergence"
+  was this investigation's own measurement artifact, not necessarily a live bug** --
+  but see below, because the underlying perception error turned out to be real too, just
+  smaller/differently-shaped than the pre-dt-fix numbers suggested.
+
+- **Terminal `h_z` perception error: CONFIRMED REAL against independently-computed GT**
+  (not a reconstruction artifact -- checked per the `diagnose-flight-data` skill's hard
+  rule, comparing against `gt_optical_flow.py`'s GT loom, never the controller's own
+  internal reference). GT loom stays bounded and actually DECELERATES approaching
+  touchdown (physically correct); measured `h_z` overshoots by up to 2.4x in the same
+  window (`IC1_rep3`: GT=-0.258 vs meas=-0.670 at the worst point). Verified this isn't a
+  post-touchdown-static-tail artifact by checking GT ALTITUDE directly (not just loom) --
+  genuinely still descending (0.269->0.199m) throughout the window in both evidence reps.
+  **Video-validated** (`IMG_RECORD=1` rep, frame-by-frame): the marker's cross ARMS
+  visibly extend past all four frame edges near touchdown, matching `MARKER_EXTENT_PX`'s
+  claimed 318px saturation (>240px `frame_min`) -- confirmed on real recorded imagery, not
+  just a logged number. (Two false starts during video validation, both self-corrected:
+  a naive frame-index-to-time mapping bug, and mistaking a post-landing static tail for
+  the touchdown moment on a DIFFERENT rep than the evidence reps -- neither affected the
+  core GT-comparison finding.)
+
+- **Mechanism: correlates with marker overfill and elevated flow-solve `rel_resid`
+  (~2x rise, poor rigid-body fit), NOT with near-grazing rays or ill-conditioning** (both
+  stay healthy in this window even with the corrected dt). Error direction is NOT
+  consistent across reps (overshoot in one, undershoot in another under the same frozen
+  extent) -- rules out a simple sign-bias fix.
+
+- **Five candidate fixes systematically examined and ALL ruled out or found
+  already-shipped-and-insufficient** (the practical payoff of this thread, even without a
+  working fix):
+  1. Sensor-calibration matrix -- ruled out cleanly: applied downstream (in the getter) of
+     the logged (already-raw, pre-cal) `h_V` field, so no unit-mismatch explanation is
+     possible.
+  2. `CROSS_SCALE_RATE_FUSE` -- ruled out: has its own `max_ext=310px` cutoff that
+     deliberately excludes exactly the confirmed 318px spike window by design (already
+     regressed the IC gate hard once when tried default-ON in 2026-09).
+  3. Line-width -- ruled out via the existing closed thread
+     [[project_20260908_line_width_loom_investigation]]: same terminal-window sign-
+     inversion limitation (marker fragments/exits FOV, arm fits latch onto background).
+  4. Terminal hold/clamp on `h_z` -- confirmed STATIONARY-ONLY, does not transfer to
+     rover: [[project_20260901_rover_cross_perception_diagnosis]] explicitly shows
+     rover's own `h_z` is FAITHFUL to GT (corr +0.89) through its overfill window --
+     rover's actual terminal stall is an unrelated lateral centroid-spike -> CBF/thrust
+     cascade.
+  5. Forward-backward (FB) LK consistency filtering -- **already shipped and confirmed
+     insufficient**, not an unimplemented fix as first thought: `CROSS_BG_FLOW` and
+     `CROSS_BG_FLOW_HYBRID` (which includes FB-consistency via `_bgf_lk_fb`) are BOTH
+     default-ON (a stale in-file comment claiming "opt-in, default OFF" was misleading);
+     verified via the `"BgFlow Health"` log field that FB-filtered bgflow ran
+     successfully every frame of the real spike window, with its OWN `rel_resid`
+     (0.64-0.92) if anything worse than the unfiltered reconstruction. Further tightening
+     the FB threshold (even to the 10 best-tracked points, near-zero round-trip error)
+     did not reduce `rel_resid` at all. A related hypothesis (the overfill-grown search
+     mask admitting the drone's own static visible hardware at frame edges) was verified
+     REAL on production data (11/111 edge points at the spike vs 0 mid-descent) but
+     excluding that margin also didn't move `rel_resid`.
+- **Convergent conclusion (not yet directly proven)**: every point-selection strategy
+  tried fails to move the residual, which is the signature of a MODEL-level limitation
+  (the image-Jacobian flow fit is a linearization, likely breaking down as inter-frame
+  pixel displacement grows ~9x near touchdown), not a fixable data-selection problem. If
+  true, no per-point filtering scheme -- however clever -- can fix this; a real fix would
+  need either a smaller effective `dt` in the terminal window (hardware/polling-limited,
+  not just a flag) or a non-differential motion estimator for the overfill regime
+  specifically (a redesign, not a tweak).
+
+**Tools committed this thread** (all read-only, reproducible, documented with their own
+replication scope/limits): `tools/scan_vis_safeset.py`, `measure_vis_predictor_residual.py`
+(thread 1); `tools/replay_touchdown_flowfreeze_gate.py` (thread 3);
+`tools/replay_flow_solve_conditioning.py`, `replay_zvmin_filter.py`, `replay_hw_kf.py`,
+`replay_hw_kf_gyro.py`, `replay_flow_solve_correct_dt.py` (thread 4's mechanism-hunting
+and dt-bug closure).
+
+**What's genuinely open for a future session:**
+- The model-linearization hypothesis for the terminal `h_z` error is CONVERGENTLY
+  SUPPORTED but NOT DIRECTLY PROVEN -- the natural next check is a synthetic-dt isolation
+  test (does the residual shrink if the SAME correspondences are evaluated at an
+  artificially smaller inter-frame step), not another point-selection variant.
+- No practical fix currently exists for the terminal overfill `h_z` error. The touchdown
+  detector already correctly ignores `h_z` in this regime (uses n_corners/extent/flow-
+  freeze instead, per the closed line-width thread's own finding -- "every landing in
+  every gate latched via [overfill]/[flow-freeze]"), so this may already be adequately
+  mitigated in practice even without a perception-side fix -- worth confirming explicitly
+  before investing in a redesign-scale solution.
+- The coordinated MATLAB adaptive-law retune (`7476400a`) is not yet ported or
+  SITL-validated on PX4.
+- Thread 3's flow-freeze path still has zero positive evidence for its own stated
+  purpose, across 43 combined reps.
+- Rover's terminal stall mechanism (lateral centroid-spike -> CBF/thrust cascade,
+  `project_20260901_rover_cross_perception_diagnosis`) traces through the pre-2026-09-09
+  joint-QP's `CBF_AZ_COST_GAIN` relief term, which may be superseded by the later
+  `visibility_projection.py` Tier-1 rewrite -- NOT re-verified against current code, flag
+  before trusting that specific causal chain as still-live.
+
 ---
 
 **Stating positively what the 2026-09-17 audit block left implied** (peer
@@ -709,3 +1029,706 @@ live SITL test, matching this thread's now-established practice.
 - The gyro-availability ambiguity (does the live solve actually run the reduced 4-unknown
   path?) was not resolved and doesn't block this finding, but is worth resolving before
   touching the gyro-derotation code path specifically.
+
+---
+
+## CORRECTION 2026-09-22 (same session): CROSS_Z_V_MIN_FLOW does NOT fix the divergence,
+## on either test case -- the near-grazing-ray finding is real but insufficient/irrelevant
+
+User: "go ahead" (replay the filter offline before any SITL test). Built
+`tools/replay_zvmin_filter.py`, replicating the live `_geokeep` block +
+`MIN_FLOW_POINTS_SOLVE=4` count-floor fallback EXACTLY, and tested candidate
+`CROSS_Z_V_MIN_FLOW` thresholds {0.3,0.4,0.5,0.6,0.7} against both reps. Result is a clean
+negative on the proposed fix, for two DIFFERENT reasons per rep:
+
+**IC4_rep2 (the sharp spike):** filtering to Zv>=0.7 drops 43-121 of 143-179 points, but
+the spike barely moves -- at the exact spike frame (t=13.336): filtered sol_Tz=-1.864 vs
+unfiltered -1.860. Nearby frames show the same (t=13.352: -2.035 filtered vs -2.097
+unfiltered). **The near-grazing points are not the ones driving the blow-up -- the
+REMAINING, non-grazing points still jointly solve to a large Tz.** So while zv_min
+genuinely correlates with (and precedes) this spike, as the prior entry found, it is not
+a small-number-of-bad-points problem that point-exclusion can fix; something about the
+AGGREGATE fit changes, not a few outlier rays.
+
+**IC1_rep1 (the gradual divergence):** `zv_min` never drops below 0.87 anywhere in the
+whole terminal window -- the filter is a complete no-op at every threshold tested, up to
+0.7. Yet the divergence still happens (raw solve drifts -0.02->-0.20 over the same
+window). **The near-grazing-ray mechanism doesn't even apply here** -- z_v isn't remotely
+close to a relevant threshold for this rep's failure mode.
+
+**A further wrinkle, found while comparing raw-vs-KF across the two reps:** in IC4_rep2
+the KF DAMPS a large raw spike (raw -1.860, KF -0.678 at the same frame -- the previous
+entry's finding). In IC1_rep1 it's the OPPOSITE: the raw per-frame solve stays modest
+(max ~-0.2) throughout this window, while the KF-reported h_V_z grows much LARGER (-0.77)
+-- the KF's own STATE is more extreme than any single measurement feeding it. This points
+at the KF's own temporal dynamics (predict step, R-scheduling, or something accumulating
+across cycles) as the driver for the gradual case, not the per-frame geometry at all.
+
+### Corrected verdict
+`CROSS_Z_V_MIN_FLOW` is NOT the fix -- retracting that recommendation. The near-grazing-
+ray correlation from the prior entry is real (genuinely co-occurs with, and precedes, the
+sharp-spike case) but is not SUFFICIENT to explain it (excluding those points doesn't
+suppress the spike) and is IRRELEVANT to the more common gradual-divergence case entirely.
+Two apparently different failure SHAPES (sharp single-frame spike vs gradual multi-frame
+drift) may have two different root mechanisms, or a shared one that manifests differently
+-- not yet established.
+
+### Next direction (not yet investigated)
+The KF's own dynamics -- specifically the LOOM R SCHEDULE (`_loomRMult()`, adjusts r[2]
+by some already-computed multiplier every frame, mechanism not yet read), the predict-vs-
+update balance, and the coast/freeze logic -- are now the more promising lead, especially
+for the gradual-divergence case where the RAW per-frame solve doesn't show the problem at
+all but the KF STATE does. Have not yet read `_loomRMult()`'s implementation or traced the
+KF's predict step.
+
+### Tool
+`tools/replay_zvmin_filter.py` committed alongside this finding, replicating the exact
+live filter + fallback logic so the negative result is reproducible, not asserted.
+
+---
+
+## 2026-09-22 (cont.): KF predict/update mechanism -- PARTIALLY confirmed, magnitude
+## unexplained. Loom R-schedule, scale-fuse, and hard backstop all ruled out directly.
+
+Continues the "why does the KF state (-0.77) exceed any single raw measurement (~-0.2)
+for IC1_rep1's gradual case" question. Read the full hw-KF pipeline in
+`cross_marker_perception.py` and checked each candidate mechanism against the ALREADY-
+LOGGED fields for this exact flight (not assumed from code alone):
+
+- **`_loomRMult()` (CROSS_LOOM_R_SCHEDULE)**: U-shaped r[2] inflation at extent extremes,
+  would suppress measurement trust near touchdown IF active. Checked `Img_Data["Loom R
+  Mult"]`: exactly 1.00 for all 1347 frames. Default OFF (`CROSS_LOOM_R_SCHEDULE=0`).
+  RULED OUT.
+- **Scale-rate fusion (`CROSS_SCALE_RATE_FUSE`)**: default OFF, confirmed via source.
+  RULED OUT.
+- **Hard loom backstop (`CROSS_LOOM_ABS_MAX=20.0`)**: clamps |loom|>20 and kills the
+  rate. Far above anything observed here (max magnitude ~2.1 in IC4_rep2's raw solve).
+  RULED OUT.
+- **Loom innovation gate**: already established in the 09-21 correction entry --
+  `"Loom Gate"` logged 0 the whole flight, wrong failure shape (spike detector, this is
+  a ramp).
+
+### Direct KF replay: rate-buildup is REAL but does not explain the full magnitude
+Built `tools/replay_hw_kf.py`: replays `_kf_step`'s exact predict+update math
+(`FLOW_KF_Q=5.0`, `FLOW_KF_R=0.1`) as a standalone scalar (value,rate) KF, fed the RAW
+per-frame solve (from the same geometry as `replay_flow_solve_conditioning.py`) as `z`
+at EVERY frame from the start of the recording (29s of warm-up before the window of
+interest, well-settled).
+
+Result for IC1_rep1: the reconstructed KF value DOES diverge beyond the raw solve, in
+the SAME direction, with a growing negative rate (0.02 -> -0.16 over the window) --
+**confirming the constant-velocity rate-buildup mechanism is real and contributes.** But
+the MAGNITUDE falls far short: at t=11.560, reconstructed value=-0.137 vs the actually
+logged h_V_z=-0.771 -- roughly 5.6x smaller. **Not a full explanation.**
+
+### What's still unaccounted for
+This reconstruction has NOT replicated: the gyro de-rotation to the reduced 4-unknown
+solve (availability still unresolved -- see the 09-22 entry above), or the sensor
+calibration matrix. Either could shift the raw per-frame solve's own values enough to
+change what the KF is tracking, independent of the KF math itself. 29s of warm-up before
+the window rules out "insufficient settling time" as the gap's explanation.
+
+### Verdict
+Two mechanisms now stand as PARTIAL, not full, explanations: near-grazing rays (real,
+confirmed, but doesn't survive point-exclusion -- see the CROSS_Z_V_MIN_FLOW correction)
+and KF rate-buildup (real, confirmed directionally, but ~5.6x short on magnitude). Niether
+alone accounts for the full observed divergence. The gyro-derotation path is now the most
+likely remaining unresolved piece -- if the live solve genuinely uses the reduced
+4-unknown [Tx,Ty,Tz,Wz] form (still not established either way), replicating THAT exactly
+(not the full 6-unknown fallback this thread has used throughout) is the natural next
+step, since it would change the raw solve values feeding everything downstream.
+
+### Tool
+`tools/replay_hw_kf.py` committed alongside this finding.
+
+---
+
+## 2026-09-22 (cont.): gyro-availability RESOLVED (was live) -- but doesn't close the gap
+
+**Resolved directly, not inferred.** `getAngVels()` is fed from `self._FC.getAngVelIMU()`
+on EVERY image callback (`src/gz_subscriber.py:image_callback`), and `getAngVelIMU()`
+(`src/flight_controller.py:455`) is `None` only before the IMU task's FIRST sample at
+boot -- trivially past that by 10+ seconds into flight. Confirmed empirically:
+`Telemetry_Data.npy["Angular Velocity FRD"]` holds real, finite MAVSDK
+`AngularVelocityFrd` objects throughout `IC1_rep1` (same absolute clock as `Img_Data`'s
+`Time`, `IMU Timestamp` range overlaps it directly). **Gyro WAS live-available the whole
+flight** -- the earlier ambiguity (`Img_Data["IMU AngVel"]`=NaN) was entirely the dead
+`_pending_angvel` logging path, unrelated to what `_solve_jacobian` actually received.
+
+**Redid the KF replay with the CORRECT reduced [Tx,Ty,Tz,Wz] gyro-derotated solve**
+(`tools/replay_hw_kf_gyro.py`, angvel aligned from `Telemetry_Data` by nearest
+timestamp). Result: **almost no change** from the earlier (wrong-path, full 6-unknown)
+reconstruction. At t=11.560: raw solve -0.129 (was -0.103), KF-reconstructed value
+-0.138 (was -0.137) -- still ~5.6x short of the actually logged h_V_z=-0.771.
+**Gyro-derotation was NOT the missing piece.** Plausible reason: Wx/Wy are apparently
+small enough in this near-hover descent that substituting their true gyro values for
+the jointly-solved ones doesn't materially shift Tx/Ty/Tz/Wz.
+
+### State of the investigation, honestly
+Four candidate mechanisms tested, all either falsified or insufficient:
+1. Matrix ill-conditioning -- FALSIFIED (cond(A) modest throughout).
+2. Near-grazing rays -- real correlation, confirmed via direct reconstruction, but does
+   NOT survive point-exclusion testing (CROSS_Z_V_MIN_FLOW correction).
+3. KF constant-velocity rate-buildup -- real, directionally confirmed, ~5.6x short on
+   magnitude even with the corrected solve path.
+4. Loom R-schedule / scale-fuse / hard backstop / innovation gate -- all ruled out
+   directly against logged fields (inactive or wrong failure shape).
+
+**None of the four fully explains the observed divergence.** The ~5.6x gap between the
+KF math replayed exactly (now confirmed with the correct solve path) and the actual
+logged h_V_z remains unresolved. Candidates not yet checked: the sensor calibration
+matrix's actual effect (dismissed early as "too small," 0.9513 z-diagonal, but not
+rigorously verified end-to-end with the KF in the loop); a possible discrepancy in HOW
+`dt` is computed live (frame-to-frame Img_Data Time deltas used here vs whatever the
+live controller actually uses, e.g. `getFPS()`'s own jitter-rejection logic could differ
+subtly); or a genuinely different z-value ordering/sign convention error in this
+reconstruction that happens to preserve rough SHAPE but not magnitude.
+
+### Recommendation
+This is the 4th consecutive partial/negative result on the SAME mechanism-hunting
+question. Diminishing returns at this layer -- flagging to the user rather than
+continuing to guess. The near-grazing-ray correlation and KF rate-buildup are BOTH real
+contributing factors even though neither is sufficient alone; a practical mitigation
+(e.g. damping the KF's rate-state growth specifically in the terminal window, or a
+much simpler terminal-proximity hold/clamp on h_z) may be more tractable than fully
+attributing the residual gap before acting.
+
+### Tools
+`tools/replay_hw_kf_gyro.py` committed alongside this finding.
+
+## ===== 2026-09-22 (cont'd 2) -- SITL freed, fresh recording confirms dt-fix hypothesis =====
+
+SITL lane freed by `soft-precise-landing-53` (rover gate finished 03:05). Got ONE fresh
+headless `WORLD=cross_marker MARKER_TYPE=cross` recording with the FPS-logging fix in
+place (`test_data/Landing_Test/Tue Sep 22 03-22-59 2026`; PRECISE-only landing,
+xy=0.038m, rel_vel=0.383 m/s -- not a soft touchdown, but that's irrelevant to this check).
+
+**Confirmed `Img_Data["FPS"]` is now live** (0/1240 NaN, values 50-83.3 Hz, varying frame
+to frame -- the fix works).
+
+**Confirmed the dt mismatch is real and large in the terminal window**: printed
+`Time[i]-Time[i-1]` (`dt_log`, what every prior replay tool used) against `1/FPS[i]`
+(`dt_fps`, what `process_frame`'s raw solve actually divides by) for the last 0.6s before
+touchdown -- `dt_log` is **3-8x LARGER** than `dt_fps` throughout (e.g. t=-0.14s:
+dt_log=0.128, dt_fps=0.016, ratio=8.0). Mechanism: the `run()` polling loop's own call
+cadence (governed by new-stamp arrival + `time.sleep(0.002)`) can be much slower than the
+camera's native frame rate, but `imgs[0]/imgs[1]` (from `Image_Node`'s adjacent-pair deque)
+stay ONE native frame apart regardless -- so the raw solve's own dt is correctly small,
+but a lot of real elapsed time (and un-observed marker motion) can pass between
+consecutive PROCESSED calls without process_frame's raw solve ever seeing it.
+
+**Redid the raw-solve reconstruction using the CORRECT dt** (`1/FPS[i]`, not `Time` deltas)
+against this fresh recording, feeding it through the same `_kf_step` math as always
+(KF's own internal dt is `t-prev_t`, unaffected -- only the RAW measurement's own dt
+changes). Result: reconstructed KF state now matches the logged `h_V_z` almost exactly
+throughout the terminal window (e.g. -0.262 vs -0.238, -0.247 vs -0.243, -0.322 vs -0.238
+at the very last frame) -- **no ~5.6x gap, no unexplained divergence in this rep.**
+
+**Interpretation, held to the honest standard this thread has used throughout**: this is
+strong evidence that a meaningful fraction (possibly most) of the previously "unexplained"
+divergence in earlier reconstructions was an ARTIFACT of the investigation's OWN replay
+tooling using the wrong dt -- not necessarily evidence of a live controller defect. BUT this
+confirmation rep is a well-behaved landing (no large spike observed even in the ORIGINAL
+h_V_z here, max magnitude ~-0.32) -- it validates the METHODOLOGY (correct-dt reconstruction
+now tracks the KF's actual output essentially perfectly, which is itself the strongest
+sanity check this thread has produced on the reconstruction tools generally) but does NOT
+yet directly confirm that correct-dt reconstruction also explains a genuine LARGE spike case
+(the original `-0.771` `IC1_rep1` case this whole 5.6x-gap chase was about). That rep's own
+`FPS` field is dead/NaN (recorded before this fix), so it can't be redone with correct dt
+retroactively -- need a NEW recording that reproduces a comparable large spike.
+
+### Honest net state
+Root cause is LIKELY (not yet certain) the investigation's own dt bug, now fixed both in
+the live logging (so future recordings are diagnosable) and understood mechanistically
+(polling-loop-vs-native-rate decoupling). **Not closed**: get one more recording where a
+large terminal h_z excursion actually occurs (the original investigation's reps clustered
+around a marker-overfill/near-grazing-ray condition -- IC1 close-in approaches were the
+recurring spike case), and confirm the correct-dt reconstruction tracks THAT too, not just
+a well-behaved landing. If it does, this closes the whole soft-touchdown perception-side
+investigation: the apparent h_z corruption was a REPLAY-TOOL artifact, and the live
+controller's actual behavior (subject to separate scrutiny of whether the polling-loop dt
+decoupling itself degrades control, a genuinely different question from "was my offline
+reconstruction right") needs to be evaluated on its own terms, not through this thread's
+prior (dt-wrong) reconstructions.
+
+## ===== 2026-09-22 (cont'd 3) -- CLOSED: dt bug confirmed against a real spike, thread resolved =====
+
+Ran 4 fresh IC1 reps (`test_data/ICValidation/20260922-032613`, `HEADLESS=1
+WORLD=cross_marker MARKER_TYPE=cross IC_LIST=IC1 N_REPS=4`) specifically to catch a
+genuine large terminal excursion, since the first confirmation rep was too well-behaved
+to be a real test. 4/4 precise, 0/4 soft (as usual under default config). `IC1_rep3`
+delivered exactly the needed case: the KF-reported `h_V_z` ramps from -0.21 to -0.68 over
+the terminal 0.6s, with the raw per-frame solve spiking to -1.28 at t=-0.212s -- the same
+SHAPE of excursion the original `-0.771` case showed.
+
+**Redid the correct-dt (`1/FPS[i]`) reconstruction against `IC1_rep3`'s actual spike.**
+Result: reconstructed KF state matches logged `h_V_z` to within 0.000-0.013 across the
+entire terminal window, including exactly at the steepest part of the ramp (-0.655 vs
+-0.651 at t=-0.212s). Checked `IC1_rep4` too (smaller excursion, -0.18 to -0.46): same
+result, diffs 0.004-0.046, still well under 10% of the swing.
+
+**This closes the mechanism.** The ~5.6x gap that drove five rounds of mechanism-hunting
+(ill-conditioning, near-grazing-rays, KF rate-buildup, R-schedule/scale-fuse/backstop/gate,
+sensor-cal) was a bug in THIS investigation's own offline replay tooling -- every one of
+those tools computed the raw flow solve's dt as `Img_Data["Time"][i] - Time[i-1]`, but the
+live `process_frame()` actually uses `dt = 1/fps`, and these differ by 3-8x in the terminal
+window because the `run()` polling loop's call cadence decouples from the camera's native
+frame-pair rate (a frame's own image_callback pairing stays one native interval apart even
+when many real-time (and real motion) has passed since the previous PROCESSED call). Using
+the wrong (too-large) dt divides displacement into an ARTIFICIALLY SMALL velocity --
+exactly the direction and magnitude of "why does my reconstruction fall short of the
+logged spike" this thread kept hitting.
+
+**What this means for the live controller, separated cleanly from what this closes:**
+- CLOSED: "why couldn't earlier reconstruction attempts reproduce the logged h_z spike" --
+  answered. It's a tooling bug (a1ffbf02 fixes the underlying dead logging that made it
+  undiagnosable), not a mystery mechanism in the perception/KF/controller stack.
+- STILL OPEN, genuinely different question, NOT addressed by this fix: does the spike
+  itself (real, in `h_V_z`, confirmed via the two independent-GT cross-checks earlier in
+  this thread -- true descent rate stays smooth while `h_V_z` ramps) represent a REAL
+  perception error, or is `h_V_z`'s terminal ramp itself legitimate given how a marker
+  genuinely fills the frame at close range (near-grazing rays ARE real per the earlier
+  finding, just not sufficient alone to explain the OLD reconstruction gap -- that
+  insufficiency is now explained by the dt bug, not by the near-grazing-ray mechanism
+  being wrong). Whether THIS ramp is itself the soft-touchdown-preventing cause, and
+  whether it's controllable/attenuable, was never actually re-examined once the dt-bug
+  explanation emerged -- it remains the next real open question for whoever picks this up,
+  now on solid tooling.
+- The polling-loop-vs-native-rate decoupling itself (large real time gaps between
+  PROCESSED frames near touchdown, even though each processed pair's own dt is small) may
+  independently be worth investigating as a controller-facing issue (large real gaps mean
+  the KF's own `t-prev_t` update interval is large too, so its OWN uncertainty growth
+  between updates is large near touchdown) -- untested, flagged not investigated.
+
+### Net state: this specific 5-mechanism-then-dt-bug chase is DONE.
+The soft-touchdown investigation's remaining open question is now narrower and cleaner:
+is the terminal h_z ramp (now confirmed accurately measured, not a reconstruction
+artifact) itself real/legitimate perception behavior, and if so is it the actual soft-
+touchdown blocker, and is it fixable. That reframing is the correct next entry point, not
+further reconstruction-accuracy work.
+
+## ===== 2026-09-22 (cont'd 4) -- terminal h_z ramp is REAL (confirmed vs GT), correlates with marker overfill =====
+
+Investigated the reframed question head-on: is the terminal h_z ramp (now confirmed
+accurately MEASURED per the dt-bug closure above) itself legitimate/GT-accurate, or a
+genuine perception error, and is it fixable. Followed the diagnose-flight-data skill's
+hard rule: compared against `tools/gt_optical_flow.py`'s independently-computed GT loom
+(Z_REG-regularized, valid to touchdown), NOT the controller's own reference.
+
+**Verdict: the ramp does NOT track ground truth -- it's a genuine perception error, not a
+reconstruction artifact and not legitimate signal.** `IC1_rep3`: GT loom stays bounded
+(peaks ~-0.32 around alt=0.25m, then DECREASES toward 0 as the vehicle physically
+decelerates approaching alt=0.20m -- correct real-world behavior), while measured h_z (KF)
+ramps the opposite way, from -0.29 to -0.67 over the same window, overshooting GT by up to
+2.4x at the worst point (t=11.312s: GT=-0.258, meas=-0.670).
+
+**Mechanism: correlates with marker overfill, not near-grazing rays or ill-conditioning.**
+Re-checked the two previously-tested geometric diagnostics (now with the CORRECT dt) across
+the exact spike window: `zv_min` stays healthy (0.94-0.97, nowhere near zero -- near-grazing
+rays is NOT what's happening in this rep) and `cond(A)` stays modest (9-10, no blow-up).
+But `rel_resid` (how well the rigid-body 6-DOF image-Jacobian model actually fits the
+tracked point correspondences) roughly DOUBLES in the terminal window vs mid-descent
+baseline (median 0.24 mid-descent -> median 0.61 terminal, n=6 sampled frames each). This
+exactly coincides with `MARKER_EXTENT_PX` being FROZEN AT 318px for the entire terminal
+window in BOTH IC1_rep3 and IC1_rep4 -- i.e. the marker has overfilled the 240px frame
+(318 > the detector's own `frame_min=240px` overfill threshold, the same constant the
+touchdown-detect v2 "[overfill]" branch fires on) and stays saturated there.
+
+**Direction is NOT consistent -- rules out a simple sign-bias explanation.** Checked
+`IC1_rep4`'s terminal window the same way: extent is ALSO frozen at 318 throughout, but
+measured h_z UNDER-reads GT there (e.g. -0.127 vs GT's -0.212), the OPPOSITE direction from
+rep3's overshoot. So marker overfill degrades the flow solve's ACCURACY generally (matches
+the doubled rel_resid -- a poor model fit, which can push the solved Tz either direction
+depending on which specific correspondences are noisy that frame), not a deterministic
+overshoot bug to patch with a one-line sign/scale fix.
+
+### Is it fixable -- options, NOT yet implemented (needs a design decision, flagging for
+### the user rather than picking one unilaterally)
+1. **Terminal-proximity hold/clamp on h_z once overfill triggers** (extent>=frame_min) --
+   a previous entry in this same file (2026-09-21 era, before this dt-bug detour) already
+   flagged this as "a practical mitigation not requiring full mechanism attribution."
+   Cheap, doesn't require fixing the underlying flow-solve degradation, but a naive
+   freeze/clamp risks masking genuine motion in the exact window touchdown-critical control
+   is running.
+2. **Fall back to (or fuse in) the scale-loom signal during overfill** -- this file's own
+   earlier entries (2026-08 era) note scale-loom "stays reliable exactly where flow
+   diverges" for a different investigated case; `_scale_rate_fuse` already exists in
+   `cross_marker_perception.py` (default OFF, `CROSS_SCALE_RATE_FUSE`) and fuses into
+   channel 2 specifically -- this mechanism may already be positioned to help here if
+   enabled/re-tuned, rather than needing new code. Worth testing with it ON before building
+   anything new.
+3. **Improve the rigid-body fit itself at overfill** (e.g. relax/adapt which points are
+   trusted once extent saturates, or switch flow-point sampling strategy near max-extent) --
+   more invasive, addresses the root geometric cause (doubled rel_resid) rather than
+   papering over its output.
+
+None of these three have been tested yet -- this entry stops at diagnosis (confirmed real,
+confirmed correlated with overfill, GT-independent, cross-rep-consistent), not a fix.
+
+## ===== 2026-09-22 (cont'd 5) -- video-validated: marker genuinely overfills the frame; two false starts corrected en route =====
+
+User asked to check recorded videos and validate all claims. None of the reps used as
+evidence so far (`IC1_rep3`, `IC1_rep4`, the first `Landing_Test/...03-22-59` rep) had
+`IMG_RECORD=1` set, so no video existed for them -- ran one fresh rep WITH `IMG_RECORD=1`
+(`test_data/Landing_Test/Tue Sep 22 10-27-53 2026`, video
+`test_data/Test_Videos/Tue Sep 22 10-27-36 2026.mp4`) specifically to get visual evidence,
+after the user separately noted they already had videos from another session (not used here
+since this rep's video is a direct, first-party check).
+
+**Two false starts, corrected by checking rather than trusting an assumption:**
+1. First attempt: assumed video frame index maps to `Time[-1]` as touchdown at a naive
+   `frame/50fps` timebase. Wrong on both counts -- the mp4 is stitched at a NOMINAL fps
+   (`self._rec_fps`, the camera's fps read once at record-start), not the actual per-frame
+   capture rate (`_rec_n` increments once per `process_frame()` call, avg ~35.5Hz this
+   flight per the `[CrossMarkerNode] diag:` line) -- so `frame_index/50` badly
+   underestimates real elapsed time. Overlaying THIS rep's very-last-Img_Data-index flow
+   points onto a naively-picked "near-end" video frame put the red dots scattered in the
+   image CORNERS, off the marker entirely -- which briefly looked like a tracking-failure
+   finding, but was actually a time-alignment bug in the check itself, not a real signal.
+2. Second check (this rep's own `h_V_z` near `Time[-1]`): read as flat/near-zero
+   (-0.002 to -0.003) for the whole "last 0.7s," which would suggest this rep never showed
+   the ramp at all. Investigated whether `Time[-1]` might be well INTO the post-touchdown
+   tail (the recording continues 5s after touchdown, per its own log line) rather than at
+   touchdown -- confirmed empirically via frame-to-frame pixel-diff on the extracted video
+   (diff drops from >15-35 to ~3-5 around frame ~298-300, then to ~0 by frame ~331-334,
+   i.e. genuinely static/landed only in the FINAL ~10% of the clip) that this specific rep's
+   `Time[-1]` likely lands deep in that static tail, not at first contact -- so the flat
+   near-zero `h_V_z` there is UNSURPRISING (correctly near-zero on an already-stationary
+   vehicle), not evidence against the ramp mechanism. **Re-confirmed for the actual evidence
+   reps (`IC1_rep3`, `IC1_rep4`) that this tail-confusion does NOT apply to them**: checked
+   GT altitude directly (not just loom) across their own terminal windows -- both show
+   SMOOTH, CONTINUOUS, still-decreasing altitude the entire way to their last GT sample
+   (rep3: 0.269->0.199m; rep4: 0.251->0.178m), i.e. genuinely still descending throughout,
+   not a static post-landed artifact. The two prior entries' GT-vs-measured comparison
+   stands uncorrected.
+
+**Direct visual confirmation of the overfill mechanism** (this new rep's video, frames
+extracted at native indices, not time-aligned to Img_Data -- a pure visual check):
+- Frame 200 (mid-descent): marker comfortably within frame, clear background margin on
+  all 4 sides, ~150 tracked (yellow) points spread evenly across the visible plate.
+- Frame 296 (near the empirically-located touchdown, ~10 frames before the pixel-diff
+  freeze): marker's cross ARMS EXTEND PAST ALL FOUR FRAME EDGES -- visually unambiguous
+  overfill, matching `MARKER_EXTENT_PX`'s claimed saturation at 318px (>240px frame_min).
+- Frame 335 (past the pixel-diff freeze, genuinely landed/static): marker even MORE
+  overfilled/zoomed -- camera essentially sitting on the plate, consistent with a landed,
+  stationary vehicle.
+
+This directly, visually corroborates the "marker overfill" mechanism reported in the prior
+entry -- not just from the `MARKER_EXTENT_PX` number, but from the actual recorded frames
+showing the physical marker exceeding the sensor's field of view near touchdown. Also
+separately confirmed (grepping `_ext_bbox`'s source, `src/cross_marker_perception.py:2936`)
+that `MARKER_EXTENT_PX` comes from `det.line_points_i/j` + `det.stub_points` -- the
+RANSAC-inlier cross-arm/stub DETECTION points -- not the smaller `_prev_flow_pts` set used
+for the Jacobian solve itself; checked this rep's own logged `"Line Points I/J"`+`"Stub
+Points"` at its near-end index and their pixel span (x:0-238, y:0-318) independently
+confirms the frame-filling extent, while the separately-logged `"Flow Points Prev Px"` at
+the same index ALSO spans nearly the full frame (x:4-220, y:2-316) -- so the actual
+Jacobian-solve correspondences themselves are frame-filling too, not just the arm/stub
+detector's own (potentially line-extrapolated) bbox.
+
+### Net: all load-bearing claims from the prior two entries hold up under this video check.
+The dt-bug closure (session's earlier entries) and the GT-vs-measured divergence finding
+are both unaffected by the two false starts above (neither used the flawed video-alignment
+or this rep's own tail-confused `Time[-1]`). The overfill mechanism is now visually
+confirmed, not just numerically inferred.
+
+## ===== 2026-09-22 (cont'd 6) -- both remaining candidate fixes narrowed: 2 ruled out, hold/clamp stationary-only =====
+
+Follow-up on the three candidate mitigations named in the prior entry, checking each
+against existing code/memory before proposing any as a next action.
+
+### CROSS_SCALE_RATE_FUSE -- RULED OUT for this exact window, not just generally cautioned
+Read the full mechanism in `cross_marker_perception.py` (~1247-1345, 1793-1825). It's a
+second sequential KF correction on the flow-KF's loom channel using a "scale-rate" signal
+(marker-size growth rate, extent-dominated: `0.3*ln(width) + 0.7*ln(extent)`), correlates
+0.84-0.98 with GT loom mid-descent. **Already tried default-ON once (2026-09-09,
+`2a400929`+2): regressed the IC gate hard** (3 PRECISE / 1 SOFT+PRECISE / 8 FAIL / 1
+NOT_LANDED vs a clean fuse-OFF baseline) because scale-rate is biased, not just noisy
+(over-reads GT slope ~2.4x in 0.5-2m band, ~10x above 2m). Flipped back OFF; three fixes
+(band-limit, affine de-bias, looser r) built behind the still-off flag but never
+re-gate-validated. **Critically: the fusion has its own `_scale_fuse_max_ext=310px` cutoff,
+deliberately excluding it from firing above that extent** ("skip the fusion above this so
+the terminal window is left entirely to the primary loom + the touchdown detector") --
+because scale-rate itself COLLAPSES toward 0 once the marker overfills, same failure class
+as the primary signal. Our confirmed spike window sits at extent=318px, ABOVE this cutoff.
+**So even fully re-validated and enabled, this mechanism is designed to never touch the
+exact window we're investigating.** Correctly retracted as a candidate (was proposed too
+quickly two turns ago without reading the actual gating code first).
+
+### Line-width -- ALSO ruled out, same terminal-window limitation, documented independently
+Full history lives in [[project_20260908_line_width_loom_investigation]] (⛔ CLOSED
+2026-09-09, 910 lines, read in full). Static line-width VALUE is good (0.89-1.00 corr vs GT
+altitude) but unused (shadow-only). Pure line-width RATE is a dead end on its own (~0.22
+corr in-band, noise elsewhere) -- what actually works is the SAME extent-dominated
+`"Scale Loom Rate"` signal CROSS_SCALE_RATE_FUSE uses (line-width itself only contributes a
+0.3 weight for worst-rep robustness). That file's own terminal-window verdict, independently
+derived: "Unrecoverable for ANY size-derived loom... the genuine last ~0.3m has a real SIGN
+INVERSION (width shrinks during the fastest drop) because the marker fragments/exits the FOV
+and the arm fits latch onto background." Also contains a deeper, architectural finding worth
+carrying forward: cross-marker's flow points have NO persistent physical identity
+frame-to-frame (unlike ArUco's fixed 4 corners) -- proven (not just observed) to make ANY
+point-position-statistics-based conditioning metric (origin_ratio, and by the same argument
+any future point-cloud-derived gate) structurally unable to separate real conditioning
+collapse from routine tracking churn. Relevant caution for candidate #3 (improving the rigid-
+body fit itself): a fix that leans on point-position statistics to decide which
+correspondences to trust is fighting this same architectural fact, not a fresh idea.
+
+### Terminal hold/clamp on h_z -- works ONLY for the STATIONARY case; does NOT transfer to rover
+Checked against [[project_20260901_rover_cross_perception_diagnosis]] (2026-09-01) before
+assuming the mechanism generalizes. **The rover's terminal stall (~1.1m, higher onset than
+stationary's ~0.5m) is NOT an h_z-corruption problem at all** -- that file explicitly
+RETRACTS an earlier "Cluster B = terminal overfill loom collapse" attribution after checking
+against the run's own GT: `h_V[Tz]` tracks GT loom at **corr +0.89 through the overfill
+window; both go to ~0 together as the descent stalls**. h_z is FAITHFUL there, the opposite
+of the stationary IC1_rep3/4 finding this session. Rover's actual documented mechanism is a
+single-frame LATERAL centroid spike (`s_x` 0.16->0.91->0.16, recurring ~every 0.3s once
+extent saturates) -> `dh_d_x`/`theta_desired` blowup (92 deg) -> the (pre-2026-09-09,
+possibly-superseded by the visibility_projection.py Tier-1 rewrite -- NOT re-verified
+against current code) joint-QP's `CBF_AZ_COST_GAIN` relief folding ~5 m/s^2 upward accel
+into `I_a[2]` -> `B_T` collapse -> descent stall. `CROSS_S_JUMP_GATE` (already default-ON)
+targets this correctly and removed the EARLY spike-stall, but didn't fix the landing (0/4
+moving still stalled) -- rover's terminal stall + tracking-lag remain open, via a
+completely different mechanism than the stationary h_z divergence this thread has been
+chasing. **A stationary-only h_z clamp would be solving a problem the rover case doesn't
+have, while leaving its actual (lateral/CBF-chain) problem untouched.**
+
+### Net: candidate-fix list for the stationary terminal-overfill h_z divergence is now down to one
+Only "improve the rigid-body fit itself at overfill" remains untested and unruled-out --
+and even that needs to avoid re-deriving a point-position-statistics-based trust metric
+(origin_ratio's proven failure mode above). No fix has been implemented; this entry is
+narrowing scope, not proposing an implementation.
+
+## ===== 2026-09-22 (cont'd 7) -- rigid-body fit degradation mechanism found: no FB-consistency check on the main LK path =====
+
+Investigated the last remaining candidate ("improve the rigid-body fit itself at overfill")
+with the explicit constraint from the prior entry: avoid re-deriving a point-position-
+statistics-based trust metric (the proven-dead-end class, per origin_ratio).
+
+**Step 1 -- checked whether elevated rel_resid correlates with a spatial/geometric
+discriminant** (edge proximity, per-point displacement magnitude) on `IC1_rep3`'s actual
+spike frame (t_rel=-0.212s, the exact frame used for the earlier reconstruction check):
+NO correlation with distance-to-frame-edge (`corr=0.03`), and only a weak/inconsistent
+relationship with per-point displacement bucket (relative residual highest at SMALL
+displacement, a denominator-amplification artifact of the ratio itself, not a real
+per-point quality signal). **Residual elevation is diffuse across the point set**, not
+concentrated in an identifiable spatial or kinematic subset -- so a smarter per-point
+WEIGHTING scheme based on position or displacement has no obvious lever.
+
+**Step 2 -- checked the physical driver: per-point pixel displacement jumps ~9x near
+touchdown** (mean 0.25px mid-descent -> mean 2.34px at the spike frame, same rep, real
+logged `Flow Points Prev/Curr Px`) -- expected, since apparent motion scales up as the
+marker fills more of the frame at closer range. This raised the question of whether
+ordinary KLT/LK tracking accuracy degrades at these larger inter-frame displacements (a
+well-documented real limitation of Lucas-Kanade, unrelated to this codebase's own bugs).
+
+**Step 3 -- found the main production LK path has NO forward-backward (FB) consistency
+check.** `_compute_hw` (`cross_marker_perception.py:~2547`, what `_solve_jacobian` actually
+consumes) calls `cv2.calcOpticalFlowPyrLK` FORWARD ONLY, filtering only on OpenCV's own
+binary `status` flag + on-mask membership. A ready-made FB-consistency helper,
+`_bgf_lk_fb()` (module-level, ~line 386), backward-tracks and rejects any point whose
+round-trip error exceeds `_BGF_FB_THRESH_PX=0.7` -- but it's wired ONLY into the opt-in,
+default-OFF `CROSS_BG_FLOW` alternative flow path, never into the main one.
+
+**Step 4 -- direct empirical test, entirely self-contained (no video/Img_Data alignment
+needed): ran real FB-consistency checking on consecutive RAW VIDEO FRAMES** from the
+`IMG_RECORD=1` rep (`test_data/Test_Videos/Tue Sep 22 10-27-36 2026.mp4`), comparing a
+mid-descent pair (frames 199->200, GFT-seeded fresh, `cv2.calcOpticalFlowPyrLK` forward
+then backward, same `LK_WIN`/`LK_MAX_LEVEL` as production) against the visually-confirmed
+overfill pair (frames 295->296, the same near-touchdown frame visually validated in the
+prior entry). Threshold: the SAME `0.7px` already used/validated for `_bgf_lk_fb`.
+
+| | mid-descent (199->200) | near-touchdown (295->296) |
+|---|---|---|
+| forward-only status pass rate | 200/200 | 198/200 |
+| mean round-trip (FB) error | 0.90px | **10.1px** |
+| p90 round-trip error | 2.17px | **41.5px** |
+| frac failing FB@0.7px | 23.5% | **48.9%** |
+| mean displacement | 1.59px | 12.4px |
+
+**Decisive: forward-only status catches almost nothing at either frame (198-200/200 "pass"),
+but FB-consistency reveals ~half the near-touchdown correspondences are genuinely mistracked
+-- more than double the mid-descent baseline rate.** This directly explains the diffuse
+elevated `rel_resid` (Step 1): the rigid-body solve is fitting a point set roughly half-
+contaminated with bad correspondences at overfill, which no existing gate (forward-status,
+on-mask, `origin_ratio`, near-grazing-ray z_v, cond(A)) catches, because none of them
+measure per-point TRACKING QUALITY directly -- they measure either binary tracking success
+(too coarse) or point-POSITION statistics (architecturally blind to this, and separately
+already proven unusable for cross-marker's churning point identity).
+
+**Why this sidesteps the origin_ratio dead end**: FB-consistency is a TRACKING-QUALITY
+metric (does this specific point's flow reverse cleanly), evaluated per-point and
+independent of where in the frame or in the point cloud it sits -- it does not require
+persistent point identity ACROSS frames (each frame's FB check is self-contained: forward
+then immediately backward, same frame pair), so it isn't vulnerable to the "no fixed
+physical identity" architectural argument that killed origin_ratio and any future point-
+position-based gate.
+
+### Caveats (honest, not yet a validated fix)
+- This test used FRESH GFT-reseeded points on recorded video frames (which have a small
+  debug overlay burned in, `CROSS_RING_OVERLAY_DBG` circles at prior tracked-point
+  locations) -- not a byte-exact replay of `_sample_flow_points`'s ring-sampling logic or
+  the exact point set the live solve used that frame. It demonstrates the MECHANISM
+  (FB error genuinely spikes near overfill) on real imagery, not a certified before/after
+  fix. Video-frame-index to `Img_Data` index alignment remains unresolved (per the prior
+  entry's two false starts) -- this test deliberately avoided needing that alignment by
+  staying entirely within the video's own frame sequence.
+- Wiring `_bgf_lk_fb`'s FB check into the MAIN `_compute_hw` path (not just the opt-in
+  bgflow alternative) is a real code change, untested for regressions elsewhere in the
+  flight (FB rejection at 0.7px could shed valid points mid-descent too, at the 23.5%
+  baseline rate found above -- need to check this doesn't starve the solve of the
+  `MIN_FLOW_POINTS_SOLVE=4` floor or bias the resulting point set the way `_scale_fuse`'s
+  overfill collapse did). Needs an offline replay (reconstruct rel_resid/h_z WITH FB
+  filtering applied to real recorded terminal-window correspondences) before considering
+  a live SITL gate -- not done yet, this entry stops at mechanism confirmation.
+
+### Net: this is the most concrete, evidence-backed, not-yet-ruled-out lever found this
+### session for the stationary terminal-overfill h_z divergence.
+Next step, if picked up: build an offline replay that applies `_bgf_lk_fb`-style FB
+filtering to a real terminal-window point set (needs raw frame pairs, so a fresh
+`IMG_RECORD=1` rep with resolved index alignment, or instrumenting the live code to log
+FB round-trip error as a new shadow diagnostic for the NEXT recording) and check whether
+`rel_resid`/reconstructed `h_z` improve once contaminated correspondences are excluded,
+before touching the live default.
+
+## ===== 2026-09-22 (cont'd 8) -- CORRECTION: FB-consistency is already default-on and doesn't fix it =====
+
+User asked to check why the "fix" (FB-consistency) was rejected, since it appeared to
+already mostly exist in the codebase. This surfaced a real error in the prior entry.
+
+**Correction: `CROSS_BG_FLOW` defaults to ON (`"1"`), not OFF.** The prior entry's claim
+("wired only into the opt-in, default-OFF CROSS_BG_FLOW alternative path") was WRONG --
+based on a STALE in-file comment at the `_compute_hw` call site (`process_frame()`,
+~line 2995-2996: "Opt-in (default OFF)") that contradicts the actual env default one
+scrolls up to see (`CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"`, baked
+default-ON 2026-08-27 by explicit user direction, GT-correlation-validated r=0.66-0.76).
+`CROSS_BG_FLOW_HYBRID` (adds CLAHE normalization + the FB-consistency rejection via
+`_bgf_lk_fb`) is ALSO default-ON, since 2026-08-28. So in the actual default runtime
+config, `_compute_hw_bgflow` (WITH FB-consistency already applied) is what runs FIRST
+every frame `det.ok` is true; the FB-less `_compute_hw` is only the fallback when bgflow
+itself can't produce a result.
+
+**Checked whether bgflow was actually active during the confirmed spike window (not just
+assumed from the default), using the `"BgFlow Health"` log field** (`_bgflow_health =
+(rel_resid, n_points)`, reset to `(inf, 0)` at the top of `process_frame` and only
+overwritten if a solve method actually ran this frame). On `IC1_rep3`'s terminal 0.8s
+(the same window used throughout this thread): **finite values every frame** (n=80-143
+points, rel_resid 0.64-0.92) -- `_compute_hw_bgflow` ran successfully and produced a
+result EVERY frame in the spike window, never fell back to the FB-less path. Confirmed no
+env override in this rep's `Img_Params.txt` (`CROSS_BG_FLOW`/`CROSS_BGF_*` unset -> pure
+defaults). `"Flow Points Prev/Curr Px"` (what every replay tool in this thread has been
+reconstructing from) is set by `_compute_hw_bgflow` itself (`self._last_flow_prev_px =
+prev_pts.copy()`, same attribute the FB-less path also writes to) -- i.e. **every
+reconstruction this whole thread has done was ALREADY working from FB-filtered
+correspondences**, not a naive unfiltered set.
+
+**Conclusion: FB-consistency filtering is already active in production on this exact
+window, and it does NOT fix the elevated rel_resid.** `BgFlow Health`'s own rel_resid
+(0.64-0.92) is if anything HIGHER than my earlier plain reconstruction's read (0.48-0.77)
+on the same window -- the FB-passing survivor points still don't fit a rigid-body model
+well. This means the prior entry's proposed fix is not a fix at all: it's already shipped,
+and the mechanism it targets (FB-inconsistent points contaminating the fit) is NOT what's
+driving the residual, or FB filtering at the current 0.7px threshold isn't tight enough to
+catch it. The earlier illustrative video test (49% FB-fail rate near touchdown) demonstrated
+that badly-mistracked points EXIST at overfill, which is real and still true -- but the
+production system already removes the ones its own FB check catches, and the fit is still
+bad on what's left. **This closes "improve the rigid-body fit via FB-consistency" as a
+dead end too, for the same reason as the other two candidates: the fix already exists (in
+some form) and doesn't solve the terminal overfill problem.**
+
+### Genuinely still open (not yet investigated): WHY does the fit stay bad even after FB filtering
+Two untested candidate explanations, neither checked yet:
+1. The FB threshold itself (`_BGF_FB_THRESH_PX=0.7`) may not be tight enough specifically
+   in the overfill regime (displacement magnitudes are ~9x larger there, per the prior
+   entry -- a fixed absolute px threshold may pass points whose ERROR is proportionally
+   still large relative to that larger signal).
+2. A genuine model mismatch unrelated to point-tracking noise at all -- e.g. the rigid
+   planar-motion assumption itself breaking down at extreme close range (real geometric/
+   lens effects not captured by the 6-DOF image Jacobian), which no amount of correspondence
+   filtering would fix since the model, not the data, would be wrong.
+Neither has been checked against real data. This is where a future session should pick up,
+not by re-proposing FB-consistency (already shipped, already insufficient).
+
+### Net across this whole candidate-fix investigation (this session)
+All identifiable candidates for the stationary terminal-overfill h_z divergence have now
+been examined and found insufficient or already-shipped-and-insufficient: sensor-cal
+(ruled out, not the mechanism), CROSS_SCALE_RATE_FUSE (ruled out, gated off exactly this
+window by design), line-width (ruled out, same terminal-window failure independently
+documented), terminal hold/clamp (untested but confirmed stationary-only, doesn't transfer
+to rover), and FB-consistency (already shipped by default, confirmed insufficient on real
+data). The two remaining open threads are the FB-threshold-tightness question and the
+model-mismatch question above -- both genuinely unexplored, not previously-tried-and-failed.
+
+## ===== 2026-09-22 (cont'd 9) -- both remaining hypotheses tested; converges on a model-level (not data-level) limitation =====
+
+Tested the two genuinely-unexplored questions flagged at the end of the prior entry.
+
+### Hypothesis 1 (FB threshold too loose at overfill's larger displacement scale) -- RULED OUT
+Used the `IMG_RECORD=1` rep's raw video frames (self-contained illustrative test, same
+caveat as before: fresh GFT reseed, not a byte-exact replay) at the visually-confirmed
+overfill frame pair. Progressively tightened the correspondence filter far beyond the
+production `0.7px` FB threshold -- proportional (`rt_err < 0.1*disp`), then the cleanest
+20% by round-trip error (n=38, max rt_err=0.093px), then the cleanest 10 points outright
+(max rt_err=0.019px, essentially perfect tracking): **rel_resid stayed flat at 0.53-0.62
+throughout, not trending toward zero even at near-perfect tracking accuracy.** A threshold
+problem would show monotonic improvement as filtering tightens; it doesn't. Ruled out.
+
+### A third, more specific hypothesis (contamination from the drone's own static visible
+### hardware at frame edges) -- also tested and RULED OUT, directly on real production data
+Noticed in the illustrative video frames that small gray objects (plausibly landing-
+gear/motor housing, rigidly fixed to the airframe, hence STATIC in-camera-frame regardless
+of marker motion) sit near the left/right image edges. Checked whether `IC1_rep3`'s actual
+production `"Flow Points Prev Px"` (not the illustrative video test) admits points there:
+**yes** -- 11/111 points fall in a `<15px` or `>225px` margin at the spike frame vs
+**0** at a mid-descent frame, i.e. the production bgflow search mask (which grows toward
+the FULL FRAME at deep overfill, per `extent_mask_from_detection`'s `WHOLE_PLATE_SCALE`
+clipped to frame bounds) genuinely starts admitting edge-region points only once overfill
+sets in -- a real, verified structural change in what gets sampled, and a plausible source
+of a second, different rigid motion (near-static airframe hardware) contaminating the
+single-body model. **But excluding this exact margin from three real spike frames changed
+rel_resid by nothing** (0.488->0.488, 0.610->0.616, 0.774->0.795, if anything slightly
+worse) -- so while the edge-admission behavior change is real and verified, it is NOT the
+driver of the elevated residual either.
+
+### Hypothesis 2 (rigid-planar-model mismatch, unrelated to which points are chosen) --
+### now the only hypothesis consistent with ALL evidence; not yet directly proven, but
+### convergently supported
+Every point-SELECTION strategy tried across this whole thread -- tightest-FB subset,
+proportional threshold, edge-margin exclusion, and (earlier entries) displacement-bucket
+and edge-distance correlation checks -- failed to move `rel_resid` meaningfully. The
+residual is not concentrated in ANY identifiable subset by any criterion tested. This is
+the signature of a MODEL-level limitation, not a data-quality one. The most physically-
+motivated remaining candidate (not yet directly isolated/proven): the image-Jacobian
+6-DOF flow fit is a LINEARIZATION -- valid for small/infinitesimal inter-frame motion --
+approximated here via a FINITE DIFFERENCE between two discrete frames. Inter-frame pixel
+displacement grows ~9x near touchdown (mean 0.25px mid-descent -> 2.3-12px terminal,
+confirmed on real data multiple times this thread) as the same physical motion projects to
+much more pixel motion at closer range. A large discrete step used to approximate an
+instantaneous-velocity model introduces genuine second-order linearization error --
+independent of tracking accuracy (explaining why perfect-FB points still show elevated
+residual) and roughly uniform across the point set (explaining the diffuse pattern,
+since every point on a rigid body sees a proportionally similar breakdown of the
+small-motion approximation, not a spatially-localized one).
+
+### Practical implication if this holds (not yet certain, flagged honestly)
+No per-point trust/filtering scheme -- however clever, however it's built -- can fix a
+model-level linearization error, because it's a property of the (dt, displacement) regime
+the solve runs in, not of which specific correspondences are chosen. This would mean the
+whole "improve the rigid-body fit via better point selection" direction (the entire
+candidate-fix thread of this and the prior 3 entries) is fundamentally the wrong lever.
+Two categories of a REAL fix, if this diagnosis is confirmed, are much larger undertakings
+than anything tried so far: (a) reduce dt specifically in the terminal window (circles back
+to the earlier-closed dt/fps investigation -- dt is already what the hardware/polling loop
+delivers, not freely tunable down further without new instrumentation work), or (b) replace
+the differential/linearized flow-Jacobian estimator with a genuinely different, non-
+differential motion estimate (e.g. direct pose/homography estimation between frame pairs)
+specifically for the overfill regime -- a substantial redesign, not a fix.
+
+### Net: closes the "improve the rigid-body fit" candidate-fix thread
+Every mitigation examined across cont'd 6/7/8/9 (sensor-cal, CROSS_SCALE_RATE_FUSE,
+line-width, terminal hold/clamp [stationary-only], FB-consistency [already shipped], FB
+threshold tightening, edge-margin exclusion) is ruled out or insufficient. The evidence now
+converges on a genuine model-level (linearization) explanation rather than a fixable
+data-selection problem, though that specific explanation itself has not been DIRECTLY
+isolated/proven (e.g. by synthetically testing the same points at a smaller synthetic dt to
+show the residual shrinks) -- that would be the natural next check for a future session, not
+another point-selection variant.

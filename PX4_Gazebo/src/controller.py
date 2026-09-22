@@ -268,6 +268,25 @@ class Controller(Thread):
         # are set, GT_FEEDBACK (the Gazebo path) wins.
         self._pose_node = pose_node
         self._gt_feedback = None
+
+        # COMPARISON BASELINES (PLASMC_BASELINE=lin2022|zhang2026|lin2023|cho2022, default off):
+        # replace the PLASMC/yaw/attitude chain in run() with the matching MATLAB baseline port
+        # (src/baselines.py). Everything downstream of the accel command (attitude stage, PX4
+        # body-rate+thrust, recording, touchdown detect) is shared. REQUIRES PLASMC_GT_FEEDBACK=1:
+        # the baselines are fed ground truth exactly as in the MATLAB harness (PBVS: pose+velocity
+        # with sigma_pos/sigma_vel noise; IBVS: projected marker key points), and GT-FB is what keeps
+        # the loop alive and provides the touchdown depth.
+        self._baseline = None
+        _bl = os.environ.get("PLASMC_BASELINE", "").strip().lower()
+        if _bl:
+            if pose_node is None or os.environ.get("PLASMC_GT_FEEDBACK", "0") != "1":
+                raise RuntimeError("PLASMC_BASELINE requires PLASMC_GT_FEEDBACK=1 and a pose_node")
+            from baselines import make_baseline
+            self._baseline = make_baseline(_bl, mass)
+            self._bl_hist = deque(maxlen=64)      # (t, p_cam, p_mkr) for LS-slope velocities
+            self._bl_psi = None                   # heading held from engage (MATLAB psi_des=0 == its IC yaw)
+            self._bl_rng = np.random.default_rng(int(os.environ.get("BASELINE_SEED", "1")))
+            print(f"[controller] BASELINE controller: {self._baseline.name} (GT-fed, shared attitude path)")
         _gt_on = os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
         _hw_on = os.environ.get("PLASMC_HW_POS_FEEDBACK", "0") == "1"
         if _gt_on or _hw_on:
@@ -2475,9 +2494,12 @@ class Controller(Thread):
                             except Exception:
                                 pass
                         self._chase_gated = True
-                    self.PLASMC()
-                    self._yawCtrl()
-                    self._attCtrl()
+                    if self._baseline is not None:
+                        self._baselineStep()
+                    else:
+                        self.PLASMC()
+                        self._yawCtrl()
+                        self._attCtrl()
 
                 if not self.TARGET_IS_VISIBLE:
                     # Archive the current log segment BEFORE the re-init wipes it, so the
@@ -3580,6 +3602,74 @@ class Controller(Thread):
         sigma_a = X[0]
         # MATLAB: dkappa_a/dt = n_a * |sigma_a| - n_a * p_a * kappa_a
         return self._n_a * abs(sigma_a) - self._n_a * self._p_a * kappa_a
+
+    def _baselineStep(self):
+        """One control step of the selected comparison baseline (src/baselines.py).
+
+        Mirrors the MATLAB harness (visualControl_comparison.m cases 2-5): PBVS baselines see
+        camera/marker position + velocity with sigma_pos=0.01 m / sigma_vel=0.02 m/s noise;
+        IBVS baselines see the marker key points projected through the ideal pinhole (f=135, +ZF depth
+        offset) onto the yaw-only virtual frame. The commanded specific force then goes through
+        baselines.accel_to_rate_thrust (== _attCtrl's body-rate/thrust convention)."""
+        from baselines import accel_to_rate_thrust, marker_key_points, project_marker_v_frame
+        from gt_feedback import NED_FROM_ENU, FRD_2_FLU, _CAM_OFF_FLU, _MARKER_OFF_FLU
+        pose = self._pose_node.getPose()
+        if pose.UAV is None or pose.target is None:
+            return
+        t = self._time.perf_counter()
+
+        def _R(q):
+            return NED_FROM_ENU @ Quaternion([q.w, q.x, q.y, q.z]).to_DCM() @ FRD_2_FLU
+        Ru, Rt = _R(pose.UAV.orientation), _R(pose.target.orientation)
+        up = NED_FROM_ENU @ np.array([pose.UAV.position.x, pose.UAV.position.y, pose.UAV.position.z])
+        tp = NED_FROM_ENU @ np.array([pose.target.position.x, pose.target.position.y, pose.target.position.z])
+        p_cam = up + Ru @ (FRD_2_FLU @ _CAM_OFF_FLU)
+        p_mkr = tp + Rt @ (FRD_2_FLU @ _MARKER_OFF_FLU)
+
+        # velocities: causal LS slope over the last 0.12 s (same scheme as gt_feedback)
+        self._bl_hist.append((t, p_cam.copy(), p_mkr.copy()))
+        H = list(self._bl_hist)
+        keep = [h for h in H if h[0] >= H[-1][0] - 0.12]
+        if len(keep) < 3:
+            keep = H[-3:]
+        if len(keep) >= 3:
+            ts = np.array([h[0] for h in keep]); ts = ts - ts.mean()
+            den = float(ts @ ts) or 1.0
+            v_c = (ts[:, None] * np.array([h[1] for h in keep])).sum(0) / den
+            v_t = (ts[:, None] * np.array([h[2] for h in keep])).sum(0) / den
+        else:
+            v_c = v_t = np.zeros(3)
+
+        euler = Quaternion(self._quat[-1]).to_angles()
+        R = Quaternion(self._quat[-1]).to_DCM()
+        yaw = float(euler[2])
+        if self._bl_psi is None:
+            self._bl_psi = yaw
+            self._bl_t0 = t
+        dt = float(self._dt[-1]) if len(self._dt) > 0 and self._dt[-1] > 1e-6 else 0.02
+
+        noisy = os.environ.get("BASELINE_NOISE", "1") == "1"
+        rng = self._bl_rng
+        s = dict(t=t - self._bl_t0, dt=dt, yaw=yaw, f=135.0,
+                 p_c=p_cam + (0.01 * rng.standard_normal(3) if noisy else 0.0),
+                 v_c=v_c + (0.02 * rng.standard_normal(3) if noisy else 0.0),
+                 p_t=p_mkr, v_t=v_t)
+        if self._baseline.needs_features:
+            key = marker_key_points(float(os.environ.get("BASELINE_MARKER_SCALE", "26")))
+            zf = float(os.environ.get("BASELINE_ZF", "0.3"))   # depth offset: 0.4 m desired depth == 0.1 m camera-marker touchdown
+            s["px"], s["C_s_tc"] = project_marker_v_frame(p_cam, Ru, p_mkr, Rt, yaw, 135.0, zf, key)
+            s["px_d"] = (135.0 / (2 * 0.2)) * key[:2]
+        I_a = self._baseline.step(s)
+        if not np.all(np.isfinite(I_a)):
+            I_a = np.array([0.0, 0.0, -g])                       # hold hover on a numerical blow-up
+        w_u, B_T = accel_to_rate_thrust(I_a, R, self._bl_psi, self._K_R, mass)
+        w_max = float(os.environ.get("PLASMC_W_U_MAX", "2.0"))
+        w_u = np.clip(w_u, -w_max, w_max)
+
+        self._I_a_raw.append(I_a.copy()); self._I_a.append(I_a.copy())
+        self._a_u.append(I_a + np.array([0.0, 0.0, g]))
+        self._w_u.append(w_u); self._B_T.append(B_T)
+        self._u.append(np.concatenate((w_u, [B_T])))
 
     def _attCtrl(self):
         """Convert V-frame accel a_u + yaw rate u_a -> [body rates; thrust] for PX4."""

@@ -37,6 +37,18 @@ Env config:
                    takeoff/IC sequence (~60 s) happens over a stationary rover
                    (the IC rig doesn't have to chase a moving target).
   ROVER_GATE_TIMEOUT  Max seconds to wait for the gate (default 180).
+
+CLOCK SOURCE (fixed 2026-09-22, project_20260922_rover_drive_wallclock_pacing_bug):
+  The trajectory reference `t` fed to eval_traj() is now read from Gazebo's own
+  simulated /clock (via gz_subscriber.Clock_Node, the SAME clock Ground_Truth.npy's
+  "Time" field uses), NOT accumulated from asyncio.sleep()'s wall-clock ticks. The
+  old wall-clock accumulation raced ahead of / lagged the true simulated world
+  whenever Gazebo's real-time factor was not exactly 1.0 (headless / multi-SITL /
+  loaded machine), so GT-measured rover speed diverged from the commanded
+  ROVER_SPEED_MULT/formula value by up to ~3.5x in some profiles -- every rover
+  speed number logged before this fix should be treated as uncontrolled (check the
+  rep's own GT, don't trust the env vars). asyncio.sleep(dt) still paces the
+  setpoint SEND rate (independent of which t value is evaluated).
 """
 
 import os
@@ -44,12 +56,15 @@ import sys
 import asyncio
 import math
 
+import rclpy
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 
 from mavsdk import System
 from mavsdk.offboard import OffboardError, PositionNedYaw
 
 from rover_trajectory import eval_traj, TRAJECTORY_TYPES
+from gz_subscriber import Clock_Node, GZ_Subscriber
 
 MAV_URL = os.environ.get("ROVER_MAV_URL", "udp://:14541")
 TRAJ = os.environ.get("ROVER_TRAJ", "Circular")
@@ -58,6 +73,9 @@ YAW_MODE = os.environ.get("ROVER_YAW_MODE", "spec")
 RATE_HZ = float(os.environ.get("ROVER_RATE_HZ", "20"))
 MAX_T = os.environ.get("ROVER_MAX_T")
 MAX_T = float(MAX_T) if MAX_T else None
+# Ship-deck heave/roll/pitch (manuscript Cases 2/5) is now played by apps/deck_follower.py, a
+# SEPARATE process teleporting the standalone deck_platform model (see its docstring for why:
+# jointing it onto the rover chassis, tried first, stalled the rover's EKF). Nothing to do here.
 GATE_FILE = os.environ.get("ROVER_GATE_FILE", "")
 GATE_TIMEOUT = float(os.environ.get("ROVER_GATE_TIMEOUT", "180"))
 
@@ -96,12 +114,40 @@ async def _arm(rover):
     raise RuntimeError("rover did not arm within timeout")
 
 
+async def _wait_for_sim_clock(time_node, timeout_s=10.0):
+    """Block (async-friendly) until the first /clock message arrives, mirroring
+    landing_test.py's own Clock_Node bring-up wait."""
+    start = asyncio.get_event_loop().time()
+    while time_node.perf_counter() is None:
+        if asyncio.get_event_loop().time() - start > timeout_s:
+            raise RuntimeError("rover_drive: unable to get simulation time from /clock")
+        await asyncio.sleep(0.05)
+
+
 async def run():
     if TRAJ not in TRAJECTORY_TYPES:
         raise SystemExit(f"ROVER_TRAJ={TRAJ!r} invalid; choose {TRAJECTORY_TYPES}")
     print(f"[rover_drive] traj={TRAJ} speed_mult={SPEED_MULT} yaw={YAW_MODE} "
           f"rate={RATE_HZ}Hz max_t={MAX_T}", flush=True)
 
+    # Sim-clock source (fixed 2026-09-22): read Gazebo's /clock the same way
+    # landing_test.py does, so the trajectory's `t` tracks true simulated elapsed
+    # time instead of racing ahead of / lagging behind it via asyncio.sleep().
+    rclpy.init()
+    time_node = Clock_Node()
+    clock_sub = GZ_Subscriber(time_node)
+    await _wait_for_sim_clock(time_node)
+    print("[rover_drive] sim clock acquired.", flush=True)
+
+    try:
+        await _run_with_clock(time_node)
+    finally:
+        clock_sub.close()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+async def _run_with_clock(time_node):
     # Dedicated mavsdk_server gRPC port: the default System() port is 50051,
     # which landing_test's FC also uses (its own embedded server). Sharing the
     # port makes the FC connect to THIS rover server (bound to udp 14541) ->
@@ -125,7 +171,8 @@ async def run():
     dt = 1.0 / RATE_HZ
 
     # Gate: hold the start position (keep streaming setpoints so offboard stays
-    # alive) until the descent-start flag appears; trajectory t=0 = gate moment.
+    # alive) until the descent-start flag appears; trajectory t=0 = gate moment
+    # (measured on the SIM clock, not wall-clock -- see module docstring).
     if GATE_FILE:
         print(f"[rover_drive] holding start pos; waiting for gate {GATE_FILE} "
               f"(timeout {GATE_TIMEOUT:.0f}s)", flush=True)
@@ -145,10 +192,20 @@ async def run():
             await asyncio.sleep(dt)
         print("[rover_drive] gate open — starting trajectory.", flush=True)
 
+    # t0_sim anchors the trajectory's t=0 to the CURRENT simulated time (gate
+    # moment, or now if ungated); every subsequent t is read back off the sim
+    # clock rather than accumulated from asyncio.sleep(), so it tracks true
+    # elapsed simulated time regardless of Gazebo's real-time factor.
+    t0_sim = time_node.perf_counter()
     t = 0.0
     prev_yaw = s0.yaw
     try:
         while MAX_T is None or t <= MAX_T:
+            now_sim = time_node.perf_counter()
+            if now_sim is not None:
+                t = now_sim - t0_sim
+            # else: clock momentarily unavailable -- hold the last known t
+            # rather than falling back to wall-clock pacing.
             s = eval_traj(t, TRAJ, SPEED_MULT, YAW_MODE, prev_yaw=prev_yaw)
             prev_yaw = s.yaw
             await rover.offboard.set_position_ned(
@@ -157,7 +214,6 @@ async def run():
                 print(f"[rover_drive] t={t:5.1f} p=({s.x:+.2f},{s.y:+.2f}) "
                       f"v={s.speed:.2f} yaw={math.degrees(s.yaw):+.0f}", flush=True)
             await asyncio.sleep(dt)
-            t += dt
     finally:
         print("[rover_drive] stopping offboard.", flush=True)
         try:
