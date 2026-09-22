@@ -201,6 +201,68 @@ def _key5_idx(Np):
     return [0, 1, 2, 3, Np - 1]
 
 
+def _marker_outline(px, py, centre=None):
+    """Marker outline through ALL line-sampled points per arm/stub (2026-09-21
+    line-sampled cross, MATLAB InitVar.m) instead of collapsing to the 5 key
+    tips first (the old _closed_quad behavior). With the 5-tip reduction, the
+    drawn "outline" was a straight interpolation between the (excluding-stub)
+    arm-tip centroid and the stub tip -- fine for the old small marker, but at
+    the current 26x scale that centroid/tip pair routinely sits far outside
+    the plotted +-160/+-120px frame even when much of the actual sampled
+    arm/stub path passes through it, making the stub (and often most of each
+    arm) invisible (explicit user report, 2026-09-21). Plotting through every
+    sample instead lets the TRUE path render, clipped to the current view,
+    naturally. NaN breaks separate the 4 arms + stub so consecutive samples
+    across an arm boundary aren't connected by a spurious straight line.
+    Falls back to the legacy closed-quad/diagonal+stub reconstruction when
+    there are no intermediate samples to draw through (Np<=5).
+
+    `centre`, if given, is prepended to EVERY arm/stub segment (2026-09-22,
+    explicit user request): the line-sampled points start at a nonzero offset
+    from the true marker centre (e.g. ~25-40px for this dataset), so without
+    it every segment visibly stops short of the centre, leaving a gap. Pass
+    the TRUSTED centre (cen_px_log at the right time index for a live run;
+    the tip-mean for the static desired reference) -- see _centre_at."""
+    px = np.asarray(px, dtype=float); py = np.asarray(py, dtype=float)
+    Np = len(px)
+    if Np == 5:
+        cx = px[:4].mean(); cy = py[:4].mean()
+        nan = float("nan")
+        return ([px[0], px[1], nan, px[2], px[3], nan, cx, px[4]],
+                [py[0], py[1], nan, py[2], py[3], nan, cy, py[4]])
+    if Np < 5:
+        return px.tolist() + [px[0]], py.tolist() + [py[0]]
+    n = None
+    for cand in range(1, Np):
+        if 4 * cand + int(round(cand * 22 / 15)) == Np:
+            n = cand
+            break
+    if n is None:                     # unrecognized layout -- fall back to key-5 reconstruction
+        _k = _key5_idx(Np)
+        return _marker_outline(px[_k], py[_k], centre=centre)
+    nan = float("nan")
+    xs = []; ys = []
+    for sl in (slice(0, n), slice(n, 2 * n), slice(2 * n, 3 * n), slice(3 * n, 4 * n), slice(4 * n, Np)):
+        if xs:
+            xs.append(nan); ys.append(nan)
+        if centre is not None:
+            xs.append(centre[0]); ys.append(centre[1])
+        xs.extend(px[sl].tolist()); ys.extend(py[sl].tolist())
+    return xs, ys
+
+
+def _centre_at(d, idx, px, py):
+    """Trusted marker-centre position at time index `idx`: cen_px_log (the
+    exact logged centroid) when available, falling back to the mean of the
+    first 4 (arm-tip, excluding-stub) corner columns otherwise -- same
+    fallback convention as the in-function _marker_centre helpers."""
+    cl = getattr(d, "cen_px_log", None)
+    if cl is not None and np.ndim(cl) == 2 and cl.shape[0] == 2 and idx < cl.shape[1] and np.any(cl != 0):
+        return float(cl[0, idx]), float(cl[1, idx])
+    n = min(4, len(px))
+    return float(np.mean(px[:n])), float(np.mean(py[:n]))
+
+
 def _cnp_cols(P_DS):
     """Column slice of the physical camera corners C_nP inside P_DS.
     Layout is [V_nP_i | V_nP_a | C_nP], each Np wide, so C_nP = the last
@@ -336,35 +398,14 @@ def plot_image_plane(traj):
     ic_colors = ["C0", "C1", "C2", "C3", "C4"]
     corner_styles = ["-", "--", "-.", ":"]
 
-    def _closed_quad(px, py):
-        """Return (x, y) for ax.plot() depicting the marker outline. N==4:
-        legacy closed quad (unchanged). N==5 cross+stub: NOT a sequential
-        closed polygon through all 5 points (that draws a bowtie, not a
-        cross) -- instead two disconnected line segments: the two arm
-        diagonals (px[0]-px[1], px[2]-px[3], opposite-pair convention of
-        InitVar.m's T_nP3) plus a third segment from the arm-tip centroid
-        (the true cross junction) out to the stub (px[4]). Segments are
-        joined with a NaN break so a single ax.plot() call still draws all
-        three without connecting them. Fixed 2026-09-15 alongside the
-        InitVar.m T_nP3 orientation correction (see that file's comments)."""
-        px = list(px); py = list(py)
-        if len(px) > 5:                                  # line-sampled cross -> its 5 key points
-            _k = _key5_idx(len(px)); px = [px[i] for i in _k]; py = [py[i] for i in _k]
-        if len(px) == 5:
-            cx = sum(px[:4]) / 4.0
-            cy = sum(py[:4]) / 4.0
-            nan = float("nan")
-            xs = [px[0], px[1], nan, px[2], px[3], nan, cx, px[4]]
-            ys = [py[0], py[1], nan, py[2], py[3], nan, cy, py[4]]
-            return xs, ys
-        return px + [px[0]], py + [py[0]]
-
     # Pass 1: gather data, find desired quad, compute per-IC max corner-to-
     # desired offset (used for legend annotation and inset zoom range).
     # NB: some runs zero-pad P_DS BEFORE the saved `idx`, so we back-search
     # for the last non-zero P_DS sample rather than blindly indexing n-1.
-    desired_quad = None
-    end_corners  = []   # list of (P_x_end, P_y_end) per IC
+    desired_quad = None        # 5-key-tip reduction -- numeric use only (centroid/offset calc)
+    desired_quad_full = None   # ALL line-sampled points -- plotting use (see _marker_outline)
+    end_corners  = []   # list of (P_x_end, P_y_end) per IC -- 5-key-tip, numeric use only
+    end_corners_full = []  # ALL line-sampled points per IC -- plotting use
     end_idx      = []   # last-valid sample index per IC (for trimming the trail)
     max_offsets  = []
     ics          = []
@@ -378,10 +419,12 @@ def plot_image_plane(traj):
         end_idx.append(j_end)
         _cs = _cnp_cols(d.P_DS)
         _pe = d.P_DS[:, _cs, j_end]
+        end_corners_full.append((_pe[0, :].copy(), _pe[1, :].copy()))
         _k5 = _key5_idx(_pe.shape[1])                         # line-sampled cross -> 4 tips + stub tip
         end_corners.append((_pe[0, _k5].copy(), _pe[1, _k5].copy()))
         if desired_quad is None and hasattr(d, "V_nP_d"):
             Pd = d.V_nP_d
+            desired_quad_full = (np.asarray(Pd[0, :]).copy(), np.asarray(Pd[1, :]).copy())
             _kd = _key5_idx(np.asarray(Pd).shape[1])
             desired_quad = (np.asarray(Pd[0, :])[_kd].copy(),
                             np.asarray(Pd[1, :])[_kd].copy())
@@ -428,11 +471,11 @@ def plot_image_plane(traj):
                     ls=corner_styles[i % len(corner_styles)])
 
         # Start quad (solid, faded)
-        sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
+        sx, sy = _marker_outline(P[0, :, 0], P[1, :, 0], centre=_centre_at(d, 0, P[0, :, 0], P[1, :, 0]))
         ax.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
 
         # End quad (long-dash, IC color) — uses the back-searched last sample
-        ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+        ex, ey = _marker_outline(*end_corners_full[k], centre=_centre_at(d, end_idx[k], *end_corners_full[k]))
         ic_label = (rf"IC$_{k+1}$: $[{ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f}]^\top$,"
                     rf" $\|\delta\,{{}}^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}\|={max_offsets[k]:.1f}$ px")
         h, = ax.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
@@ -442,7 +485,8 @@ def plot_image_plane(traj):
     # Desired quad — drawn UNDER the IC end quads (low zorder, translucent)
     style_handles = []
     if desired_quad is not None:
-        dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
+        desired_centre = _marker_centre(*desired_quad)
+        dxq, dyq = _marker_outline(*desired_quad_full, centre=desired_centre)
         h_des, = ax.plot(dxq, dyq, color="k", lw=2.0, ls="-", zorder=1,
                          alpha=0.45, label="desired")
         style_handles.append(h_des)
@@ -468,14 +512,28 @@ def plot_image_plane(traj):
     ax.legend(handles=ic_handles, loc="lower right",
               fontsize=6, ncol=1, framealpha=0.9)
 
-    # INSET — top-right empty space, zoomed on the converged region
+    # INSET — top-right empty space, zoomed on the converged region.
+    # FIXED 2026-09-21 (three rounds): (1) stub-skewed-centre / marker-footprint-
+    # exceeds-FoV bug -- see the combined-figure inset below for the numbers;
+    # (2) RETRACTED: end-quad raw corner data is NOT unreliable/singular -- a
+    # per-sample check (arm 0's 13 samples: radius 35,71,105,...,350px, arm 3's:
+    # 41,88,141,...,1768px) shows a perfectly smooth, continuous, physically real
+    # progression outward, no jump or discontinuity anywhere. The marker is just
+    # genuinely that large in image-plane pixels at touchdown at this 26x scale
+    # -- exactly why panel (b) can (and does) draw the SAME full marker outline
+    # via _marker_outline: it's real data, and at (b)'s zoomed-OUT +-160/+-120
+    # view only the valid near-centre portion happens to be in frame anyway. (3)
+    # So the inset now draws the full outline too (matching panel (b), reverting
+    # the dot+stub-tick simplification), just at a TIGHTER zoom (half from the
+    # desired marker's inner-sample radius alone, no 1.6x/pad margin) so more of
+    # the frame is spent on the genuinely-convergent near-centre region.
     if desired_quad is not None:
         dq_x = desired_quad[0]; dq_y = desired_quad[1]
-        cx, cy = float(np.mean(dq_x)), float(np.mean(dq_y))
-        dq_half = max(np.max(dq_x) - np.min(dq_x),
-                      np.max(dq_y) - np.min(dq_y)) / 2.0
-        pad = max([o for o in max_offsets if np.isfinite(o)] + [5.0]) + 5.0
-        half = dq_half + pad
+        cx, cy = _marker_centre(dq_x, dq_y)
+        # Desired marker's own inner (near-centre) sample radius -- the
+        # smallest visible zoom that still shows the desired outline
+        # converging, without needing its (large, ~370-770px) outer tips.
+        half = 10.0   # fixed +-10px zoom (explicit user request, 2026-09-22)
         xl, xr = cx - half, cx + half
         yl, yr = cy - half, cy + half
 
@@ -495,11 +553,15 @@ def plot_image_plane(traj):
         axins.locator_params(axis="x", nbins=3)
         axins.locator_params(axis="y", nbins=3)
 
-        # Re-draw desired (under) and end quads (over) inside the inset
-        dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
+        # Re-draw desired (under) and end quads (over) inside the inset --
+        # same _marker_outline call as panel (b)/the main axes above; the
+        # tighter zoom here crops each to its near-centre portion naturally.
+        dxq, dyq = _marker_outline(*desired_quad_full, centre=(cx, cy))
         axins.plot(dxq, dyq, color="k", lw=1.5, ls="-", zorder=1, alpha=0.45)
         for k in range(len(results)):
-            ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+            d_k = results[k].data
+            ex, ey = _marker_outline(*end_corners_full[k],
+                                      centre=_centre_at(d_k, end_idx[k], *end_corners_full[k]))
             axins.plot(ex, ey, color=ic_colors[k], lw=1.2, ls=(0, (5, 2)),
                        zorder=4)
         # Pixel-value annotations removed — Δ_max already in the IC legend.
@@ -583,31 +645,10 @@ def plot_combined(traj):
     # =========================================================================
     ic_colors = RUN_COLORS  # same per-IC palette as the 3-D panel above
 
-    def _closed_quad(px, py):
-        """Return (x, y) for ax.plot() depicting the marker outline. N==4:
-        legacy closed quad (unchanged). N==5 cross+stub: NOT a sequential
-        closed polygon through all 5 points (that draws a bowtie, not a
-        cross) -- instead two disconnected line segments: the two arm
-        diagonals (px[0]-px[1], px[2]-px[3], opposite-pair convention of
-        InitVar.m's T_nP3) plus a third segment from the arm-tip centroid
-        (the true cross junction) out to the stub (px[4]). Segments are
-        joined with a NaN break so a single ax.plot() call still draws all
-        three without connecting them. Fixed 2026-09-15 alongside the
-        InitVar.m T_nP3 orientation correction (see that file's comments)."""
-        px = list(px); py = list(py)
-        if len(px) > 5:                                  # line-sampled cross -> its 5 key points
-            _k = _key5_idx(len(px)); px = [px[i] for i in _k]; py = [py[i] for i in _k]
-        if len(px) == 5:
-            cx = sum(px[:4]) / 4.0
-            cy = sum(py[:4]) / 4.0
-            nan = float("nan")
-            xs = [px[0], px[1], nan, px[2], px[3], nan, cx, px[4]]
-            ys = [py[0], py[1], nan, py[2], py[3], nan, cy, py[4]]
-            return xs, ys
-        return px + [px[0]], py + [py[0]]
-
-    desired_quad = None
-    end_corners  = []
+    desired_quad = None        # 5-key-tip reduction -- numeric use only (centroid/offset calc)
+    desired_quad_full = None   # ALL line-sampled points -- plotting use (see _marker_outline)
+    end_corners  = []          # 5-key-tip, numeric use only
+    end_corners_full = []      # ALL line-sampled points per IC -- plotting use
     end_idx      = []
     max_offsets  = []
     for run in results:
@@ -617,10 +658,12 @@ def plot_combined(traj):
         end_idx.append(j_end)
         _cs = _cnp_cols(d.P_DS)
         _pe = d.P_DS[:, _cs, j_end]
+        end_corners_full.append((_pe[0, :].copy(), _pe[1, :].copy()))
         _k5 = _key5_idx(_pe.shape[1])                         # line-sampled cross -> 4 tips + stub tip
         end_corners.append((_pe[0, _k5].copy(), _pe[1, _k5].copy()))
         if desired_quad is None and hasattr(d, "V_nP_d"):
             Pd = d.V_nP_d
+            desired_quad_full = (np.asarray(Pd[0, :]).copy(), np.asarray(Pd[1, :]).copy())
             _kd = _key5_idx(np.asarray(Pd).shape[1])
             desired_quad = (np.asarray(Pd[0, :])[_kd].copy(),
                             np.asarray(Pd[1, :])[_kd].copy())
@@ -681,9 +724,9 @@ def plot_combined(traj):
         # unrelated to the per-corner-trace simplification above; no legend
         # needed -- position along the trajectory line already identifies
         # which is which.
-        sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
+        sx, sy = _marker_outline(P[0, :, 0], P[1, :, 0], centre=_centre_at(d, 0, P[0, :, 0], P[1, :, 0]))
         axI.plot(sx, sy, color=c, lw=2.0, alpha=0.4, ls="-", zorder=3)
-        ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+        ex, ey = _marker_outline(*end_corners_full[k], centre=_centre_at(d, end_idx[k], *end_corners_full[k]))
         axI.plot(ex, ey, color=c, lw=2.2, ls="-", zorder=4)
 
     # Desired-marker shape (thick gray). Given a label + appended to
@@ -691,7 +734,8 @@ def plot_combined(traj):
     # 3-row x 2-col grid (5 ICs + DESIRED = 6, exact fit). Re-added
     # 2026-09-16 at user request.
     if desired_quad is not None:
-        dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
+        desired_centre = _marker_centre(*desired_quad)
+        dxq, dyq = _marker_outline(*desired_quad_full, centre=desired_centre)
         h_des, = axI.plot(dxq, dyq, color="k", lw=3.0, ls="-", zorder=1,
                           alpha=0.45, label="DESIRED")
         ic_handles.append(h_des)
@@ -704,14 +748,30 @@ def plot_combined(traj):
     axI.tick_params(labelsize=23)
     axI.set_title("(b) Image-Plane View", fontsize=29, y=1.03)
 
-    # Inset on the converged region (unchanged from the standalone plot)
+    # Inset on the converged region.
+    # FIXED 2026-09-21 (three rounds): (1) with the 26x-scaled line-sampled
+    # cross marker (MATLAB InitVar.m, cc7ada8), the stub tip sits far off-axis
+    # (~772px here vs ~372px for the arm tips), so the naive mean(all 5 key
+    # points) centre was ~154px off the true marker junction -- fixed via
+    # _marker_centre (4 arm tips only, same convention as the offset calc
+    # above). (2) RETRACTED: end-quad raw corner data is NOT unreliable/
+    # singular -- a per-sample check (arm 0's 13 samples: radius
+    # 35,71,105,...,350px, arm 3's: 41,88,141,...,1768px) shows a perfectly
+    # smooth, continuous, physically real progression outward, no jump or
+    # discontinuity anywhere. The marker is just genuinely that large in
+    # image-plane pixels at touchdown at this scale -- exactly why panel (b)
+    # can (and does) draw the SAME full marker outline via _marker_outline:
+    # it's real data, and at (b)'s zoomed-OUT +-160/+-120 view only the valid
+    # near-centre portion happens to be in frame anyway. (3) So the inset now
+    # draws the full outline too (matching panel (b), reverting the dot+
+    # stub-tick simplification), at a TIGHTER zoom (half from the desired
+    # marker's inner-sample radius alone) so more of the frame is spent on
+    # the genuinely-convergent near-centre region. The outer FoV axis limits
+    # (ax_xmin/ax_xmax etc. below) are untouched.
     if desired_quad is not None:
         dq_x = desired_quad[0]; dq_y = desired_quad[1]
-        cx, cy = float(np.mean(dq_x)), float(np.mean(dq_y))
-        dq_half = max(np.max(dq_x) - np.min(dq_x),
-                      np.max(dq_y) - np.min(dq_y)) / 2.0
-        pad = max([o for o in max_offsets if np.isfinite(o)] + [5.0]) + 5.0
-        half = dq_half + pad
+        cx, cy = _marker_centre(dq_x, dq_y)
+        half = 10.0   # fixed +-10px zoom (explicit user request, 2026-09-22)
         ax_xmin, ax_xmax = -160.0, 160.0
         x0_frac = (50.0 - ax_xmin) / (ax_xmax - ax_xmin)
         w_frac = 1.0 - x0_frac
@@ -724,10 +784,12 @@ def plot_combined(traj):
         axins.tick_params(labelsize=18, pad=1)
         axins.locator_params(axis="x", nbins=3)
         axins.locator_params(axis="y", nbins=3)
-        dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
+        dxq, dyq = _marker_outline(*desired_quad_full, centre=(cx, cy))
         axins.plot(dxq, dyq, color="k", lw=2.4, ls="-", zorder=1, alpha=0.45)
         for k in range(len(results)):
-            ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+            d_k = results[k].data
+            ex, ey = _marker_outline(*end_corners_full[k],
+                                      centre=_centre_at(d_k, end_idx[k], *end_corners_full[k]))
             axins.plot(ex, ey, color=ic_colors[k], lw=2.0, ls="-", zorder=4)
         mark_inset(axI, axins, loc1=2, loc2=4, fc="none", ec="0.6", lw=0.6)
 
