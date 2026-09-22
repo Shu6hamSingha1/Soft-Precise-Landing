@@ -1,11 +1,11 @@
 ---
 name: project_20260917_visibility_predictor_residual
-description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. REFRAMED remaining open question (not yet investigated): is the terminal h_z ramp itself (now confirmed accurately MEASURED, not a reconstruction artifact) real/legitimate perception behavior from a close-range marker, and if so is IT the actual soft-touchdown blocker and is it fixable -- a cleaner, narrower entry point than the mechanism-hunting this thread did. See the SESSION CLOSE section for the full index."
+description: "Multi-session thread (2026-09-17 to 09-22), five major results, in order: (1) visibility-CBF predictor residual measured; (2) a TRANSPOSED phi axis bug found+FIXED+BAKED in the visibility CBF (96271ba6), SITL-validated 14/14; (3) the touchdown-detect flow-freeze false-positive root-caused+FIXED+BAKED (2177670b), SITL-validated 22%->0%; (4) six candidate mechanisms tested for the perceived-h_z terminal 'divergence' -- five ruled out/insufficient, and the sixth (dt/fps) turned out to be the answer; (5) CLOSED 2026-09-22: the ~5.6x reconstruction gap that drove all this mechanism-hunting was a bug in the INVESTIGATION'S OWN offline replay tooling, not the live controller -- every replay tool computed the raw flow solve's dt as Time[i]-Time[i-1], but process_frame() actually uses dt=1/fps, which differs by 3-8x in the terminal window (polling-loop-vs-native-camera-rate decoupling). Fixed a dead FPS/AngVel/Stamp logging path (a1ffbf02, was never wired since 08-12), got fresh recordings including a genuine large spike (IC1_rep3, KF ramps -0.21->-0.68), and the correct-dt reconstruction now matches logged h_V_z to <2% throughout, including at the spike. N_z adaptive-law tuning remains correctly ABANDONED. (6) ANSWERED 2026-09-22: the terminal h_z ramp is a REAL perception error (confirmed vs independently-computed GT loom via gt_optical_flow.py -- GT stays bounded/decelerates near touchdown, measured h_z overshoots by up to 2.4x), correlating tightly with marker overfill (MARKER_EXTENT_PX frozen at 318px > the 240px frame_min threshold) and a ~2x rise in flow-solve rel_resid (poor rigid-body model fit), NOT with near-grazing rays or ill-conditioning (both stay healthy in this window) -- and the error direction is NOT consistent (overshoot in one rep, undershoot in another with the same frozen extent), ruling out a simple sign-bias fix. THREE candidate fixes identified but NOT YET tested: terminal hold/clamp on h_z at overfill, enabling/tuning the already-existing CROSS_SCALE_RATE_FUSE (default off) which may already be positioned to help, or improving the rigid-body fit itself at overfill. See the SESSION CLOSE section for the full index."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 6f7de16e-4b89-4098-aff3-6ef2d19e558b
-  modified: 2026-09-21T22:01:28.199Z
+  modified: 2026-09-22T04:46:55.883Z
 ---
 
 ## ===== 2026-09-22 (cont'd) -- dead FPS/AngVel/Stamp logging found+fixed, 6th mechanism untestable not ruled out =====
@@ -1187,3 +1187,61 @@ is the terminal h_z ramp (now confirmed accurately measured, not a reconstructio
 artifact) itself real/legitimate perception behavior, and if so is it the actual soft-
 touchdown blocker, and is it fixable. That reframing is the correct next entry point, not
 further reconstruction-accuracy work.
+
+## ===== 2026-09-22 (cont'd 4) -- terminal h_z ramp is REAL (confirmed vs GT), correlates with marker overfill =====
+
+Investigated the reframed question head-on: is the terminal h_z ramp (now confirmed
+accurately MEASURED per the dt-bug closure above) itself legitimate/GT-accurate, or a
+genuine perception error, and is it fixable. Followed the diagnose-flight-data skill's
+hard rule: compared against `tools/gt_optical_flow.py`'s independently-computed GT loom
+(Z_REG-regularized, valid to touchdown), NOT the controller's own reference.
+
+**Verdict: the ramp does NOT track ground truth -- it's a genuine perception error, not a
+reconstruction artifact and not legitimate signal.** `IC1_rep3`: GT loom stays bounded
+(peaks ~-0.32 around alt=0.25m, then DECREASES toward 0 as the vehicle physically
+decelerates approaching alt=0.20m -- correct real-world behavior), while measured h_z (KF)
+ramps the opposite way, from -0.29 to -0.67 over the same window, overshooting GT by up to
+2.4x at the worst point (t=11.312s: GT=-0.258, meas=-0.670).
+
+**Mechanism: correlates with marker overfill, not near-grazing rays or ill-conditioning.**
+Re-checked the two previously-tested geometric diagnostics (now with the CORRECT dt) across
+the exact spike window: `zv_min` stays healthy (0.94-0.97, nowhere near zero -- near-grazing
+rays is NOT what's happening in this rep) and `cond(A)` stays modest (9-10, no blow-up).
+But `rel_resid` (how well the rigid-body 6-DOF image-Jacobian model actually fits the
+tracked point correspondences) roughly DOUBLES in the terminal window vs mid-descent
+baseline (median 0.24 mid-descent -> median 0.61 terminal, n=6 sampled frames each). This
+exactly coincides with `MARKER_EXTENT_PX` being FROZEN AT 318px for the entire terminal
+window in BOTH IC1_rep3 and IC1_rep4 -- i.e. the marker has overfilled the 240px frame
+(318 > the detector's own `frame_min=240px` overfill threshold, the same constant the
+touchdown-detect v2 "[overfill]" branch fires on) and stays saturated there.
+
+**Direction is NOT consistent -- rules out a simple sign-bias explanation.** Checked
+`IC1_rep4`'s terminal window the same way: extent is ALSO frozen at 318 throughout, but
+measured h_z UNDER-reads GT there (e.g. -0.127 vs GT's -0.212), the OPPOSITE direction from
+rep3's overshoot. So marker overfill degrades the flow solve's ACCURACY generally (matches
+the doubled rel_resid -- a poor model fit, which can push the solved Tz either direction
+depending on which specific correspondences are noisy that frame), not a deterministic
+overshoot bug to patch with a one-line sign/scale fix.
+
+### Is it fixable -- options, NOT yet implemented (needs a design decision, flagging for
+### the user rather than picking one unilaterally)
+1. **Terminal-proximity hold/clamp on h_z once overfill triggers** (extent>=frame_min) --
+   a previous entry in this same file (2026-09-21 era, before this dt-bug detour) already
+   flagged this as "a practical mitigation not requiring full mechanism attribution."
+   Cheap, doesn't require fixing the underlying flow-solve degradation, but a naive
+   freeze/clamp risks masking genuine motion in the exact window touchdown-critical control
+   is running.
+2. **Fall back to (or fuse in) the scale-loom signal during overfill** -- this file's own
+   earlier entries (2026-08 era) note scale-loom "stays reliable exactly where flow
+   diverges" for a different investigated case; `_scale_rate_fuse` already exists in
+   `cross_marker_perception.py` (default OFF, `CROSS_SCALE_RATE_FUSE`) and fuses into
+   channel 2 specifically -- this mechanism may already be positioned to help here if
+   enabled/re-tuned, rather than needing new code. Worth testing with it ON before building
+   anything new.
+3. **Improve the rigid-body fit itself at overfill** (e.g. relax/adapt which points are
+   trusted once extent saturates, or switch flow-point sampling strategy near max-extent) --
+   more invasive, addresses the root geometric cause (doubled rel_resid) rather than
+   papering over its output.
+
+None of these three have been tested yet -- this entry stops at diagnosis (confirmed real,
+confirmed correlated with overfill, GT-independent, cross-rep-consistent), not a fix.
