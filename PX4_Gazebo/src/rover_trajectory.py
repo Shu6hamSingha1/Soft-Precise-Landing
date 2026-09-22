@@ -175,8 +175,18 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         # 0.21,3.45]m, not a clean improvement over k=0.4's [6.0,2.4,0.36,2.8]m on 3/4 runs --
         # consistent with the vis_active/CBF finding above (speed isn't the whole story), but
         # user asked for w1/w2 reduced further regardless. k=0.1 (w1=-0.05, w2=0.0475) brings
-        # median speed to ~0.14 m/s, max ~0.15 m/s. Still NOT SITL-validated at this speed. All
-        # four knobs are env-tunable for a future re-tune.
+        # median speed to ~0.14 m/s, max ~0.15 m/s.
+        #
+        # RESOLVED (2026-09-22, same day): k=0.1 SITL-validated -- genuine SOFT+PRECISE,
+        # xy=0.0128m, rel_vel=0.120m/s (clears even the manuscript's strict 0.08m/0.2m/s
+        # thresholds, not just this harness's relaxed gate). Promoted to
+        # test_data/Final/Lissajous/. Going slow enough converts to a clean landing, even
+        # though the vis_active/CBF correlation and the t~2.7s thrust-cannibalization
+        # divergence trigger found at k=0.2 (Memory/px4/project_20260922_lissajous_cbf_and_
+        # divergence_mechanism.md) are both likely still-real mechanisms that this speed
+        # simply never triggers. Don't read k=0.1's success as proof that mechanism is fixed
+        # -- it's a per-profile speed workaround, not a controller-side fix. All four knobs
+        # are env-tunable for a future re-tune.
         A = float(os.environ.get("ROVER_LISS_A", "1.6"))
         B = float(os.environ.get("ROVER_LISS_B", "3.2"))
         w1 = float(os.environ.get("ROVER_LISS_W1", "-0.05")) * speed_mult

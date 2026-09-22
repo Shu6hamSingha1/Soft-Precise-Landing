@@ -1,6 +1,6 @@
 ---
 name: project_20260922_lissajous_cbf_and_divergence_mechanism
-description: "2026-09-22: Lissajous moving-target investigation on rover_cross, GT-FB. A stale Aug-24 montage (rover_aruco, SOFT+PRECISE) looked like a contradiction but rover_aruco/rover_cross share the SAME airframe/steering (4022_gz_rover_aruco -> 4012_gz_rover_ackermann) so vehicle physics isn't the explanation; user correctly identified the CBF as the one thing GT-FB does NOT isolate (marker_center_px is live-perception-derived, confirmed in controller.py/visibility_projection.py -- passthrough only when None). Cross-rep correlation: vis_active engagement tracks failure severity (63/51/27% on 3 bad reps vs 3.4% on the 1 good one at k=0.4). But within-rep trace at k=0.2 shows the DIVERGENCE TRIGGER at t~2.7s is NOT CBF (vis_active=0 through onset) -- it's h_d_z pinned at -0.30 regardless of lateral error while I_a_z gets cannibalized by growing I_a_xy, the SAME thrust-sacrifice mechanism as project_20260922_rover_moving_sp_investigation's original finding. Speed retunes (k=0.4->0.2->0.1) delay but do not prevent this; 0/4 SP at k=0.2 (5f's batch) confirms not a clean speed fix. CONCLUSION: trajectory-level retuning (this whole thread) is very likely the wrong lever -- the fix needs to be in controller.py (gate descent on lateral convergence / protect I_a_z), untried."
+description: "⭐ RESOLVED 2026-09-22 same day: k=0.1 (w1=-0.05,w2=0.0475, ~0.14 m/s) achieves genuine SOFT+PRECISE (xy=0.013m, rel_vel=0.120m/s, clears even the manuscript's strict thresholds), live default. 2026-09-22: Lissajous moving-target investigation on rover_cross, GT-FB. A stale Aug-24 montage (rover_aruco, SOFT+PRECISE) looked like a contradiction but rover_aruco/rover_cross share the SAME airframe/steering (4022_gz_rover_aruco -> 4012_gz_rover_ackermann) so vehicle physics isn't the explanation; user correctly identified the CBF as the one thing GT-FB does NOT isolate (marker_center_px is live-perception-derived, confirmed in controller.py/visibility_projection.py -- passthrough only when None). Cross-rep correlation: vis_active engagement tracks failure severity (63/51/27% on 3 bad reps vs 3.4% on the 1 good one at k=0.4). But within-rep trace at k=0.2 shows the DIVERGENCE TRIGGER at t~2.7s is NOT CBF (vis_active=0 through onset) -- it's h_d_z pinned at -0.30 regardless of lateral error while I_a_z gets cannibalized by growing I_a_xy, the SAME thrust-sacrifice mechanism as project_20260922_rover_moving_sp_investigation's original finding. Speed retunes (k=0.4->0.2->0.1) delay but do not prevent this; 0/4 SP at k=0.2 (5f's batch) confirms not a clean speed fix. CONCLUSION: trajectory-level retuning (this whole thread) is very likely the wrong lever -- the fix needs to be in controller.py (gate descent on lateral convergence / protect I_a_z), untried. Read the RESOLVED section at the bottom first -- the mechanism finding stands but Lissajous itself is solved (slow enough = no trigger), don't re-open it."
 metadata:
   type: project
 ---
@@ -109,3 +109,29 @@ is NOT the initiating mechanism -- don't chase a CBF-only fix (e.g. relaxing
 (vis_active/a_u/h_d timeline dumps, curvature-radius numeric search, montage-source
 cross-reference). Not promoted to `tools/` -- recreate if needed rather than searching for
 them on disk.
+
+## RESOLVED (2026-09-22, same day, final): k=0.1 achieves genuine SP
+
+5f's follow-up: `k=0.1` (`w1=-0.05, w2=0.0475`, median ~0.14 m/s) landed **SOFT+PRECISE**:
+`xy=0.0128m, rel_vel=0.120m/s` — clears even the manuscript's strict 0.08m/0.2m/s
+thresholds, not just this harness's relaxed 0.15m/0.5m/s gate. Promoted to
+`test_data/Final/Lissajous/`. Live default in `rover_trajectory.py` as of this entry.
+
+**This tempers the "trajectory retuning is the wrong lever" conclusion above without
+retracting the mechanism finding.** Going slow enough DID convert to a clean landing in
+the end — so speed (combined with the phase/amplitude cusp fix) is a sufficient practical
+fix for Lissajous specifically, even though the CBF-engagement correlation and the
+within-rep thrust-cannibalization trigger (t~2.7s divergence at k=0.2) are both likely
+still-real contributing mechanisms that a sufficiently slow trajectory simply never
+triggers (never gets close enough to the FoV edge, never accumulates enough lateral error
+to cross whatever implicit stability threshold exists). **Distinguish two claims going
+forward:**
+1. "Lissajous can be made to land" — YES, solved, k=0.1 is the answer, done.
+2. "The underlying thrust-cannibalization / descent-not-gated-on-lateral-error mechanism
+   is fixed" — NO, still open, still belongs in `controller.py`
+   ([[project_20260922_rover_moving_sp_investigation]]). k=0.1's success is a workaround
+   for ONE profile via brute-force slowness, not evidence the architectural issue is
+   resolved — Circular/Sinusoidal/EightShape/CircularYaw's "precise but not soft" ceiling
+   at their own already-fairly-slow ~0.4-0.6 m/s speeds suggests they are NOT simply a
+   "go slower" fix away from SP; each would need its own speed floor found empirically
+   (costly) or the controller-side fix (general, addresses all profiles at once).
