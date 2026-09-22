@@ -1245,3 +1245,70 @@ overshoot bug to patch with a one-line sign/scale fix.
 
 None of these three have been tested yet -- this entry stops at diagnosis (confirmed real,
 confirmed correlated with overfill, GT-independent, cross-rep-consistent), not a fix.
+
+## ===== 2026-09-22 (cont'd 5) -- video-validated: marker genuinely overfills the frame; two false starts corrected en route =====
+
+User asked to check recorded videos and validate all claims. None of the reps used as
+evidence so far (`IC1_rep3`, `IC1_rep4`, the first `Landing_Test/...03-22-59` rep) had
+`IMG_RECORD=1` set, so no video existed for them -- ran one fresh rep WITH `IMG_RECORD=1`
+(`test_data/Landing_Test/Tue Sep 22 10-27-53 2026`, video
+`test_data/Test_Videos/Tue Sep 22 10-27-36 2026.mp4`) specifically to get visual evidence,
+after the user separately noted they already had videos from another session (not used here
+since this rep's video is a direct, first-party check).
+
+**Two false starts, corrected by checking rather than trusting an assumption:**
+1. First attempt: assumed video frame index maps to `Time[-1]` as touchdown at a naive
+   `frame/50fps` timebase. Wrong on both counts -- the mp4 is stitched at a NOMINAL fps
+   (`self._rec_fps`, the camera's fps read once at record-start), not the actual per-frame
+   capture rate (`_rec_n` increments once per `process_frame()` call, avg ~35.5Hz this
+   flight per the `[CrossMarkerNode] diag:` line) -- so `frame_index/50` badly
+   underestimates real elapsed time. Overlaying THIS rep's very-last-Img_Data-index flow
+   points onto a naively-picked "near-end" video frame put the red dots scattered in the
+   image CORNERS, off the marker entirely -- which briefly looked like a tracking-failure
+   finding, but was actually a time-alignment bug in the check itself, not a real signal.
+2. Second check (this rep's own `h_V_z` near `Time[-1]`): read as flat/near-zero
+   (-0.002 to -0.003) for the whole "last 0.7s," which would suggest this rep never showed
+   the ramp at all. Investigated whether `Time[-1]` might be well INTO the post-touchdown
+   tail (the recording continues 5s after touchdown, per its own log line) rather than at
+   touchdown -- confirmed empirically via frame-to-frame pixel-diff on the extracted video
+   (diff drops from >15-35 to ~3-5 around frame ~298-300, then to ~0 by frame ~331-334,
+   i.e. genuinely static/landed only in the FINAL ~10% of the clip) that this specific rep's
+   `Time[-1]` likely lands deep in that static tail, not at first contact -- so the flat
+   near-zero `h_V_z` there is UNSURPRISING (correctly near-zero on an already-stationary
+   vehicle), not evidence against the ramp mechanism. **Re-confirmed for the actual evidence
+   reps (`IC1_rep3`, `IC1_rep4`) that this tail-confusion does NOT apply to them**: checked
+   GT altitude directly (not just loom) across their own terminal windows -- both show
+   SMOOTH, CONTINUOUS, still-decreasing altitude the entire way to their last GT sample
+   (rep3: 0.269->0.199m; rep4: 0.251->0.178m), i.e. genuinely still descending throughout,
+   not a static post-landed artifact. The two prior entries' GT-vs-measured comparison
+   stands uncorrected.
+
+**Direct visual confirmation of the overfill mechanism** (this new rep's video, frames
+extracted at native indices, not time-aligned to Img_Data -- a pure visual check):
+- Frame 200 (mid-descent): marker comfortably within frame, clear background margin on
+  all 4 sides, ~150 tracked (yellow) points spread evenly across the visible plate.
+- Frame 296 (near the empirically-located touchdown, ~10 frames before the pixel-diff
+  freeze): marker's cross ARMS EXTEND PAST ALL FOUR FRAME EDGES -- visually unambiguous
+  overfill, matching `MARKER_EXTENT_PX`'s claimed saturation at 318px (>240px frame_min).
+- Frame 335 (past the pixel-diff freeze, genuinely landed/static): marker even MORE
+  overfilled/zoomed -- camera essentially sitting on the plate, consistent with a landed,
+  stationary vehicle.
+
+This directly, visually corroborates the "marker overfill" mechanism reported in the prior
+entry -- not just from the `MARKER_EXTENT_PX` number, but from the actual recorded frames
+showing the physical marker exceeding the sensor's field of view near touchdown. Also
+separately confirmed (grepping `_ext_bbox`'s source, `src/cross_marker_perception.py:2936`)
+that `MARKER_EXTENT_PX` comes from `det.line_points_i/j` + `det.stub_points` -- the
+RANSAC-inlier cross-arm/stub DETECTION points -- not the smaller `_prev_flow_pts` set used
+for the Jacobian solve itself; checked this rep's own logged `"Line Points I/J"`+`"Stub
+Points"` at its near-end index and their pixel span (x:0-238, y:0-318) independently
+confirms the frame-filling extent, while the separately-logged `"Flow Points Prev Px"` at
+the same index ALSO spans nearly the full frame (x:4-220, y:2-316) -- so the actual
+Jacobian-solve correspondences themselves are frame-filling too, not just the arm/stub
+detector's own (potentially line-extrapolated) bbox.
+
+### Net: all load-bearing claims from the prior two entries hold up under this video check.
+The dt-bug closure (session's earlier entries) and the GT-vs-measured divergence finding
+are both unaffected by the two false starts above (neither used the flawed video-alignment
+or this rep's own tail-confused `Time[-1]`). The overfill mechanism is now visually
+confirmed, not just numerically inferred.
