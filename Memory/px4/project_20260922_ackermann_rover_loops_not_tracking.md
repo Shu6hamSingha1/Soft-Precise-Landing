@@ -1,0 +1,55 @@
+---
+name: project_20260922_ackermann_rover_loops_not_tracking
+description: "2026-09-22: at slow position setpoints (~0.15 m/s Lissajous) the Ackermann rover does NOT track -- it parks ~0.5 m off then drives re-approach loops at 1.5-2.2 m/s. All 11 Lissajous_final reps have GT target peaks 1.6-2.8 m/s. The k=0.1 'SOFT+PRECISE' (23-16-02) landed on a rover parked for its final 6.5 s. Invalidates the Lissajous speed-retune conclusions."
+metadata:
+  node_type: memory
+  type: project
+  originSessionId: eb3af863-38fc-4d7b-86dd-b7c9bc16b44d
+  modified: 2026-09-22T17:56:52.860Z
+---
+
+**Finding (2026-09-22, from GT `Target Pose` + the rover's PX4 ulog `rootfs/1/log/2026-09-22/17_36_42.ulg`).**
+The Ackermann rover under `rover_drive.py` position setpoints (`set_position_ned`, 5 Hz in the
+ulog) cannot follow a setpoint moving at ~0.15 m/s. It stays in offboard (nav_state 14, no
+failsafe) but alternates: **parked ~0.46 m from the setpoint → once error grows, a full loop at
+1.5-2.2 m/s → parked again**. It already does this every ~6 s during the pre-gate "holding start
+pos" phase (the hold point is a fixed setpoint it still cannot settle on).
+
+**Evidence, rep `test_data/RecordGTFB_dev/Lissajous_final/Tue Sep 22 23-07-55 2026`**
+(= `Test_Videos/chase_2026-09-22_23-06-44.mp4`, identical md5): commanded 0.150 m/s median;
+GT target 0.00 m/s for t=0-3.8 s, then a U-turn (heading 165°→0°, radius ~1 m) peaking **2.17 m/s
+at t=5.3 s**; rover EKF speed matches GT (max 2.26). Drone failed (xy 2.65 m, rel_vel 4.3 m/s).
+All 11 Lissajous_final reps (k=0.4/0.2/0.1): GT peak 1.6-2.8 m/s.
+
+**Consequences:**
+- The k=0.4→0.2→0.1 "speed retunes" in [[project_20260922_lissajous_cbf_and_divergence_mechanism]]
+  changed the COMMAND only; the drone never saw a slow Lissajous target.
+- The k=0.1 SOFT+PRECISE rep (`23-16-02`, xy=0.013 m) — the rover looped at up to 1.6 m/s for
+  t=0-3.5 s, then was **parked for the final 6.5 s** until touchdown. That is effectively a static
+  landing, not "Lissajous solved".
+- Likely also the "unresolved ~3x Lissajous speed-tracking gap" noted in
+  [[project_20260922_rover_drive_wallclock_pacing_bug]] — a different mechanism from the clock bug.
+  Other slow profiles (CircularYaw ~0.26 m/s, etc.) may be affected too — not yet checked.
+
+**How to apply:** never quote a rover-profile speed from `rover_trajectory.py`/`ROVER_SPEED_MULT`;
+compute it from each rep's `Ground_Truth.npy` `Target Pose` (dedupe stale samples, 0.2-0.5 s
+window). Candidate fix (untested): velocity/feedforward setpoints in `rover_drive.py`, or keep
+commanded speed above the rover's minimum controllable speed. pyulog isn't in env2025 — use a
+scratch venv to read the rover ulog.
+
+**Root cause (verified in PX4 source + rover ulog `rootfs/1/log/2026-09-22/17_44_49.ulg`, rep 23-16-02).**
+`rover_drive.py` sends `set_position_ned` only → PX4 `AckermannPosVelControl::offboardPositionMode()`
+(`~/PX4-Autopilot/src/modules/rover_ackermann/AckermannPosVelControl/AckermannPosVelControl.cpp`):
+- `distance_to_target <= NAV_ACC_RAD` (=0.5 m) → speed setpoint **0** (the park). The trajectory's
+  velocity and yaw fields are ignored in this mode (it treats every setpoint as an arrival point).
+- beyond 0.5 m → speed = `computeMaxSpeedFromDistance(RO_JERK_LIM=15, RO_DECEL_LIM=6, d)` (≈0.59 m/s
+  at 0.5 m, 1.12 at 1.0, 1.42 at 1.3), heading = pure-pursuit toward the point.
+- By the time a 0.15 m/s setpoint leaves the 0.5 m circle it is beside/behind the parked rover
+  (relative bearing −110° to +150°); min turn radius = 0.321/tan(30°) = 0.556 m, so the rover must
+  circle, distance grows while it turns, speed rises (d=1.3 m → 1.56 m/s) → the ~2 m/s loop.
+- 23-16-02: stopped t=3.5 s when d fell to 0.48; the setpoint then drifted THROUGH the 0.5 m circle
+  (d 0.50→0.16→0.48, bearing −64°→+145°), a ~1 m chord at 0.15 m/s ≈ 7 s parked, covering touchdown
+  (~t=10.0); exited at t≈10.3 and was already doing 1.03 m/s at t=10.5.
+**Fix direction:** stop sending bare position points — velocity setpoints with feedforward +
+P-correction on position error (rover_drive has telemetry), or a lead/carrot point kept >0.5 m ahead
+along the path. Just shrinking NAV_ACC_RAD won't stop the loops: a sideways point still forces a turn.
