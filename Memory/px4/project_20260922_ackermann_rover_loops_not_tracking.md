@@ -142,3 +142,19 @@ before. Landing unaffected (xy=0.159 m vs 0.146 m before, both precise-class, no
 control physics is orientation-invariant as expected, this knob only changes framing).
 ⚠ This rotation is specific to the CURRENT chase camera pose + this Lissajous shape/anchor;
 re-derive with the same pixel-tracking method (see this entry) if either changes. n=1.
+
+**FOLLOW-UP 2026-09-23 (same session) — shape correction: w1:w2 ratio is ~1:1, so the "Lissajous"
+profile traces an ELLIPSE, not a multi-lobed figure.** User watched `chase_2026-09-23_00-51-46.mp4`
+and correctly flagged it doesn't look like a Lissajous figure. Confirmed mathematically: current
+`ROVER_LISS_W1/W2` defaults (-0.05/0.0475, unchanged since the 2026-09-22 cusp/speed-retune
+thread) give ratio -1.053:1 -- essentially 1:1. A 1:1-ratio Lissajous curve is a tilted ELLIPSE,
+not the classic crossing/multi-lobed pattern (needs a small-integer ratio like 1:2 or 2:3 for
+that). The manuscript's original spec (w1=-0.5,w2=0.85, ratio -0.59:1) was closer to that
+character; the ratio drifted to ~1:1 as an unflagged side effect of the 09-22 retuning (phase/freq
+changes targeted the cusp and speed, not the ratio). On top of that, any single ~10-15s descent
+covers most but not all of one period (13.2s at speed_mult=10, 132s at speed_mult=1), so the video
+only ever shows an ARC of that ellipse, never the closed oval -- a single smooth one-direction
+sweep, exactly what was observed. NOT caused by today's RADIUS_MULT/ROT_DEG/SPEED_MULT work --
+those only rescale amplitude/rate together or add a rigid rotation, neither touches the w1:w2
+ratio. Unresolved: if a genuine multi-lobed Lissajous LOOK is wanted, the ratio needs to change
+(e.g. toward 1:2), which reopens the cusp/curvature-margin analysis for the new ratio -- not done.
