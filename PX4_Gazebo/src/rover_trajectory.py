@@ -123,12 +123,68 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         vy = v0
 
     elif traj_type == "Lissajous":
-        A, B = 0.4, 0.8
-        w1 = -0.5 * speed_mult
-        w2 = 0.85 * speed_mult
-        x = A * math.sin(w1 * t)
+        # RE-PARAMETERIZED for Ackermann feasibility (2026-09-22, same spirit as the
+        # EightShape/Circular radius bumps above). The MATLAB spec (A=0.4,B=0.8,w1=-0.5,
+        # w2=0.85, no phase) has NO fundamental-limitation fix via amplitude or uniform-speed
+        # scaling: for a bare x=A sin(w1 t), y=B sin(w2 t) curve, curvature radius is a PURE
+        # GEOMETRY property (invariant to scaling w1,w2 by a common factor -- that only changes
+        # how fast the same shape is traced) and the un-phased curve has moments where vx and
+        # vy hit zero near-simultaneously -- a near-cusp with curvature radius ~0.0006 m,
+        # independent of amplitude, confirmed by direct numerical curvature search (see
+        # Memory/px4/... 2026-09-22 Lissajous investigation). A relative PHASE OFFSET between
+        # the two axes removes that coincidence (breaks the simultaneous-zero-velocity
+        # symmetry); w2 was also re-picked (0.85->0.475) for a wider curvature margin. With
+        # amplitude then scaled 4x (0.4/0.8 -> 1.6/3.2) the minimum curvature radius over a
+        # realistic ~15-20s descent window is ~0.85 m, a 1.5x margin over the Ackermann rover's
+        # ~0.56m physical minimum turn radius (vs ~0.0006m / 900x infeasible before). This is a
+        # SHAPE deviation from the manuscript's literal Lissajous (larger, phase-correlated,
+        # rounder) -- not a drop-in match -- by user decision (chose "scale amplitude,
+        # same spirit as EightShape/Circular" once told plain amplitude scaling alone doesn't
+        # work; phase+frequency change was the actual fix, amplitude tops up the margin).
+        #
+        # SPEED RE-TUNE (2026-09-22, same day, follow-up): the cusp fix above is geometrically
+        # sound (curvature radius IS scale-invariant under uniformly rescaling w1/w2 -- verified
+        # numerically, matches the comment above) but the w1=-0.5/w2=0.475 defaults left the
+        # commanded speed at median 1.21 m/s (max 1.54) -- 2-3x the ~0.4-0.6 m/s envelope that is
+        # the only regime anything has actually landed in this session (Circular/EightShape/
+        # Sinusoidal all succeed or get close there; Linear fails outright at 1.6-2.2 m/s in a
+        # dead-straight line, no curvature involved at all -- speed alone is sufficient to fail
+        # this controller). Live reps at the untuned speed (test_data/RecordGTFB_dev/
+        # Lissajous_slow) failed 7/7, one with a_u_xy hitting 1e5 (terminal blow-up). Rescaling
+        # BOTH w1 and w2 by a common factor k retraces the IDENTICAL path (same curvature radius
+        # everywhere, same 0.85 m margin) just slower -- pure speed control, zero effect on the
+        # cusp fix.
+        #
+        # FURTHER SLOWED (2026-09-22, same day, 2nd follow-up): k=0.4 (median 0.52 m/s) was
+        # SITL-tested (4 reps, test_data/RecordGTFB_dev/Lissajous_final) -- 3/4 failed badly
+        # (xy 2.4-6.0m), 1/4 landed close (xy=0.36m). Checked what actually differed between
+        # the good and bad reps: NOT target excursion (the successful rep had the LARGEST
+        # excursion, 2.91m, of all four -- rules out "sweep too wide" as the driver) but
+        # `vis_active` (visibility-CBF engagement fraction): 63%/51%/27% on the three failures
+        # vs 3.4% on the success, with a_u_xy blowing up hardest (90-94k) whenever vis_active
+        # was high. GT-FB does NOT feed the CBF (marker_center_px still comes from live
+        # perception, confirmed in controller.py/visibility_projection.py) -- so target speed
+        # still matters here via HOW OFTEN the marker nears the FoV edge and triggers the CBF,
+        # which then appears to fight the lateral authority needed to keep tracking. k=0.4 is a
+        # marginal/borderline speed, not a working one. k=0.2 (w1=-0.1, w2=0.095) brings median
+        # speed to ~0.26 m/s, max ~0.31 m/s -- well under the borderline point, closer to
+        # CircularYaw's ~0.26-0.28 m/s (the slowest profile tested this session).
+        #
+        # FURTHER SLOWED AGAIN (2026-09-22, user request): k=0.2 was SITL-tested (4 reps,
+        # test_data/RecordGTFB_dev/Lissajous_final reps 5-8) -- still 0/4 SP, xy=[1.90,1.71,
+        # 0.21,3.45]m, not a clean improvement over k=0.4's [6.0,2.4,0.36,2.8]m on 3/4 runs --
+        # consistent with the vis_active/CBF finding above (speed isn't the whole story), but
+        # user asked for w1/w2 reduced further regardless. k=0.1 (w1=-0.05, w2=0.0475) brings
+        # median speed to ~0.14 m/s, max ~0.15 m/s. Still NOT SITL-validated at this speed. All
+        # four knobs are env-tunable for a future re-tune.
+        A = float(os.environ.get("ROVER_LISS_A", "1.6"))
+        B = float(os.environ.get("ROVER_LISS_B", "3.2"))
+        w1 = float(os.environ.get("ROVER_LISS_W1", "-0.05")) * speed_mult
+        w2 = float(os.environ.get("ROVER_LISS_W2", "0.0475")) * speed_mult
+        phi = math.radians(float(os.environ.get("ROVER_LISS_PHI_DEG", "104.0")))
+        x = A * math.sin(w1 * t + phi)
         y = B * math.sin(w2 * t)
-        vx = A * w1 * math.cos(w1 * t)
+        vx = A * w1 * math.cos(w1 * t + phi)
         vy = B * w2 * math.cos(w2 * t)
 
     elif traj_type == "CircularYaw":
@@ -153,6 +209,25 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
             yaw, yaw_rate = _tangent_yaw(vx, vy, prev_yaw), 0.0
 
     return TrajState(x=x, y=y, vx=vx, vy=vy, yaw=yaw, yaw_rate=yaw_rate)
+
+
+def deck_state(t, traj_type):
+    """Ship-deck platform motion (manuscript Cases 2 & 5; MATLAB traj_Gen Linear/Circular):
+    heave A_z sin(w_z t) m, roll 15deg sin(0.9 t), pitch 8deg sin(0.6 t + pi/3).
+    Returns (heave_m, roll_rad, pitch_rad); zeros for the other trajectories.
+
+    HEAVE FREQUENCY REDUCED (2026-09-22, user): manuscript spec w_z=0.5 rad/s (period ~12.6s)
+    -> 0.25 rad/s tried first, user said still too fast -> 0.125 rad/s (period ~50s, quarter
+    of spec). Amplitude UNCHANGED at 0.2m (user clarified the problem was frequency, not
+    amplitude, after an initial amplitude-reduction ask was superseded). Both env-tunable.
+    """
+    if traj_type not in ("Linear", "Circular"):
+        return 0.0, 0.0, 0.0
+    A_z = float(os.environ.get("DECK_HEAVE_AMP", "0.2"))
+    w_z = float(os.environ.get("DECK_HEAVE_W", "0.125"))
+    return (A_z * math.sin(w_z * t),
+            math.radians(15.0) * math.sin(0.9 * t),
+            math.radians(8.0) * math.sin(0.6 * t + math.pi / 3.0))
 
 
 if __name__ == "__main__":

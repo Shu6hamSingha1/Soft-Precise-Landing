@@ -1,6 +1,6 @@
 ---
 name: project_20260922_rover_moving_sp_investigation
-description: "2026-09-22: why rover_cross + GT-FB cannot reach SP on a MOVING target. Static rover 5/5 SP. ⭐ Re-run under fixed rover_drive.py clock pacing (see project_20260922_rover_drive_wallclock_pacing_bug): Circular R=0.8 (now exactly MATLAB's own 5/5 wz=0.48 baseline) still 0/3 FAIL -- cleanest evidence yet of a real platform gap, not a speed mismatch. R>=1.6 9/9 precise 0/9 soft. Sinusoidal 3/3 PRECISE-only (was falsely 0/3 catastrophic FAIL pre-fix -- clock artifact). EightShape 2/3 SOFT+PRECISE -- first genuine moving-target SP found. Lissajous still 0/3 FAIL with an UNRESOLVED ~3x speed-tracking gap that survives the clock fix (separate mechanism, not clock pacing). Mechanism for the remaining failures = ~1 s lateral tracking lag + descent not gated by lateral error -> terminal a_u blow-up + thrust sacrificed."
+description: "2026-09-22: why rover_cross + GT-FB cannot reach SP on a MOVING target. Static rover 5/5 SP. ⭐ Re-run under fixed rover_drive.py clock pacing (see project_20260922_rover_drive_wallclock_pacing_bug): Circular R=0.8 (now exactly MATLAB's own 5/5 wz=0.48 baseline) still 0/3 FAIL -- cleanest evidence yet of a real platform gap, not a speed mismatch. R>=1.6 9/9 precise 0/9 soft. Sinusoidal 3/3 PRECISE-only (was falsely 0/3 catastrophic FAIL pre-fix -- clock artifact). EightShape 2/3 SOFT+PRECISE -- first genuine moving-target SP found. Lissajous still 0/3 FAIL with an UNRESOLVED ~3x speed-tracking gap that survives the clock fix (separate mechanism, not clock pacing). Mechanism for the remaining failures = ~1 s lateral tracking lag + descent not gated by lateral error -> terminal a_u blow-up + thrust sacrificed. Lissajous deep-dive (see project_20260922_lissajous_cbf_and_divergence_mechanism) found the real trigger is the SAME thrust-cannibalization mechanism, not CBF or excursion -- trajectory retuning is the wrong lever; fix belongs in controller.py."
 metadata:
   type: project
 ---
@@ -68,3 +68,15 @@ case to tune a soft-touchdown fix against first before re-testing the harder pro
 
 **Open / next:** reduce the ~1 s lateral lag (target-velocity feedforward / h_d lead), gate descent on lateral error, or stop a_z relief starving thrust; SP on moving targets also needs vertical soft touchdown (rel_vel <=0.2). R=0.8 exceeds the yaw ceiling MATLAB documents (~0.5 rad/s).
 **How to apply:** don't re-run KP / yaw-law / adaptation-retune arms for the R=0.8 failure (all null); a fair yaw-off probe must copy the 09-18 override set.
+
+---
+
+⭐⭐ **2026-09-22 UPDATE, cross-linked**: [[project_20260922_lissajous_cbf_and_divergence_mechanism]]
+traced Lissajous's failure down to a within-rep divergence trigger at t~2.7s (in a
+slowed-speed rep) that is NOT CBF-driven and NOT excursion-driven -- it's this file's own
+thrust-cannibalization mechanism (`I_a_z` eaten by growing `I_a_xy`, `h_d_z` never gated on
+lateral error) resurfacing on its own timeline regardless of trajectory speed/shape. This is
+the clearest evidence yet that TRAJECTORY-level fixes (speed, amplitude, phase -- tried
+repeatedly on Lissajous, k=1.0->0.4->0.2->0.1) are the wrong lever; the two controller-side
+fixes flagged above (descent gating, protecting I_a_z) are now the priority, not further
+profile-speed tuning.
