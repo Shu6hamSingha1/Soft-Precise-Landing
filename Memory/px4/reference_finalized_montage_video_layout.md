@@ -5,8 +5,30 @@ metadata:
   node_type: memory
   type: reference
   originSessionId: a486c0ea-32ca-4384-97c7-b0136fa1c290
-  modified: 2026-08-26T19:18:16.060Z
+  modified: 2026-09-23T01:42:59.336Z
 ---
+
+**⚠ UPDATED 2026-09-23 (see [[project_20260923_manuscript_video_symbol_convention]]):**
+the layout below is otherwise still current, but three things changed and this section
+is stale where it conflicts:
+1. The onboard-flow overlay text is now `ν=(...)` (nu), NOT `h=(...)` -- the ICRA
+   manuscript renamed the optic-flow feature h -> nu; `tools/overlay_image_features.py`
+   line ~477 was edited to match. Same quantity/units, symbol only.
+2. `w=(...)` (rotational flow) is now drawn on EVERY case's h/nu panel by default
+   (`--split` mode always sets `draw_w=True` for the h group) -- it used to be missing
+   on some earlier IC1-5 recordings; now uniform everywhere.
+3. The bottom-left "onboard"/"onboard2" (or "s/alpha"/"h/w") caption text UNDER each
+   PiP panel was REMOVED entirely (2026-09-23, user request) -- the PiP's own burned-in
+   HUD text (`s = ...`, `α = ...`, `ν=...`, `w=...`) already identifies it, the
+   redundant caption was cut from `tools/make_landing_montage.py` (`cv2.putText` calls
+   for `pip_label`/`pip_label2` deleted, the `--pip-label`/`--pip-label2` CLI args still
+   exist but no longer draw anything).
+Also: `tools/make_landing_montage.py` now sets `matplotlib.rcParams["mathtext.fontset"]
+= "cm"` and the 3D/line-plot axis labels/legends use the manuscript's own symbols
+(`$^{\mathcal{I}}x$ [m]`, `$^{\mathcal{I}}\mathbf{r}_\mathrm{b}$`,
+`$\|^{\mathcal{I}}\mathbf{r}_\mathrm{rel}\|$ (m)`, `$t$ (s)`, etc., matching
+`Soft_Precise_Landing/Figures/rover_cross_circular_*`) instead of the old plain
+`"X (m)"`/`"UAV"`/`"|rel. position| (m)"`/`"time since descent start (s)"` text.
 
 The finalized montage layout (reference example:
 `test_data/Test_Videos/montage_final_lowangle_touchdowncrop_cross.mp4`, reproduced

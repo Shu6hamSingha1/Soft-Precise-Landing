@@ -27,6 +27,13 @@ import cv2
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+# Match the manuscript's LaTeX math rendering (plain amsmath/Computer Modern, no
+# mathpazo/newtxmath/mtpro2 -- see ICRA.tex preamble): matplotlib's DEFAULT mathtext
+# fontset ("dejavusans") draws \mathcal as a plain italic letter, not the flowing
+# calligraphic script LaTeX's cmsy font gives \mathcal{I} in the manuscript figures
+# (Soft_Precise_Landing/Figures/rover_cross_circular_*). "cm" reproduces that same
+# calligraphic look (2026-09-23, user-flagged mismatch).
+matplotlib.rcParams["mathtext.fontset"] = "cm"
 import matplotlib.pyplot as plt
 
 # MEASURED, not assumed (2026-08-26, correcting the earlier white-text pass): sampled
@@ -91,15 +98,21 @@ def render_plots(series, idx, width, height, lims):
     # Validated categorical palette (dataviz skill, references/palette.md) --
     # slot 1 blue / slot 2 orange, in fixed order (identity, not decoration).
     C_UAV, C_TARGET, C_RPOS, C_RVEL = "#2a78d6", "#eb6834", "#e34948", "#008300"
-    ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color=C_UAV, lw=2.0, label="UAV")
-    ax3.plot(series["tx"][:k], series["ty"][:k], series["tz"][:k], color=C_TARGET, lw=2.0, label="target")
+    ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color=C_UAV, lw=2.0,
+             label=r"$^{\mathcal{I}}\mathbf{r}_\mathrm{b}$")
+    ax3.plot(series["tx"][:k], series["ty"][:k], series["tz"][:k], color=C_TARGET, lw=2.0,
+             label=r"$^{\mathcal{I}}\mathbf{r}_\mathrm{t}$")
     ax3.scatter(series["ux"][idx], series["uy"][idx], series["uz"][idx], color=C_UAV, s=32,
                 edgecolors="black", linewidths=0.6)
     ax3.scatter(series["tx"][idx], series["ty"][idx], series["tz"][idx], color=C_TARGET, s=32,
                 edgecolors="black", linewidths=0.6)
     ax3.set_xlim(*lims["x"]); ax3.set_ylim(*lims["y"]); ax3.set_zlim(*lims["z"])
-    ax3.set_xlabel("X (m)", color=_INK, fontsize=8); ax3.set_ylabel("Y (m)", color=_INK, fontsize=8)
-    ax3.set_zlabel("Z (m)", color=_INK, fontsize=8)
+    # Axis/legend/label symbols match the manuscript's figure convention (2026-09-23;
+    # see Soft_Precise_Landing/Figures/rover_cross_circular_{3d,rpos,rvel}.* and
+    # ICRA.tex's inertial-frame left-superscript I notation, nu replacing h).
+    ax3.set_xlabel(r"$^{\mathcal{I}}x$ [m]", color=_INK, fontsize=8)
+    ax3.set_ylabel(r"$^{\mathcal{I}}y$ [m]", color=_INK, fontsize=8)
+    ax3.set_zlabel(r"$^{\mathcal{I}}z$ [m]", color=_INK, fontsize=8)
     ax3.tick_params(colors=_INK, labelsize=7)
     # Grid RESTORED (2026-08-26, correcting the earlier "just remove it" attempt --
     # it's needed for reading 3D position off the axes, per user feedback): the
@@ -129,8 +142,8 @@ def render_plots(series, idx, width, height, lims):
     # already has real contrast, so it's dropped rather than kept as an unneeded crutch.
 
     # (2)/(3) norm line plots
-    for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], C_RPOS)),
-                                (2, ("|rel. velocity| (m/s)", series["rvel"], C_RVEL))]:
+    for gi, (label, y, col) in [(1, (r"$\|^{\mathcal{I}}\mathbf{r}_\mathrm{rel}\|$ (m)", series["rpos"], C_RPOS)),
+                                (2, (r"$\|^{\mathcal{I}}\mathbf{v}_\mathrm{rel}\|$ (m/s)", series["rvel"], C_RVEL))]:
         ax = fig.add_subplot(gs[gi, 1])          # narrower centre sub-column
         ax.patch.set_alpha(0.0)
         ax.plot(t, y, color=col, alpha=0.35, lw=1.4)
@@ -149,7 +162,7 @@ def render_plots(series, idx, width, height, lims):
         ax.spines["bottom"].set_color("#3a3a3a"); ax.spines["bottom"].set_linewidth(0.8)
         ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
         if gi == 2:
-            ax.set_xlabel("time since descent start (s)", color=_INK, fontsize=9)
+            ax.set_xlabel(r"$t$ (s)", color=_INK, fontsize=9)
     fig.canvas.draw()
     buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).copy()
     buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (4,))
@@ -386,8 +399,9 @@ def main():
             y0, x0 = pos
             cv2.rectangle(canvas, (x0 - 2, y0 - 2), (x0 + pw + 2, y0 + ph + 2), (255, 255, 255), 2)
             canvas[y0:y0 + ph, x0:x0 + pw] = pip
-            cv2.putText(canvas, a.pip_label, (x0 + 4, y0 + ph - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            # pip_label text removed (2026-09-23, user request) -- the PiP itself
+            # already carries the s/alpha or h/w HUD text drawn onto it by
+            # overlay_image_features.py, so this bottom-left caption was redundant.
         # PiP drone2 (e.g. h-overlay), separate corner
         if df2 is not None:
             if stacked:
@@ -401,8 +415,8 @@ def main():
             y02, x02 = pos2
             cv2.rectangle(canvas, (x02 - 2, y02 - 2), (x02 + pw2 + 2, y02 + ph2 + 2), (255, 255, 255), 2)
             canvas[y02:y02 + ph2, x02:x02 + pw2] = pip2
-            cv2.putText(canvas, a.pip_label2, (x02 + 4, y02 + ph2 - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            # pip_label2 text removed (2026-09-23, user request) -- same reasoning
+            # as pip_label above.
         # plots: TRANSPARENT-background overlay panel (no longer a separate side
         # column, and no longer a solid dark box at flat opacity -- see render_plots'
         # docstring) so the chase view can use the FULL canvas width, and shows

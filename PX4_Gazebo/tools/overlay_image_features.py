@@ -474,7 +474,11 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
             held_txt = " (held)" if a_held else ""
             lines.append(f"α = {_fmt(np.degrees(a), 1) if a is not None else 'nan'}°{held_txt}")
         if "h" in channels:
-            lines.append(f"h=({_fmt(hx)}, {_fmt(hy)}, {_fmt(hz)})")
+            # ICRA manuscript symbol: the translational optical-flow feature is
+            # notated nu (boldsymbol{\nu}), not h -- relabeled 2026-09-23 to match
+            # (Soft_Precise_Landing/ICRA.tex, e.g. line 179 onward). Same quantity,
+            # same units, only the on-screen symbol changed.
+            lines.append(f"ν=({_fmt(hx)}, {_fmt(hy)}, {_fmt(hz)})")
         if draw_w:
             lines.append(f"w=({_fmt(wx)}, {_fmt(wy)}, {_fmt(wz)})")
         if lines:
