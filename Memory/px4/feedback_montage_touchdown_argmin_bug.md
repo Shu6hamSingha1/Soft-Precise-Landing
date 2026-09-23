@@ -67,3 +67,14 @@ IC2/IC5, LIN2023-GT IC2/IC3/IC4/IC5/Static. Duration deltas ranged from negligib
 
 Fix is in the SHARED tool (`tools/make_landing_montage.py`) -- applies automatically to
 any future montage regen, VISTA-GT included, not baseline-specific.
+
+**Follow-up (2026-09-23, night): LIN2022-GT/IC3 re-recorded, gap closed.** Re-ran
+`record_baseline_cases.sh lin2022 IC3` once; same descent-stall abort (consistent with the
+original), and onboard + chase videos were captured this time, so the folder now has a valid
+montage. Two operational lessons from getting there: (1) my first attempt used a foreground
+`timeout 110` -- an aborting run takes ~4 min, so it was killed mid-flight; run SITL
+recordings in the background. (2) my cleanup used a broad `pkill -f` (px4 / gz sim /
+MicroXRCEAgent / landing_test) that killed my OWN shell and probably hit a concurrent
+session's in-flight SITL run (`RoverIC_raw/record_rover_ic_raw.sh`) -- kill by exact PID
+(`pgrep -x`), never by broad `pkill -f`, and check `pgrep -fa run_rover_landing` for a peer's
+batch BEFORE launching (a peer's stack also caused my second attempt's port-8888 bind error).

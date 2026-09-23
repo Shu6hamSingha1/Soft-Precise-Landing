@@ -19,7 +19,7 @@ re-litigated).
 |------|---------|-----------|---------------|---------|------|---------|------------|
 | IC1 | Landed | 0.209 | 3.320 | False | False | 17.2 | `Wed Sep 23 04-38-32 2026` |
 | IC2 | **Aborted** (descent stall) | — | — | — | — | 34.2 | `Wed Sep 23 04-41-26 2026` |
-| IC3 | **Aborted** (descent stall) | — | — | — | — | 34.1 | `Wed Sep 23 04-45-45 2026` |
+| IC3 | **Aborted** (descent stall) | — | — | — | — | 34.2 | `Wed Sep 23 23-10-08 2026` (re-recorded) |
 | IC4 | Landed | 0.372 | 1.990 | False | False | 25.4 | `Wed Sep 23 04-47-34 2026` |
 | IC5 | **Aborted** (descent stall) | — | — | — | — | 32.7 | `Wed Sep 23 04-50-29 2026` |
 | Static | **Aborted** (descent stall) | — | — | — | — | 34.1 | `Wed Sep 23 04-54-35 2026` |
@@ -34,13 +34,12 @@ watchdog, not a crash). Dataset/video are still recorded/promoted for aborted ca
 the flight just stops progressing rather than terminating abnormally.
 
 Notes:
-- **`IC3` has no `IC3_montage.mp4` and no `IC3_onboard_cam.mp4`** — that rep's onboard
-  down-cam recording never saved during the original campaign run (unrelated failure,
-  root cause not investigated). `IC3_chase_cam.mp4` and the full `dataset/` are present
-  and valid. Attempting to regenerate the montage against the missing onboard file
-  produces a broken 0-frame PiP — don't retry without first re-recording IC3's onboard
-  footage. See `Memory/px4/feedback_montage_touchdown_argmin_bug.md`.
-- Montages for the aborted cases (IC2/IC3(n/a)/IC5/Static) were regenerated 2026-09-23
+- **`IC3` was RE-RECORDED 2026-09-23 (night)** because the original campaign rep never
+  saved an onboard recording (so it had no montage). The new single attempt hit the same
+  descent-stall abort, but this time onboard + chase videos were captured; the whole `IC3/`
+  folder (dataset + videos) is now from that one rep. See
+  `Memory/px4/feedback_montage_touchdown_argmin_bug.md` for the original gap.
+- Montages for the aborted cases (IC2/IC3/IC5/Static) were regenerated 2026-09-23
   after a touchdown-detection bug fix in `tools/make_landing_montage.py` — the original
   versions truncated both the plots and the video itself early because they mistook a
   hover-noise altitude dip for touchdown. See
