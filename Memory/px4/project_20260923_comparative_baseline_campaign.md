@@ -71,8 +71,7 @@ correction, not a performance fix. cho2022 is the other needs_features baseline 
 NOT re-recorded (still 0/10 either way; its dataset used the stale zf=0.3 too).
 
 **2026-09-23 (night): CHO2022-GT RE-RECORDED with zf=0.2 + the B_T saturation fix.**
-Still 1/10 "landed" (only `Linear`, xy=1.51m/1.30 m/s, via deck heave lifting the platform
-into the hovering drone -- incidental) and 9/10 descent-stall aborts, vs 0/10 before. The
+Still 1/10 "landed" (only `Linear`, xy=1.51m/1.30 m/s, likely incidental contact from deck heave -- inferred, not verified) and 9/10 descent-stall aborts, vs 0/10 before. The
 zf fix and B_T saturation did NOT change the outcome, as predicted: parked altitude just
 shifted ~0.497 -> ~0.52m, max|B_T| stayed 3-11. Root cause (regulator converges to hover)
 stands; see [[feedback_cho2022_never_lands_rootcause]]. Both needs_features baselines

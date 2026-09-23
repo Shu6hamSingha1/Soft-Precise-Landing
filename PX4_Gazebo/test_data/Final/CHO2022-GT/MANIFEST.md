@@ -29,9 +29,10 @@ Control_Params, Ground_Truth, Img_Data, Img_Params, Telemetry_Data). No
 
 **Result: 1/10 landed, 0/10 precise+soft.** "Aborted" = `RuntimeError: descent stall: no
 >0.30 m descent in 25s -- hovering, aborting`. Same failure as the zf=0.3 recording (0/10):
-the zf fix and the B_T saturation did not change it. The only landing is `Linear` (deck
-heave carries the platform up into the hovering drone, min_alt 0.023 m) -- incidental
-contact, not a controlled touchdown.
+the zf fix and the B_T saturation did not change it. The only landing is `Linear` (min_alt 0.023 m;
+likely incidental contact from the deck's heave motion reaching the hovering drone -- NOT
+verified, inferred from the Linear/Circular deck-heave setup -- rather than a controlled
+touchdown; the old zf=0.3 Linear rep also dipped to min_alt -0.013 m yet still aborted).
 
 **Root cause (unchanged; see `Memory/px4/feedback_cho2022_never_lands_rootcause.md`):** the
 FF-IBVS law is a pure feature-error regulator converging to a fixed depth setpoint; once
