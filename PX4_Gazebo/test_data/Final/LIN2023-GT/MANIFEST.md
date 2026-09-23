@@ -42,3 +42,10 @@ Notes:
 - Montages were built with the touchdown-detection fix in `tools/make_landing_montage.py`
   (aborted cases use the full untrimmed series); no 0-frame-PiP anomalies this run.
 - Same GT-FB rover-world cross-marker recipe as `VISTA-GT/` (`../VISTA-GT/`).
+
+**Platform-landing audit (2026-09-23, added after checking the geometry):** the landing deck is
+a 0.6 x 0.6 m box (`rover_cross/model.sdf`, top at z=+0.50 m), so a centre >~0.3 m from the
+target with `alt_above_surface_end` well below 0 is a *ground impact beside the platform*, not
+a deck landing. The harness's `landed` flag (PX4 LandedState / accelerometer spike) does not
+distinguish these. Read "landed" in the table above as "reached a physical impact", not "landed
+on the target". This baseline: 0 on the deck; 4 'landed' cases are off-platform (IC1 xy 0.44 m is just past the deck edge; Linear 9.19 m, Sinusoidal 4.43 m, Lissajous 0.93 m); 6 aborted.

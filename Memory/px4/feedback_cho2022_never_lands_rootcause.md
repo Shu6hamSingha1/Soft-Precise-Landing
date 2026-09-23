@@ -144,6 +144,5 @@ both read the same `zf` for `project_marker_v_frame`.
 
 **2026-09-23 (night): full re-record confirms it.** CHO2022-GT re-recorded (zf=0.2 + B_T
 saturation): 9/10 abort with the identical descent stall; the single "landing" (Linear) is
-most likely incidental contact from deck heave (min_alt 0.023m; inferred, not verified), not a
-controlled touchdown. max|B_T| bounded 3-11 in all reps. Neither fix changes the outcome -- root cause
+a ground impact beside the platform (uz 0.023m = 0.76m below deck level, xy_err 1.5m, 318 m/s^2 spike, descent_anomaly ASCENDING) -- the earlier deck-heave explanation was WRONG (checked 2026-09-23 night). max|B_T| bounded 3-11 in all reps. Neither fix changes the outcome -- root cause
 (pure regulator converges to exact hover, no physical contact) is unchanged.

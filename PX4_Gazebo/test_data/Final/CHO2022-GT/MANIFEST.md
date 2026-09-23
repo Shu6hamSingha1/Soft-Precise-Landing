@@ -30,9 +30,7 @@ Control_Params, Ground_Truth, Img_Data, Img_Params, Telemetry_Data). No
 **Result: 1/10 landed, 0/10 precise+soft.** "Aborted" = `RuntimeError: descent stall: no
 >0.30 m descent in 25s -- hovering, aborting`. Same failure as the zf=0.3 recording (0/10):
 the zf fix and the B_T saturation did not change it. The only landing is `Linear` (min_alt 0.023 m;
-likely incidental contact from the deck's heave motion reaching the hovering drone -- NOT
-verified, inferred from the Linear/Circular deck-heave setup -- rather than a controlled
-touchdown; the old zf=0.3 Linear rep also dipped to min_alt -0.013 m yet still aborted).
+CORRECTED: it is NOT deck contact -- the drone drifted 1.5 m off, ascended (`descent_anomaly: ASCENDING`), then fell to the ground beside the platform with a 318 m/s^2 impact spike; see the audit below).
 
 **Root cause (unchanged; see `Memory/px4/feedback_cho2022_never_lands_rootcause.md`):** the
 FF-IBVS law is a pure feature-error regulator converging to a fixed depth setpoint; once
@@ -52,3 +50,10 @@ Notes:
 - Montages use the touchdown-detection fix in `tools/make_landing_montage.py` (aborted
   cases use the full untrimmed series); no 0-frame-PiP anomalies this run.
 - Same GT-FB rover-world cross-marker recipe as `VISTA-GT/` (`../VISTA-GT/`).
+
+**Platform-landing audit (2026-09-23, added after checking the geometry):** the landing deck is
+a 0.6 x 0.6 m box (`rover_cross/model.sdf`, top at z=+0.50 m), so a centre >~0.3 m from the
+target with `alt_above_surface_end` well below 0 is a *ground impact beside the platform*, not
+a deck landing. The harness's `landed` flag (PX4 LandedState / accelerometer spike) does not
+distinguish these. Read "landed" in the table above as "reached a physical impact", not "landed
+on the target". This baseline: 0 on the deck; the single 'landed' case (Linear) is a ground impact 0.76 m below deck level, 1.51 m from the target.

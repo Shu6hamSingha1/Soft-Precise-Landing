@@ -36,13 +36,26 @@ only records the arc, the final state, and what is still open).
    MATLAB and is NOT stale. Fix affects both `needs_features` baselines (lin2023, cho2022), both
    re-recorded. Re-record showed no consistent improvement (n=1) -- it is parity, not performance.
 
-## Still open / do not overstate
-- cho2022's single "landing" (Linear, min_alt 0.023m) is *inferred* incidental deck-heave contact,
-  not verified.
-- Baseline results are n=1 per case; per-case swings between recordings are noise.
-- `use_sq_comp` dead code and the non-sign-preserving z clamp are unfixed (both mirror MATLAB).
-- No baseline overlay PiPs were produced (scope decision, predates finding
-  `tools/overlay_image_features.py` is reusable).
+## Open issues -- investigated (2026-09-23 night)
+- **cho2022 `Linear` "landing": RESOLVED, my earlier deck-heave explanation was WRONG.** Deck heave
+  exists (target z swings 0.23m) but the drone drifted 1.5m off, ascended (`descent_anomaly:
+  ASCENDING`), then fell to the ground 0.76m below deck level (318 m/s^2 spike). Not deck contact.
+- **NEW, bigger finding -- most baseline "landings" are not on the platform.** The deck is a 0.6x0.6m
+  box (`rover_cross/model.sdf`, top z=+0.50m); the harness `landed` flag (PX4 LandedState / impact
+  spike) fires on ground impacts beside it too. Audit of all 21 "landed" baseline cases: only 2 are
+  on the deck (LIN2022 IC1, Sinusoidal), ~3 borderline/edge, the rest are off-platform ground
+  impacts (zhang2026 all 10, xy 2.6-12m). Read baseline "landed" as "reached an impact", not "landed
+  on target" (VISTA-GT lands at xy 0.01-0.03m). Added to all 4 baseline MANIFESTs.
+- **`use_sq_comp` dead code + non-sign-preserving z clamp: NOT defects of the port.** MATLAB feeds
+  the baselines only the 5 key points (`InitVar.m`: `T_key = T_all(:, T_key_idx)`), so
+  `use_sq_comp && N==4` is dead in MATLAB too; the 0.01 clamp is identical. Parity holds; leave both.
+- **Baseline overlay PiPs: FEASIBLE.** `tools/overlay_image_features.py --split` runs on a baseline
+  dataset and draws real s/alpha/nu/w (checked on LIN2022-GT/IC1). Caveat: baselines are GT-fed, so the
+  overlays show what perception saw, not what the controller used. Not produced (scope), just proven.
+- **n=1 noise: STILL OPEN, blocked.** Wanted 3 extra lin2023 reps of IC1 + Lissajous (script at the
+  session scratchpad `repeat_lin2023.sh`, writes to RecordBaseline_dev only) but a peer session was
+  launching `run_landing.sh` runs back-to-back on the shared simulator, so no safe gap. Run it when
+  the simulator is idle: `nohup bash <that script>` (~25 min).
 
 ## Process lessons (this session's own mistakes)
 - **Run SITL recordings in the background**, never under a short foreground `timeout` (an aborting

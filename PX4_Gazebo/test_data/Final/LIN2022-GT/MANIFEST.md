@@ -47,3 +47,10 @@ Notes:
 - All 10 cases use the same GT-FB rover-world cross-marker recipe as `VISTA-GT/`
   (`../VISTA-GT/`), so `precise`/`soft` are directly comparable against that set's
   numbers at the same 0.10 m / 0.2 m/s harness thresholds.
+
+**Platform-landing audit (2026-09-23, added after checking the geometry):** the landing deck is
+a 0.6 x 0.6 m box (`rover_cross/model.sdf`, top at z=+0.50 m), so a centre >~0.3 m from the
+target with `alt_above_surface_end` well below 0 is a *ground impact beside the platform*, not
+a deck landing. The harness's `landed` flag (PX4 LandedState / accelerometer spike) does not
+distinguish these. Read "landed" in the table above as "reached a physical impact", not "landed
+on the target". This baseline: 2 on the deck (IC1 xy 0.21 m, Sinusoidal 0.25 m); 2 borderline/edge (IC4 xy 0.37 m at deck height; Lissajous 0.73 m); 2 ground impacts beside the platform (Linear 1.49 m, Circular 1.23 m, both ~0.6 m below deck level); 4 aborted.
