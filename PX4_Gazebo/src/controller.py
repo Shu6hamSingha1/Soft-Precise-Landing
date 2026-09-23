@@ -3658,7 +3658,16 @@ class Controller(Thread):
             key = marker_key_points(float(os.environ.get("BASELINE_MARKER_SCALE", "26")))
             zf = float(os.environ.get("BASELINE_ZF", "0.3"))   # depth offset: 0.4 m desired depth == 0.1 m camera-marker touchdown
             s["px"], s["C_s_tc"] = project_marker_v_frame(p_cam, Ru, p_mkr, Rt, yaw, 135.0, zf, key)
-            s["px_d"] = (135.0 / (2 * 0.2)) * key[:2]
+            # BASELINE_CHO_DEPTH_TARGET (2026-09-23, experiment): cho2022's px_d encodes a
+            # FIXED desired camera-to-marker depth via 135/(2*<half-depth>) -- default
+            # half-depth 0.2 -> 0.4m target depth (see zf comment above). cho2022 converges
+            # to EXACT hover once Pi reaches this Pd and never produces the physical ground
+            # contact PX4/the impact detector needs to register LANDED (see
+            # Memory/px4/feedback_cho2022_never_lands_rootcause.md) -- 0/10 landed. Env-
+            # tunable here to test whether a smaller target depth (forcing the regulation
+            # equilibrium deeper) produces genuine contact; does NOT change the default.
+            _half_depth = float(os.environ.get("BASELINE_CHO_DEPTH_TARGET", "0.2"))
+            s["px_d"] = (135.0 / (2 * _half_depth)) * key[:2]
         I_a = self._baseline.step(s)
         if not np.all(np.isfinite(I_a)):
             I_a = np.array([0.0, 0.0, -g])                       # hold hover on a numerical blow-up

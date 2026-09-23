@@ -29,13 +29,20 @@ Control_Params, Ground_Truth, Img_Data, Img_Params, Telemetry_Data). No
 **Result: 0/10 landed.** Every single case hits the identical
 `RuntimeError: descent stall: no >0.30 m descent in 25s — hovering, aborting` — the
 harness's own descent-stall watchdog, not a crash or exception in the baseline's own
-control law. This is a consistent, reproducible failure (same error, same failure mode,
-10/10 cases) — looks like a real property of this FF-IBVS baseline under this
-SITL/GT-FB harness (it appears to never initiate a sustained descent at all), not
-run-to-run noise the way the other baselines' scattered stalls are. **Root cause not
-yet investigated** — worth digging into `src/baselines.py::Cho2022`/
-`controller.py::_baselineStep`'s handling of it if this needs explaining for the
-manuscript. See `Memory/px4/project_20260923_comparative_baseline_campaign.md`.
+control law. **Root-caused 2026-09-23** (see
+`Memory/px4/feedback_cho2022_never_lands_rootcause.md`): this baseline's FF-IBVS law is
+a pure feature-error regulator converging to a FIXED, shallow depth setpoint
+(`~0.4m` camera-to-marker, hard-coded in `controller.py::_baselineStep`'s `px_d`
+formula) — once converged, the commanded acceleration settles to EXACT hover
+(verified in `Control_Data.npy`: `I_a_z -> -9.81 m/s^2` by ~t=9s, held for the rest of
+the flight) and the drone simply parks a few cm above the platform, never producing the
+genuine physical ground contact (PX4 `LandedState`/accelerometer impact spike) needed
+to register as landed. Baseline runs also bypass PLASMC's own loom-inversion touchdown
+latch entirely (it lives inside `self.PLASMC()`, never called when a baseline is
+active), so that fallback path is unavailable too. The other 3 baselines land at least
+sometimes because their control laws overshoot past hover into forceful contact
+(zhang2026 lands with `rel_vel` up to 18.5 m/s); cho2022's smooth, non-overshooting
+regulation never does.
 
 Notes:
 - Video+dataset are still recorded/promoted for every case despite none landing — this
