@@ -114,3 +114,30 @@ Not fixed in this session (diagnostic only, per user's "investigate" request, no
 the 1e-6 floor, (b) a sign-preserving z clamp, (c) actually wiring use_sq_comp to
 apply regardless of N (or dropping the stub point for Cho2022 specifically), (d) a
 depth-independent (moment/ratio-based) reformulation matching lin2023's approach.
+
+**2026-09-23, later same day: (a) FIXED and re-tested; (b)(c)(d) still open.**
+`src/baselines.py::accel_to_rate_thrust` now saturates its final `B_T` to
+`[B_T_MIN, B_T_MAX] = [-11.08, 31.22]` N -- derived from
+`apps/landing_test.py:84`'s own `thrust_norm = clip(0.738 - B_T/42.3, 0, 1)` mapping,
+so the cap matches EXACTLY what the downstream actuator clip can express (no behavior
+change under normal flight; B_T outside this range was already being silently
+saturated via thrust_norm, just without B_T itself reflecting it). Re-ran
+`cho2022/IC1` with DEFAULT settings (no BASELINE_CHO_DEPTH_TARGET override) after the
+fix: `B_T` stayed fully bounded in `[-1.91, +3.17]` across the whole 31.8s flight (was
+spiking to ~+-3,000,000 before) -- confirms the saturation works. **It still hit the
+same descent-stall abort (xy_err=None)** -- expected and correct: the blow-up was
+always a SYMPTOM of the hover-convergence root cause (part 1 above), not itself the
+reason cho2022 never lands. Fixing it cleans up the logs/behavior near touchdown but
+doesn't and was never expected to make cho2022 land.
+
+**Also found and fixed a SEPARATE, genuinely stale constant while re-verifying this
+(user-caught, 2026-09-23):** `controller.py::_baselineStep`'s `BASELINE_ZF` default
+was `0.3`, but `MATLAB/Common/Constants.m:3` defines the canonical
+`zf = 0.2  % Landing height in meters (shared across multi-init + comparison)` --
+the SAME variable MATLAB uses for both the real projection depth offset and (as
+`2*zf`) the desired-points formula, across every comparison controller. Verified by
+grepping the MATLAB source directly (`ctrl_Cho2022.m`'s SEPARATE `z_depth` clamp
+floor of `0.01` was checked too and DOES match MATLAB exactly -- that one was never
+stale, don't re-flag it). Fixed `BASELINE_ZF`'s default `0.3 -> 0.2`. This affects
+BOTH `needs_features` baselines (`cho2022` AND `lin2023`), not just cho2022, since
+both read the same `zf` for `project_marker_v_frame`.

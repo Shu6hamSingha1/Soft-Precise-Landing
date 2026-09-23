@@ -41,13 +41,38 @@ def _funnel_rho(rho0, rho_inf, l, t):
     return (rho0 - rho_inf) * np.exp(-l * t) + rho_inf
 
 
+# B_T SATURATION (2026-09-23, fixing the near-gimbal-lock blow-up found while
+# investigating cho2022's Ls-near-touchdown instability -- see
+# Memory/px4/feedback_cho2022_never_lands_rootcause.md). The old code only guarded
+# against literal division-by-zero (max(cos(.), 1e-6)), which still lets B_T reach
+# +-millions when the REALIZED attitude tips toward gimbal-lock -- a real event this
+# baseline's growing-gain-as-z-shrinks IBVS law can trigger near touchdown. That huge
+# B_T was always harmless to the ACTUATOR (apps/landing_test.py's convert_2_sys_cmd
+# already clips thrust_norm to [0,1]), but it's a meaningless, chattering intermediate
+# signal that swings the effective command between full-throttle and zero-throttle on
+# noise, and pollutes B_T(t) logs with physically absurd values. Saturating HERE, at
+# the source, keeps B_T meaningful and matches exactly what thrust_norm's downstream
+# [0,1] clip can express -- B_T outside this range was ALREADY being clipped
+# effectively (via thrust_norm), just silently and without B_T itself reflecting it.
+# Derived from apps/landing_test.py:84's thrust_norm = clip(0.738 - B_T/42.3, 0, 1):
+#   thrust_norm=1 (max climb)     -> B_T = (0.738 - 1) * 42.3   = -11.08 N
+#   thrust_norm=0 (min throttle)  -> B_T =  0.738      * 42.3   = +31.22 N
+# Hardcoded (not imported) because baselines.py is deliberately standalone (numpy
+# only) and landing_test.py's 0.738/42.3 are themselves empirical calibration
+# constants, not physical ones -- update BOTH places together if that mapping is
+# ever recalibrated.
+B_T_MIN, B_T_MAX = -11.08, 31.22
+
+
 def accel_to_rate_thrust(I_a_cd, R, psi_des, K_R, mass):
     """Shared attitude stage: desired specific force -> (body-rate cmd [3], thrust deficit B_T).
 
     Same maths as MATLAB blocks.so3_tracker / Controller._attCtrl: rd3 = -F/|F|, heading
     vector [cos psi, sin psi, 0], e_R = 0.5 vee(Rd'R - R'Rd), w_u = -K_R e_R.
     B_T = mass*(I_a[2]+g)/(cos roll cos pitch) is the thrust BELOW hover, as consumed by
-    landing_test.convert_2_sys_cmd (0 at hover, >0 descends).
+    landing_test.convert_2_sys_cmd (0 at hover, >0 descends). SATURATED to [B_T_MIN,
+    B_T_MAX] -- see the comment above; matches what the downstream thrust_norm clip can
+    actually express, so this is a saturation, not a behavior change under normal flight.
     """
     f = float(np.linalg.norm(I_a_cd))
     if f < 1e-6:
@@ -64,6 +89,7 @@ def accel_to_rate_thrust(I_a_cd, R, psi_des, K_R, mass):
     roll = np.arctan2(R[2, 1], R[2, 2])
     pitch = -np.arcsin(np.clip(R[2, 0], -1.0, 1.0))
     B_T = mass * (I_a_cd[2] + G) / max(np.cos(roll), 1e-6) / max(np.cos(pitch), 1e-6)
+    B_T = float(np.clip(B_T, B_T_MIN, B_T_MAX))
     return w_u, B_T
 
 

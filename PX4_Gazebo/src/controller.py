@@ -3656,7 +3656,17 @@ class Controller(Thread):
                  p_t=p_mkr, v_t=v_t)
         if self._baseline.needs_features:
             key = marker_key_points(float(os.environ.get("BASELINE_MARKER_SCALE", "26")))
-            zf = float(os.environ.get("BASELINE_ZF", "0.3"))   # depth offset: 0.4 m desired depth == 0.1 m camera-marker touchdown
+            # zf default FIXED 2026-09-23 (0.3 -> 0.2, user-caught staleness): MATLAB/Common/
+            # Constants.m:3 defines `zf = 0.2` ("Landing height in meters (shared across
+            # multi-init + comparison)") -- the SAME variable, used identically for the
+            # projection depth offset AND (as `2*zf`) the desired-points formula, in every
+            # MATLAB comparison controller (visualControl_comparison.m, run_simulation.m).
+            # 0.3 here was stale/undocumented drift from that canonical value; verified by
+            # grepping the MATLAB source, not assumed. With zf=0.2 and the Pd formula's own
+            # target depth still 0.4 (BASELINE_CHO_DEPTH_TARGET default 0.2, i.e. 2*0.2=0.4,
+            # independently already matching MATLAB's 2*zf=2*0.2=0.4), the camera-marker
+            # touchdown gap this implies is 0.4-0.2=0.2 m (not the old comment's stale 0.1 m).
+            zf = float(os.environ.get("BASELINE_ZF", "0.2"))
             s["px"], s["C_s_tc"] = project_marker_v_frame(p_cam, Ru, p_mkr, Rt, yaw, 135.0, zf, key)
             # BASELINE_CHO_DEPTH_TARGET (2026-09-23, experiment): cho2022's px_d encodes a
             # FIXED desired camera-to-marker depth via 135/(2*<half-depth>) -- default
