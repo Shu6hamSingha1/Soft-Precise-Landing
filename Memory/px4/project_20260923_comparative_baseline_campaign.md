@@ -51,3 +51,10 @@ session, just recorded as a finding.
 
 No MANIFEST.md written yet for the 4 baseline tag folders (VISTA-GT has one; these
 don't) -- do that before citing these results anywhere external.
+
+**⚠ 2026-09-23 (later, same day): 17 of these montages were REGENERATED** -- the
+video/plot desync the user spotted on baseline reps (worst on cho2022, unsurprising
+since it's 0/10 landed) was a real bug in the shared montage tool, not a data issue.
+See [[feedback_montage_touchdown_argmin_bug]] for the full root-cause + fix + the
+second bug it surfaced (LIN2022-GT/IC3 missing its onboard recording entirely,
+dropped rather than left broken).
