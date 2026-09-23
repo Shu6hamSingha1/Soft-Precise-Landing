@@ -1,11 +1,11 @@
 ---
 name: project_20260922_ackermann_rover_loops_not_tracking
-description: "⭐ FULL ARC 2026-09-22/23, read top-to-bottom (chronological, each entry supersedes/extends the last). ROOT CAUSE: PX4 Ackermann offboard POSITION mode parks within NAV_ACC_RAD=0.5m and loops at 1.5-2.2 m/s -- invalidated all prior Lissajous speed-retune conclusions (target speed != commanded speed). FIX: rover_drive.py ROVER_CTRL=vel (velocity-tracking, tracking err <=0.05m). Then found+fixed: (1) net-speed-x10 crashed the DRONE via lateral accel, fixed with ROVER_LISS_RADIUS_MULT (wider turns, same speed); (2) chase-camera framing (target closing on camera -> clipped) fixed with ROVER_VEL_ROT_DEG; (3) the Lissajous w1:w2 ratio was ~1:1 (an ELLIPSE, not a real figure) -- corrected to 2:3; (4) a v^2/R sweet spot (0.204, ROVER_SPEED_MULT=7/RADIUS_MULT=5) gives BOTH a precise landing (xy=0.111m) AND a visibly curving path -- promoted to test_data/Final/VISTA-GT/Lissajous/. ⚠ Two of my own hand-derived-formula bugs are documented and corrected inline (a period-formula 3x error, and a false 'exact cusp caused the crash' claim -- the cusp is real but never occurred within any tested descent window) -- read those corrections, don't stop at the first draft of either claim."
+description: "⭐ FULL ARC 2026-09-22/23, read top-to-bottom (chronological, each entry supersedes/extends the last). ROOT CAUSE: PX4 Ackermann offboard POSITION mode parks within NAV_ACC_RAD=0.5m and loops at 1.5-2.2 m/s -- invalidated all prior Lissajous speed-retune conclusions (target speed != commanded speed). FIX: rover_drive.py ROVER_CTRL=vel (velocity-tracking, tracking err <=0.05m). Then found+fixed: (1) net-speed-x10 crashed the DRONE via lateral accel, fixed with ROVER_LISS_RADIUS_MULT (wider turns, same speed); (2) chase-camera framing (target closing on camera -> clipped) fixed with ROVER_VEL_ROT_DEG; (3) the Lissajous w1:w2 ratio was ~1:1 (an ELLIPSE, not a real figure) -- corrected to 2:3; (4) a v^2/R sweet spot (0.204, ROVER_SPEED_MULT=7/RADIUS_MULT=5) gives BOTH a precise landing (xy=0.111m) AND a visibly curving path -- promoted to test_data/Final/VISTA-GT/Lissajous/. ⚠ Two of my own hand-derived-formula bugs are documented and corrected inline (a period-formula 3x error, and a false 'exact cusp caused the crash' claim -- the cusp is real but never occurred within any tested descent window) -- read those corrections, don't stop at the first draft of either claim. CLOSED with the final ICRA.tex-numbered target-velocity equations for all 5 Final/VISTA-GT cases (incl. the Linear/Circular deck heave/roll/pitch I initially missed, and Linear's ROVER_SPEED_MULT=0.3 found by searching prior memory instead of back-solving from noisy GT)."
 metadata:
   node_type: memory
   type: project
   originSessionId: eb3af863-38fc-4d7b-86dd-b7c9bc16b44d
-  modified: 2026-09-22T23:04:08.472Z
+  modified: 2026-09-23T01:47:47.987Z
 ---
 
 **Finding (2026-09-22, from GT `Target Pose` + the rover's PX4 ulog `rootfs/1/log/2026-09-22/17_36_42.ulg`).**
@@ -351,3 +351,45 @@ park-loop signature -- so `Final/VISTA-GT/Linear` does NOT show evidence of the 
 park/loop bug; the earlier flagged "shortfall" was a baseline-comparison artifact, not a real
 issue in this recording. Retract that part of the prior entry -- Linear's `pos`-mode reduced-speed
 recording looks fine as-is.
+
+**CLOSING 2026-09-23 (same session) — final ICRA.tex-style target-velocity equations for the
+`Final/VISTA-GT/` recordings**, case-numbered to match `Soft_Precise_Landing/ICRA.tex` exactly
+(Case 1=static, 2=linear ship-deck, 3=sinusoidal, 4=Lissajous, 5=circular ship-deck):
+```
+v_t^(1) = [0, 0, 0]^T
+v_t^(2) = [0.33, 0.33, 0.025 cos(0.125t)]^T
+v_t^(3) = [0.4 cos(0.8t), 0.5, 0]^T
+v_t^(4) = [-1.066 cos(0.133t+pi/6), 0.959 cos(0.200t), 0]^T
+v_t^(5) = [-0.128 sin(0.128t), 0.384 cos(0.128t), 0.025 cos(0.125t)]^T   m/s
+```
+Cases 2 and 5 additionally carry roll `15 deg sin(0.9t)` and pitch `8 deg sin(0.6t+pi/3)` —
+these exactly match ICRA.tex's own Case-2/5 roll/pitch spec (fit to the recorded GT: amp
+15.08/7.90 deg, freq 0.900/0.595 rad/s, phase ~0/60 deg -- unchanged from the manuscript) — but
+heave uses `z_t = 0.2 sin(0.125t)` m, NOT the manuscript's `0.5` rad/s: this was a deliberate,
+DOCUMENTED, user-approved reduction (`rover_trajectory.deck_state()`'s own comment: tried 0.25,
+still too fast, settled on 0.125 = 1/4 of manuscript spec; amplitude 0.2m unchanged). Confirmed
+two ways: sinusoid fit to GT (residual ~0.0004m, essentially exact at w=0.127-0.130) and direct
+code read.
+
+**Two of my own mistakes corrected in getting here, both worth remembering:**
+1. First draft claimed z=0 for ALL FIVE cases -- wrong for Linear and Circular (both carry real
+   deck motion via `deck_state()`, confirmed by the fits above); only Static/Sinusoidal/Lissajous
+   are genuinely flat (z-std ~1e-6 m, verified). **Don't generalize "flat" from a subset of
+   cases to all of them -- check each one's actual z data.**
+2. First draft of the Linear x,y-velocity was BACK-SOLVED from measured GT (~0.24-0.29 speed_mult
+   estimate, noisy, x/y disagreed by up to 0.275m due to pos-mode tracking asymmetry) instead of
+   searching this project's OWN prior documentation first. `grep`-ing memory for
+   "ROVER_SPEED_MULT.*[Ll]inear" immediately found the established, previously-validated
+   convention (`project_moving_rover_landing_works.md`, 2026-07-02): **`ROVER_SPEED_MULT=0.3`**,
+   giving `s=1.1*0.3=0.33` m/s per axis (`|v|=0.467` m/s, matches that memory's own "0.47 m/s"
+   citation exactly). **Search this project's own memory for a prior documented value before
+   back-solving one from noisy measurement.**
+
+This closes the Lissajous/rover-motion investigation thread for this session. Summary of every
+artifact touched, for a future session picking this up:
+- `PX4_Gazebo/apps/rover_drive.py`: `ROVER_CTRL=vel` mode + `ROVER_VEL_ROT_DEG` (both new).
+- `PX4_Gazebo/src/rover_trajectory.py`: `ROVER_LISS_RADIUS_MULT` (new); `deck_state()` heave
+  slowdown predates this session but is documented above since it directly affects the equations.
+- `test_data/Final/VISTA-GT/Lissajous/`: replaced (parked-rover rep -> genuine moving-target rep).
+- `test_data/Final/MANIFEST.md`: updated with the replacement note.
+- This memory file: the complete record, chronological, corrections included inline.
