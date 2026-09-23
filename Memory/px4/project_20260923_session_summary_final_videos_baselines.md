@@ -52,10 +52,14 @@ only records the arc, the final state, and what is still open).
 - **Baseline overlay PiPs: FEASIBLE.** `tools/overlay_image_features.py --split` runs on a baseline
   dataset and draws real s/alpha/nu/w (checked on LIN2022-GT/IC1). Caveat: baselines are GT-fed, so the
   overlays show what perception saw, not what the controller used. Not produced (scope), just proven.
-- **n=1 noise: STILL OPEN, blocked.** Wanted 3 extra lin2023 reps of IC1 + Lissajous (script at the
-  session scratchpad `repeat_lin2023.sh`, writes to RecordBaseline_dev only) but a peer session was
-  launching `run_landing.sh` runs back-to-back on the shared simulator, so no safe gap. Run it when
-  the simulator is idle: `nohup bash <that script>` (~25 min).
+- **n=1 noise: MEASURED for lin2023 (2026-09-24), and it is large.** 3 extra reps each of IC1 and
+  Lissajous, same code: IC1 -> 0.28m (on deck), 5.11m/18m/s (outlier), 0.18m (on deck); Lissajous ->
+  0.28m/0.36 m/s (on deck), stall abort, stall abort. Same case lands on the deck, crashes off it, or
+  aborts. So a single campaign recording per case is one draw from a wide distribution; per-case
+  baseline numbers are unreliable, and the old "zf fix improved IC1 5.2m->0.44m" claim is
+  unsupported (old side n=1; the 5m outlier mode reappears at zf=0.2). Still untested: lin2022,
+  zhang2026, cho2022 variance. Table in LIN2023-GT/MANIFEST.md. Repeats stay in RecordBaseline_dev
+  (untracked, deliberately not promoted -- no cherry-picking).
 
 ## Process lessons (this session's own mistakes)
 - **Run SITL recordings in the background**, never under a short foreground `timeout` (an aborting

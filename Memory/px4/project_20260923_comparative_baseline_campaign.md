@@ -76,3 +76,5 @@ zf fix and B_T saturation did NOT change the outcome, as predicted: parked altit
 shifted ~0.497 -> ~0.52m, max|B_T| stayed 3-11. Root cause (regulator converges to hover)
 stands; see [[feedback_cho2022_never_lands_rootcause]]. Both needs_features baselines
 (lin2023, cho2022) are now on zf=0.2; lin2022/zhang2026 are PBVS and unaffected by zf.
+
+**2026-09-24: variance check** -- lin2023 IC1/Lissajous re-run 3x each at zf=0.2: results range from on-deck 0.18m landings to a 5.1m/18m/s crash to stall aborts for the SAME case. Campaign per-case numbers are single draws; the earlier 'zf fix improved lin2023' reading is unsupported. See LIN2023-GT/MANIFEST.md and [[project_20260923_session_summary_final_videos_baselines]].
