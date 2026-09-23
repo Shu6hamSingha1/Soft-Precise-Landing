@@ -141,3 +141,9 @@ floor of `0.01` was checked too and DOES match MATLAB exactly -- that one was ne
 stale, don't re-flag it). Fixed `BASELINE_ZF`'s default `0.3 -> 0.2`. This affects
 BOTH `needs_features` baselines (`cho2022` AND `lin2023`), not just cho2022, since
 both read the same `zf` for `project_marker_v_frame`.
+
+**2026-09-23 (night): full re-record confirms it.** CHO2022-GT re-recorded (zf=0.2 + B_T
+saturation): 9/10 abort with the identical descent stall; the single "landing" (Linear) is
+deck heave lifting the platform into the parked drone (min_alt 0.023m), not a controlled
+touchdown. max|B_T| bounded 3-11 in all reps. Neither fix changes the outcome -- root cause
+(pure regulator converges to exact hover, no physical contact) is unchanged.

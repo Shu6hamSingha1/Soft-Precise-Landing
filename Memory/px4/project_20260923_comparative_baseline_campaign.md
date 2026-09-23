@@ -69,3 +69,11 @@ Linear/Sinusoidal got worse; Circular flipped landed->aborted; IC2-5/Static abor
 times. n=1 per case, so per-case swings are noise -- the zf fix is a MATLAB-parity
 correction, not a performance fix. cho2022 is the other needs_features baseline and was
 NOT re-recorded (still 0/10 either way; its dataset used the stale zf=0.3 too).
+
+**2026-09-23 (night): CHO2022-GT RE-RECORDED with zf=0.2 + the B_T saturation fix.**
+Still 1/10 "landed" (only `Linear`, xy=1.51m/1.30 m/s, via deck heave lifting the platform
+into the hovering drone -- incidental) and 9/10 descent-stall aborts, vs 0/10 before. The
+zf fix and B_T saturation did NOT change the outcome, as predicted: parked altitude just
+shifted ~0.497 -> ~0.52m, max|B_T| stayed 3-11. Root cause (regulator converges to hover)
+stands; see [[feedback_cho2022_never_lands_rootcause]]. Both needs_features baselines
+(lin2023, cho2022) are now on zf=0.2; lin2022/zhang2026 are PBVS and unaffected by zf.
