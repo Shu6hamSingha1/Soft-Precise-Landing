@@ -58,3 +58,14 @@ since it's 0/10 landed) was a real bug in the shared montage tool, not a data is
 See [[feedback_montage_touchdown_argmin_bug]] for the full root-cause + fix + the
 second bug it surfaced (LIN2022-GT/IC3 missing its onboard recording entirely,
 dropped rather than left broken).
+
+**2026-09-23 (evening): LIN2023-GT RE-RECORDED with the corrected `BASELINE_ZF=0.2`**
+(was a stale 0.3 default; MATLAB/Common/Constants.m has zf=0.2 -- see
+[[feedback_cho2022_never_lands_rootcause]]). Re-ran via the new `BASELINES=lin2023`
+override on `scripts/run_baseline_campaign.sh`; old set backed up outside the repo and
+superseded in git history (f8bcaf42/310c50c5). Result: 4/10 landed (was 5/10), 0/10
+precise+soft still. IC1 (5.20m->0.44m) and Lissajous (11.25m->0.93m) improved a lot;
+Linear/Sinusoidal got worse; Circular flipped landed->aborted; IC2-5/Static aborted both
+times. n=1 per case, so per-case swings are noise -- the zf fix is a MATLAB-parity
+correction, not a performance fix. cho2022 is the other needs_features baseline and was
+NOT re-recorded (still 0/10 either way; its dataset used the stale zf=0.3 too).

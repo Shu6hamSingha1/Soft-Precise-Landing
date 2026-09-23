@@ -16,7 +16,8 @@ cd "$PROJ"
 declare -A TAG=( [lin2022]="LIN2022-GT" [zhang2026]="ZHANG2026-GT" [lin2023]="LIN2023-GT" [cho2022]="CHO2022-GT" )
 CASES=(IC1 IC2 IC3 IC4 IC5 Static Linear Sinusoidal Circular Lissajous)
 
-for bl in lin2022 zhang2026 lin2023 cho2022; do
+# BASELINES env override (2026-09-23): re-record a subset, e.g. BASELINES="lin2023".
+for bl in ${BASELINES:-lin2022 zhang2026 lin2023 cho2022}; do
   for c in "${CASES[@]}"; do
     echo "================================================================="
     echo "=== CAMPAIGN: $bl / $c  $(date) ==="
