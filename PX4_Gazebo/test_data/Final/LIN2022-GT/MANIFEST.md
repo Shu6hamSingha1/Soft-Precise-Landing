@@ -54,3 +54,35 @@ target with `alt_above_surface_end` well below 0 is a *ground impact beside the 
 a deck landing. The harness's `landed` flag (PX4 LandedState / accelerometer spike) does not
 distinguish these. Read "landed" in the table above as "reached a physical impact", not "landed
 on the target". This baseline: 2 on the deck (IC1 xy 0.21 m, Sinusoidal 0.25 m); 2 borderline/edge (IC4 xy 0.37 m at deck height; Lissajous 0.73 m); 2 ground impacts beside the platform (Linear 1.49 m, Circular 1.23 m, both ~0.6 m below deck level); 4 aborted.
+
+**Run-to-run variance check, all 4 baselines (2026-09-24):** IC1 and Lissajous re-run 3 more
+times each per baseline, same code, nothing changed between runs.
+
+| Baseline | Case | Campaign ; rep 1 ; rep 2 ; rep 3 (xy / rel_vel m/s; "(deck)" = on the 0.6 m deck) | Landed | On deck | xy range | Precise+soft |
+|---|---|---|---|---|---|---|
+| lin2022 | IC1 | 0.21 m / 3.32 (deck) ; 0.67 m / 1.46 ; stall abort ; 0.68 m / 4.53 | 3/4 | 1/4 | 0.21-0.68 m | 0/4 |
+| lin2022 | Lissajous | 0.73 m / 4.21 ; 0.85 m / 4.17 ; 0.12 m / 1.54 (deck) ; 0.25 m / 1.99 (deck) | 4/4 | 2/4 | 0.12-0.85 m | 0/4 |
+| zhang2026 | IC1 | 2.65 m / 4.28 ; 0.45 m / 1.90 ; 0.14 m / 0.31 (deck) ; 0.44 m / 0.51 | 4/4 | 1/4 | 0.14-2.65 m | 0/4 |
+| zhang2026 | Lissajous | 12.19 m / 14.98 ; 10.64 m / 12.33 ; 11.17 m / 13.41 ; 10.02 m / 11.73 | 4/4 | 0/4 | 10.0-12.2 m | 0/4 |
+| cho2022 | IC1 | stall abort x4 | 0/4 | 0/4 | — | 0/4 |
+| cho2022 | Lissajous | stall abort x4 | 0/4 | 0/4 | — | 0/4 |
+| lin2023 | IC1 | 0.44 m / 1.39 ; 0.28 m / 1.60 (deck) ; 5.11 m / 18.01 ; 0.18 m / 2.04 (deck) | 4/4 | 2/4 | 0.18-5.11 m | 0/4 |
+| lin2023 | Lissajous | 0.93 m / 2.45 ; 0.28 m / 0.36 (deck) ; stall abort ; stall abort | 2/4 | 1/4 | 0.28-0.93 m | 0/4 |
+
+**How far to trust a single campaign recording depends on the controller AND the case:**
+- *Consistent failures are trustworthy at n=1:* cho2022 aborted 8/8 (every run, both cases);
+  zhang2026 Lissajous missed by 10-12 m at 12-15 m/s in 4/4.
+- *Everything else is not:* the same case can land on the deck, crash beside it, or abort.
+  zhang2026 IC1's campaign run (2.65 m) was an outlier -- 3 repeats landed at 0.14-0.45 m, so the
+  campaign UNDERSTATED zhang2026 on the static case. lin2023 IC1 spans 0.18-5.11 m.
+- lin2022 is the steadiest landing baseline (7/8 landed, xy 0.12-0.85 m, no multi-metre outliers).
+- **0/32 runs precise+soft** across all four baselines. Closest: zhang2026 IC1 0.14 m / 0.31 m/s,
+  lin2022 Lissajous 0.12 m / 1.54 m/s (precise needs <=0.10 m, soft <=0.2 m/s).
+
+Verification: all 7 no-result repeats were confirmed as the harness's descent-stall watchdog by
+replaying its logic on the recorded altitude -- each ends 25.00 s after its last >0.3 m descent.
+Nothing runtime-relevant changed between the campaign and the repeats (only commits since are this
+session's own; the B_T saturation is actuator-equivalent to <=6e-5 throttle; `zf` is not on the
+lin2022/zhang2026 code path). Only IC1 and Lissajous were repeated -- the other 8 cases per baseline
+are single draws of unknown spread. Repeats stay untracked in `RecordBaseline_dev/` (not promoted,
+to avoid cherry-picking). **For a paper table, use several runs per case, not these single recordings.**

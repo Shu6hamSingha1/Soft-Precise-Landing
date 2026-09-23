@@ -78,3 +78,5 @@ stands; see [[feedback_cho2022_never_lands_rootcause]]. Both needs_features base
 (lin2023, cho2022) are now on zf=0.2; lin2022/zhang2026 are PBVS and unaffected by zf.
 
 **2026-09-24: variance check** -- lin2023 IC1/Lissajous re-run 3x each at zf=0.2: results range from on-deck 0.18m landings to a 5.1m/18m/s crash to stall aborts for the SAME case. Campaign per-case numbers are single draws; the earlier 'zf fix improved lin2023' reading is unsupported. See LIN2023-GT/MANIFEST.md and [[project_20260923_session_summary_final_videos_baselines]].
+
+**2026-09-24: variance check extended to lin2022/zhang2026/cho2022** (IC1+Lissajous, campaign+3 repeats each). cho2022 8/8 aborts; zhang2026 Lissajous 4/4 ~11 m misses; zhang2026 IC1 campaign run (2.65 m) was an outlier vs repeats 0.14-0.45 m; lin2022 7/8 landed 0.12-0.85 m; 0/32 precise+soft. Single recordings are trustworthy only for consistently-failing controller/case pairs. Table in every baseline MANIFEST.

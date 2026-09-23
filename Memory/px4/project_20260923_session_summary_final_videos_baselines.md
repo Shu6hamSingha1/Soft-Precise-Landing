@@ -52,16 +52,18 @@ only records the arc, the final state, and what is still open).
 - **Baseline overlay PiPs: FEASIBLE.** `tools/overlay_image_features.py --split` runs on a baseline
   dataset and draws real s/alpha/nu/w (checked on LIN2022-GT/IC1). Caveat: baselines are GT-fed, so the
   overlays show what perception saw, not what the controller used. Not produced (scope), just proven.
-- **n=1 noise: MEASURED for lin2023 (2026-09-24), and it is large.** 3 extra reps each of IC1 and
-  Lissajous, same code: IC1 -> 0.28m (on deck), 5.11m/18m/s (outlier), 0.18m (on deck); Lissajous ->
-  0.28m/0.36 m/s (on deck), stall abort, stall abort. Same case lands on the deck, crashes off it, or
-  aborts. So a single campaign recording per case is one draw from a wide distribution; per-case
-  baseline numbers are unreliable, and the old "zf fix improved IC1 5.2m->0.44m" claim is
-  unsupported (old side n=1; the 5m outlier mode reappears at zf=0.2). Still untested: lin2022,
-  zhang2026, cho2022 variance. Table in LIN2023-GT/MANIFEST.md. Repeats stay in RecordBaseline_dev
-  (untracked, deliberately not promoted -- no cherry-picking).
+- **n=1 noise: MEASURED for all 4 baselines (2026-09-24).** IC1 + Lissajous x (campaign + 3 repeats).
+  Consistent failures are trustworthy at n=1 (cho2022 8/8 stall aborts; zhang2026 Lissajous 4/4 at
+  10-12 m). Everything else is not: zhang2026 IC1's campaign 2.65 m was an OUTLIER (repeats 0.14-0.45 m
+  -- campaign understated it); lin2023 IC1 spans 0.18-5.11 m; lin2022 steadiest (7/8 landed, 0.12-0.85 m).
+  0/32 precise+soft. The earlier "zf fix improved lin2023" claim is unsupported. Only 2 of 10 cases
+  repeated. Full table in every baseline MANIFEST. Repeats untracked in RecordBaseline_dev (not promoted).
+  **Paper tables need several runs per case.**
 
 ## Process lessons (this session's own mistakes)
+- **Don't trust a flat-hover heuristic to classify aborts on a moving target** -- verify the abort
+  CAUSE by replaying the harness watchdog on recorded altitude (ends exactly 25.00 s after last >0.3 m
+  descent), since the repeat script's grep filter dropped the RuntimeError lines.
 - **Run SITL recordings in the background**, never under a short foreground `timeout` (an aborting
   run takes ~4 min).
 - **Never broad `pkill -f`** for cleanup: it killed my own shell and likely a peer's run. Kill by exact

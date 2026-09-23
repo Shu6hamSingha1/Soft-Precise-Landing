@@ -146,3 +146,9 @@ both read the same `zf` for `project_marker_v_frame`.
 saturation): 9/10 abort with the identical descent stall; the single "landing" (Linear) is
 a ground impact beside the platform (uz 0.023m = 0.76m below deck level, xy_err 1.5m, 318 m/s^2 spike, descent_anomaly ASCENDING) -- the earlier deck-heave explanation was WRONG (checked 2026-09-23 night). max|B_T| bounded 3-11 in all reps. Neither fix changes the outcome -- root cause
 (pure regulator converges to exact hover, no physical contact) is unchanged.
+
+**2026-09-24 variance check confirms it at n=4 per case:** cho2022 aborted 8/8 (IC1 x4, Lissajous x4),
+every one the stall watchdog (ends 25.00 s after the last >0.3 m descent). New detail: on the moving
+Lissajous target it does NOT park flat -- it bottoms out ~0.53 m, then drifts back UP to 0.8-1.0 m
+while tracking, until the watchdog fires. Same root cause (no mechanism to force contact), different
+shape. See the cross-baseline table in any baseline MANIFEST.
