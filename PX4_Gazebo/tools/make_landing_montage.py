@@ -50,7 +50,8 @@ _INK = "#141414"
 
 
 def load_series(run_dir):
-    """Ground-Truth series TRIMMED to touchdown (first min-altitude sample):
+    """Ground-Truth series TRIMMED to touchdown (first min-altitude sample) for a run
+    that actually landed; full (UNTRIMMED) series for one that didn't.
     full 3D UAV & target tracks + |relative position| (incl. z) + |relative velocity|."""
     gt = np.load(os.path.join(run_dir, "Ground_Truth.npy"), allow_pickle=True).item()
     up, tp = gt["UAV Pose"], gt["Target Pose"]
@@ -66,7 +67,31 @@ def load_series(run_dir):
     rvel_vec = np.stack([np.gradient(rel[:, i]) / dt for i in range(3)], axis=1)
     rvel = np.linalg.norm(rvel_vec, axis=1)                   # |relative velocity|
     rvel = np.convolve(rvel, np.ones(7) / 7, mode="same")
-    itd = int(np.argmin(uz)) + 1                              # touchdown = first min-altitude sample
+    # BUG FIX (2026-09-23, user-reported plot/chase-cam desync on baseline runs,
+    # worst on cho2022/FF-IBVS which never lands): argmin(uz) assumes the GLOBAL
+    # altitude minimum is touchdown. That's true for a run that actually landed, but
+    # for one that stalled/hovered/aborted (never reaching the ground), the "minimum"
+    # is just SENSOR NOISE somewhere in a long, otherwise-flat hover plateau -- e.g.
+    # cho2022/IC1 hovers at ~0.497m from t=8.9s to t=31.7s, and argmin picked a
+    # 1mm noise dip at t=22.1s, silently discarding the last ~9.6s of real (still
+    # hovering) flight that the chase/onboard videos DO record in full. The montage's
+    # own frame count/duration is derived from this trimmed series, so the composited
+    # video was ALSO truncated ~10s short of the real chase footage -- a genuine
+    # video/plot-content mismatch, not just a plot cursor issue.
+    # Fix: only trust the argmin-touchdown trim when Ground_Truth.npy's own SoftPrecise
+    # dict says the run actually landed (has a real xy_err) -- that dict is populated by
+    # the SAME landing-detection logic the harness itself uses to declare touchdown, so
+    # it's a far more reliable signal than a bare argmin. If the run never landed
+    # (empty dict / xy_err is None, as with every aborted cho2022 rep), use the FULL,
+    # untrimmed series so the plot panel spans exactly what the video actually shows.
+    landed = gt.get("SoftPrecise", {}).get("xy_err") is not None
+    if landed:
+        itd = int(np.argmin(uz)) + 1                          # touchdown = first min-altitude sample
+    else:
+        itd = n
+        print(f"[montage] WARNING: {run_dir} never landed (no SoftPrecise.xy_err) -- "
+              f"NOT trimming to an argmin(uz) touchdown guess; using the full {n}-sample "
+              f"series so plots match the full recorded video.")
     sl = slice(0, itd)
     return dict(t=t[sl], ux=ux[sl], uy=uy[sl], uz=uz[sl], tx=tx[sl], ty=ty[sl], tz=tz[sl],
                 rpos=rpos[sl], rvel=rvel[sl])
