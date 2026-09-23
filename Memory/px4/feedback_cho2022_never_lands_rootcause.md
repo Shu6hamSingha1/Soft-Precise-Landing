@@ -73,3 +73,44 @@ near-singular / why the law has no overshoot mechanism, not just retarget the se
 Left `BASELINE_CHO_DEPTH_TARGET` as an env-tunable default-off knob for further
 investigation; the campaign's recorded cho2022 data (0/10 landed) is UNCHANGED --
 this was a one-off diagnostic rep, not a re-recording of the dataset.
+
+**Follow-up investigation (2026-09-23, same day): traced the B_T blow-up mechanism
+precisely (not just "near-singular", the actual chain).** Quantified with real numbers,
+not hand-waving:
+
+1. `Ls`'s condition number DOES grow substantially as z shrinks (rebuilt Ls with the
+   code's actual 5-point marker geometry: cond=10 at z=0.5m -> cond=434 at the code's
+   own z=0.01m floor, a ~40x growth) but feeding this through pinv with plausible
+   pixel errors alone only produced sub-1-m/s velocities -- NOT the observed millions.
+   `Ls` growing ill-conditioned is real but not sufficient on its own.
+2. **Found a genuine latent bug along the way:** `Cho2022.step()`'s `use_sq_comp`
+   safety path only fires `if N==4`, but `marker_key_points()` always returns 5 points
+   (4 arm tips + 1 asymmetric stub at x=2.29, >2x outside the square's +-1.10
+   half-width) -- so `use_sq_comp=True` in `K_CHO2022` is DEAD CODE, never actually
+   applied. Doesn't explain the blow-up by itself but is worth fixing regardless.
+3. **The actual smoking gun is in `accel_to_rate_thrust` (src/baselines.py):**
+   `B_T = mass*(I_a_cd[2]+G) / max(cos(roll),1e-6) / max(cos(pitch),1e-6)` where
+   roll/pitch are the VEHICLE'S ACTUAL REALIZED ATTITUDE (not the desired one) and
+   the guard floor is only `1e-6` -- far too permissive. Back-of-envelope check
+   against the real flight data: at t=8.54s, I_a_z=-11.2 -> (I_a_z+g)~-1.4, mass~1.5kg
+   -> numerator ~-2.1; divided by the 1e-6 floor gives ~-2,100,000, closely matching
+   the observed -2,971,096.
+
+**Mechanism, end to end:** as z shrinks near touchdown, Ls's growing ill-conditioning
+amplifies noise/error into an increasingly aggressive commanded acceleration
+DIRECTION (Rd=-I_a/|I_a| can swing sharply even for a modest-magnitude I_a change).
+The attitude-rate loop chases that abrupt direction change aggressively; if the REAL
+vehicle actually tips toward gimbal-lock during that chase, B_T's division by
+cos(roll)*cos(pitch) of the ACTUAL attitude explodes -- a genuine near-flip event
+triggered by the depth-scaled IBVS gain growing right at the most sensitive moment,
+not a benign numerical artifact. This is architecturally UNIQUE to cho2022 among the
+4 baselines: lin2022/zhang2026 are PBVS (no image-Jacobian depth division at all),
+lin2023's IBVS uses area-RATIO moment features (self-normalizing, depth-invariant by
+construction, no direct 1/z division) -- cho2022 is the only one using a raw
+classical image Jacobian with explicit, barely-guarded division by shrinking z.
+
+Not fixed in this session (diagnostic only, per user's "investigate" request, not
+"fix"): candidates for a real fix would be (a) an actual B_T saturation/cap instead of
+the 1e-6 floor, (b) a sign-preserving z clamp, (c) actually wiring use_sq_comp to
+apply regardless of N (or dropping the stub point for Cho2022 specifically), (d) a
+depth-independent (moment/ratio-based) reformulation matching lin2023's approach.
