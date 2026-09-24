@@ -59,6 +59,13 @@ only records the arc, the final state, and what is still open).
   0/32 precise+soft. The earlier "zf fix improved lin2023" claim is unsupported. Only 2 of 10 cases
   repeated. Full table in every baseline MANIFEST. Repeats untracked in RecordBaseline_dev (not promoted).
   **Paper tables need several runs per case.**
+  **Validity check (2026-09-24):** a peer session left UNCOMMITTED edits in the working tree that landed
+  mid-run (01:32 `cross_marker_detector.py`, 01:58 `controller.py`) -- my earlier "nothing changed" check
+  only looked at commits. Verified no effect on the baseline runs: the controller edit is a default-off
+  diagnostic knob (`PLASMC_GT_S_HOLD`) on the PLASMC path; the detector edit is a same-values perf
+  refactor (`.tolist()`); `_baselineStep` is GT-only; and the baseline control loop runs at 100-125 Hz
+  near touchdown (not perception-gated), identical before/after the edit. Lesson: check `git diff`
+  (working tree), not just `git log`, when asserting code was unchanged across a run window.
 
 ## Process lessons (this session's own mistakes)
 - **Don't trust a flat-hover heuristic to classify aborts on a moving target** -- verify the abort
