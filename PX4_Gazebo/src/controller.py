@@ -776,6 +776,28 @@ class Controller(Thread):
         # overflow. Restores the recovery authority the back-mapped barrier collapses + the
         # ratio clamp freezes. Default 0.0 = OFF.
         self._sen_recovery_k = float(os.environ.get("PLASMC_SEN_RECOVERY_K", "0.0"))
+        # BOUNDED LOSS HANDLING of s (PLASMC_S_LOSS_FADE, 2026-09-24, default "0" = off).
+        # When the detector refuses (marker partly out of frame, terminal overfill), perception
+        # keeps serving its LAST s. The outer loop's P term then demands the same lateral
+        # correction for as long as the loss lasts -> on a MOVING target the drone chases a frozen
+        # offset while the true bearing drifts away (Circular deck, stroke detector: tracked to
+        # 0.03 down to 0.32 m, refused at ~0.2 m, s held -> 1.58 m miss; the same frozen-s runaway
+        # as the legacy rover corner-lock at 4 m). Policy, driven ONLY by the age of s (time since
+        # perception last produced a fresh s -- scale-free, depth-free, no altitude):
+        #   age <= T_HOLD (0.2 s)    : unchanged (a few frames of hold is harmless; see gthold)
+        #   T_HOLD < age <= +T_FADE  : position error s_e_n fades linearly to 0 AT ITS SOURCE (like the
+        #                              terminal-commit ramp -> covers the live combined barrier); the PID
+        #                              integral is frozen (stale error is not tracking error)
+        #   beyond                   : zero position error -> the flow loop drives h -> h_d,
+        #                              i.e. null relative lateral velocity: follow the target's
+        #                              motion and keep descending instead of chasing.
+        # Re-acquisition restores the demand through the existing ds_d LPF.
+        # Applies only when s comes from PERCEPTION (not GT-fed s).
+        self._s_loss_fade = os.environ.get("PLASMC_S_LOSS_FADE", "0") == "1"
+        self._s_loss_hold = float(os.environ.get("PLASMC_S_LOSS_HOLD_S", "0.2"))  # > healthy s age (stroke gap + latency: med 0.11, max ~0.18 s in flight)
+        self._s_loss_tfade = float(os.environ.get("PLASMC_S_LOSS_FADE_S", "0.3"))
+        self._s_age = 0.0
+        self._s_loss_w = 1.0
         # CV-KF for V_ds (combined-barrier centroid rate). Default-off (PLASMC_VDS_KF=0 → the
         # MATLAB-parity smooth4(backward finite-diff)). When ON: a constant-velocity Kalman filter
         # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
@@ -2217,6 +2239,8 @@ class Controller(Thread):
         # euler_d stores (phi_d, theta_d, psi_d) for backward-compatible
         # plotting; the active rate command comes from e_R, not Euler PD.
         self._euler_d = []
+        self._s_loss_w_log = []   # PLASMC_S_LOSS_FADE outer-loop weight (1 = normal, 0 = faded out)
+        self._s_age_log = []      # age of the s fed to the outer loop (s); 0 when s is GT
         self._yaw_c_log = []  # measured-attitude yaw (compass or alpha-derived) fed into theta_d/phi_d -- see _attCtrl; added 2026-08-25, ported from Hardware, to directly validate the BODY_YAW_SOURCE=alpha / GT_FEEDBACK yaw_c bug fix
         self._e_R_log = []
         self._a_v = []
@@ -2449,6 +2473,12 @@ class Controller(Thread):
                                 if self._gt_s_held is not None:
                                     feature_param = np.array(feature_param, dtype=float)
                                     feature_param[0:2] = self._gt_s_held
+                    # age of the s about to be used: only meaningful when s is PERCEPTION's
+                    # (full perception, or GT_ABLATE leaving s to perception); GT s is fresh.
+                    _abl_s = getattr(self, "_gt_ablate", set())
+                    _s_perc = (self._gt_feedback is None
+                               or (bool(_abl_s) and 's' not in _abl_s))
+                    self._s_age = (float(getattr(self._img_node, "S_AGE", 0.0)) if _s_perc else 0.0)
                     self._updateImgFeatureParam(feature_param)
                     # Append _w_i BEFORE _updateOptFlow — the latter now uses
                     # self._w_i[-1] (MATLAB V_w) and would IndexError on the
@@ -2658,6 +2688,17 @@ class Controller(Thread):
         if self._terminal_commit and self._committed and self._tc_commit_t is not None:
             _a = min(1.0, (self._t[-1] - self._tc_commit_t) / self._tc_ramp_s) if self._tc_ramp_s > 0 else 1.0
             self._s_e_n[-1] = (1.0 - _a) * self._s_e_n[-1]
+        # PLASMC_S_LOSS_FADE (see __init__): fade the POSITION error at its source while s is
+        # stale -- same mechanism as the terminal-commit ramp above, so zeta_r / S_r, the funnel-ref
+        # _hd_rate AND the chi_r*zeta_r surface term (combined barrier, the live mode, which never
+        # forms V_ds_d) or V_ds_d (back-mapped mode) all fade consistently, while dzeta_r / the flow
+        # loop stay live (relative-velocity nulling). s itself is untouched (h_d_noS keeps FF(s)).
+        self._s_loss_w = 1.0
+        if self._s_loss_fade and self._s_age > self._s_loss_hold:
+            self._s_loss_w = max(0.0, 1.0 - (self._s_age - self._s_loss_hold) / max(self._s_loss_tfade, 1e-3))
+            self._s_e_n[-1] = self._s_loss_w * self._s_e_n[-1]
+        self._s_loss_w_log.append(self._s_loss_w)
+        self._s_age_log.append(self._s_age)
         # SOFT-BREACH source-fake (p_r): on a position-funnel breach, soft-clamp the BY-PRODUCT s_e_n to
         # FRAC*last-good HERE, at the source. Every downstream consumer (zeta_r barrier, outer PID, SEN-funnel,
         # integral, commit, h_d funnel-ref) then auto-adjusts — no per-consumer patch needed. Same pattern as
@@ -2760,8 +2801,9 @@ class Controller(Thread):
             # from ground truth, NOT perception -- so gating the integrators on a PERCEPTION
             # freshness flag throttles the control law from a signal that is irrelevant to
             # the data it is actually integrating. Default "1" = current behavior, unchanged.
-            _feat_fresh = (bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
-                           or not self._fresh_gate_integ)
+            _feat_fresh = ((bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+                            or not self._fresh_gate_integ)
+                           and not (self._s_loss_fade and self._s_age > self._s_loss_hold))
             if len(self._is_e_n) == 0:
                 self._is_e_n.append(np.zeros(2))
             elif not _feat_fresh:
@@ -4617,6 +4659,8 @@ class Controller(Thread):
             "B_T(t)": self._B_T,
             "EA_d(t)": self._euler_d,
             "yaw_c(t)": self._yaw_c_log,
+            "s_age(t)": self._s_age_log,
+            "s_loss_w(t)": self._s_loss_w_log,
             "e_R(t)": self._e_R_log,
             # visibility diagnostics
             "theta_cone(t)": self._theta_cone_log,             # ||y_star||, commanded safe-lean magnitude

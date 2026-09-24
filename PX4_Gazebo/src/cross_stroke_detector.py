@@ -213,7 +213,20 @@ def detect_stroke(frame_bgr, track_state=None):
     in track_state and tried first next frame (clean scenes never pay for chroma)."""
     ts = track_state if track_state is not None else {}
     pref = ts.get("stroke_chan", CHANNELS[0])
-    order = [pref] + [c for c in CHANNELS if c != pref]
+    locked = ts.get("stroke_bbox") is not None and ts.get("stroke_miss", 0) < TRACK_MAX_MISSES
+    # STALL GUARD (2026-09-24): with an active lock, a refusal stays on the LOCKED channel -- the
+    # cascade (3 channels x full-frame x all scales, ~100 ms offline, ~300-400 ms live) froze
+    # perception for 0.4 s on single refusals in flight. Chroma is only searched on (re)acquisition.
+    others = [c for c in CHANNELS if c != pref]
+    if locked or not others:
+        order = [pref]
+    else:
+        # unlocked (re-acquiring): preferred channel + ONE other in rotation per frame -- full
+        # coverage over a few frames at ~2 searches/frame instead of 3 (the full cascade on every
+        # frame of a sustained loss ran ~80 ms offline, i.e. ~12 Hz live while re-acquiring)
+        k = ts.get("stroke_rr", 0) % len(others)
+        ts["stroke_rr"] = k + 1
+        order = [pref, others[k]]
     cache, first = {}, None
     for k, ch in enumerate(order):
         det = _detect_on(_channel(frame_bgr, ch, cache), ts if k == 0 else {})
