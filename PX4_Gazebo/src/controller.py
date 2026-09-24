@@ -793,7 +793,9 @@ class Controller(Thread):
         #                              motion and keep descending instead of chasing.
         # Re-acquisition restores the demand through the existing ds_d LPF.
         # Applies only when s comes from PERCEPTION (not GT-fed s).
-        self._s_loss_fade = os.environ.get("PLASMC_S_LOSS_FADE", "0") == "1"
+        # DEFAULT ON (2026-09-25, user-approved): removes the frozen-s runaway (Sinusoidal worst 1.276 -> 0.211 m),
+        # stationary IC1-5x5 unchanged 25/25. PLASMC_S_LOSS_FADE=0 restores the old hold-forever behaviour.
+        self._s_loss_fade = os.environ.get("PLASMC_S_LOSS_FADE", "1") == "1"
         self._s_loss_hold = float(os.environ.get("PLASMC_S_LOSS_HOLD_S", "0.2"))  # > healthy s age (stroke gap + latency: med 0.11, max ~0.18 s in flight)
         self._s_loss_tfade = float(os.environ.get("PLASMC_S_LOSS_FADE_S", "0.3"))
         self._s_age = 0.0
