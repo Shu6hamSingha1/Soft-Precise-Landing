@@ -3521,6 +3521,15 @@ class CrossMarkerNode(Thread):
                 print(f"[CrossMarkerNode] frame processing error: {e}")
                 time.sleep(0.01)
 
+    @property
+    def S_AGE(self):
+        """Sim-seconds since perception last produced a FRESH s (confirmed detection). Read by
+        controller.py's PLASMC_S_LOSS_FADE bounded loss handling. inf before the first detection."""
+        st = getattr(self._perception, "_s_stamp", None)
+        if st is None:
+            return float("inf")
+        return max(0.0, float(self._time.perf_counter()) - float(st))
+
     def getImgFeatureParam(self):
         # CROSS_S_PREDICT (2026-09-24, default "0" = off): LAG COMPENSATION of s. A frame's s is
         # served until the next frame is processed, and on a MOVING target it goes stale: with
