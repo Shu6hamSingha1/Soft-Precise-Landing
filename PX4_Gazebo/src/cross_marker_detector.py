@@ -2104,6 +2104,10 @@ def multiscale_good_features(gray, mask, max_corners=80, quality=None, min_dist=
 
 
 DETECT_WORK_MAX_PX = int(os.environ.get("CROSS_DETECT_WORK_MAX_PX", "200"))
+# CROSS_DETECTOR (2026-09-24): "legacy" (default, everything in this module) or "stroke" --
+# the locked-design stroke detector (src/cross_stroke_detector.py: multi-scale ridge strokes +
+# X-junction confirm, no absolute gate, no mask-centroid proxy). Same CrossMarkerDetection out.
+DETECTOR = os.environ.get("CROSS_DETECTOR", "legacy").strip().lower()
 
 
 def _scale_detection(det, f, crop_shape):
@@ -2171,6 +2175,9 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     full-frame frames the lock is presumed stale and stays cleared until a fresh
     full-frame detection re-establishes it.
     """
+    if DETECTOR == "stroke":
+        from cross_stroke_detector import detect_stroke
+        return detect_stroke(frame_bgr, track_state=track_state)
     if (track_state is not None and track_state.get('last_bbox') is not None
             and track_state.get('miss_count', 0) < TRACK_MAX_MISSES):
         H, W = frame_bgr.shape[:2]

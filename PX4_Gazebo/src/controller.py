@@ -309,6 +309,21 @@ class Controller(Thread):
                 _abl = os.environ.get("GT_ABLATE", "all").strip().lower()
                 self._gt_ablate = set() if _abl in ("all", "") else set(c.strip() for c in _abl.split(","))
                 print(f"[controller] {_flag_label}=1 — GT channels: {_abl} (perception for the rest)")
+                # GT-s STALENESS EMULATION (2026-09-24, diagnostic, default "0" = off): when s comes
+                # from GT, refresh it ONLY when the perception pipeline finishes a new frame, and hold
+                # it in between -- GT values with perception's live update timing. Separates "perception
+                # s is stale near touchdown" (48-96 ms frame gaps below 1 m) from "perception s is noisy
+                # near touchdown" as the cause of the sperc-vs-GT terminal gap (SPercGTFB_AB).
+                #   'stamp'   : GT s at the new frame's CAPTURE stamp (hold + processing latency)
+                #   'arrival' : GT s when the frame finishes (hold only)
+                self._gt_s_hold = os.environ.get("PLASMC_GT_S_HOLD", "0").strip().lower()
+                if self._gt_s_hold not in ("stamp", "arrival"):
+                    self._gt_s_hold = None
+                self._gt_s_hist = deque(maxlen=400)   # (sim t, gt s_xy), ~4.8 s at 83 Hz
+                self._gt_s_held = None
+                self._gt_s_last_ps = None
+                if self._gt_s_hold:
+                    print(f"[controller] PLASMC_GT_S_HOLD={self._gt_s_hold} — GT s held at perception update times")
 
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
@@ -2419,6 +2434,21 @@ class Controller(Thread):
                                 if 'h' in _abl:   opt_flow_ang_vel[0:2]  = _gt_of[0:2]
                                 if 'hz' in _abl:  opt_flow_ang_vel[2]    = _gt_of[2]
                                 if 'wz' in _abl:  opt_flow_ang_vel[5]    = _gt_of[5]
+                            if self._gt_s_hold and (not _abl or 's' in _abl):
+                                _tnow = self._time.perf_counter()
+                                self._gt_s_hist.append((_tnow, np.array(_gt_fp[0:2], dtype=float)))
+                                _ps = getattr(getattr(self._img_node, '_perception', None), '_last_t', None)
+                                if _ps is not None and _ps != self._gt_s_last_ps:
+                                    self._gt_s_last_ps = _ps
+                                    if self._gt_s_hold == 'stamp' and len(self._gt_s_hist) > 1:
+                                        _th = np.array([h[0] for h in self._gt_s_hist])
+                                        _sh = np.array([h[1] for h in self._gt_s_hist])
+                                        self._gt_s_held = np.array([np.interp(_ps, _th, _sh[:, k]) for k in range(2)])
+                                    else:
+                                        self._gt_s_held = np.array(_gt_fp[0:2], dtype=float)
+                                if self._gt_s_held is not None:
+                                    feature_param = np.array(feature_param, dtype=float)
+                                    feature_param[0:2] = self._gt_s_held
                     self._updateImgFeatureParam(feature_param)
                     # Append _w_i BEFORE _updateOptFlow — the latter now uses
                     # self._w_i[-1] (MATLAB V_w) and would IndexError on the

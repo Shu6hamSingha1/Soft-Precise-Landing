@@ -47,6 +47,8 @@ from gt_optical_flow import compute_gt_flow
 # a dict; a genuinely new segmentation path gets a code flag + an entry here.
 VARIANTS = {
     "baseline":   {"CROSS_ADAPT_GATE": "0"},                                   # legacy inRange(V<=100)
+    "current":    {},                                                          # the shipped defaults, whatever they are
+    "stroke":     {"CROSS_DETECTOR": "stroke"},                                # 2026-09-24 locked-design stroke detector
     "adapt":      {"CROSS_ADAPT_GATE": "1"},                                   # CLAHE + adaptiveThreshold (+ Otsu fallback)
     "adapt_c12":  {"CROSS_ADAPT_GATE": "1", "CROSS_ADAPT_C": "12"},            # stricter local-contrast demand
     "adapt_b71":  {"CROSS_ADAPT_GATE": "1", "CROSS_ADAPT_BLOCK": "71"},        # larger local window
@@ -79,7 +81,13 @@ VARIANTS = {
                                   "CROSS_BALANCE_CONFIRM": "1", "CROSS_RING_BALANCE_RESCUE_MARGIN": "1.0"},
 }
 _GT_STRICT = os.environ.get("CROSS_GT_WINDOW_STRICT", "1") == "1"
-ALT_BANDS = [(4.0, 6.0), (3.0, 4.0), (2.0, 3.0), (1.3, 2.0), (0.7, 1.3)]
+ALT_BANDS = [(4.0, 6.0), (3.0, 4.0), (2.0, 3.0), (1.3, 2.0), (0.7, 1.3), (0.3, 0.7), (0.0, 0.3)]
+# 2026-09-24: the two terminal bands were missing -- the <0.7 m regime is exactly where the
+# stationary perception-s landing is lost (SPercGTFB_AB), so it was never being scored.
+# GT reference: "true" = V_s_true (x/z, what the camera measures; default) or "reg" = V_s_g
+# (x/(z+0.2), the GT-FB feed; the pre-2026-09-24 reference -- books correct close-range
+# bearings as 30-90% errors). CROSS_EVAL_REF or --ref.
+_REF = os.environ.get("CROSS_EVAL_REF", "true")
 
 # --------------------------------------------------------------- gt reference --
 def _perc_for(run_dir):
@@ -94,30 +102,55 @@ def _perc_for(run_dir):
     return p
 
 
+def _meta(run_dir):
+    """Optional per-set meta.json (e.g. {"marker_dz": 0.5, "world": "rover_cross"}).
+    Rover worlds need marker_dz=0.5 (marker sits on the 0.5 m platform); default 0.0."""
+    mp = os.path.join(run_dir, "meta.json")
+    if os.path.isfile(mp):
+        import json
+        return json.load(open(mp))
+    return {}
+
+
 def _load_run(run_dir):
     img = np.load(os.path.join(run_dir, "Img_Data.npy"), allow_pickle=True).item()
-    gt = compute_gt_flow(run_dir)
+    gt = compute_gt_flow(run_dir, marker_dz=_meta(run_dir).get("marker_dz"))
     return img, gt
+
+
+def _frame_rows(raw_dir, img):
+    """[(frame_path, Img_Data row)] -- EXACT via frames.tsv (saved-frame -> capture stamp,
+    written by CrossMarkerNode since 2026-09-24) when present, else the legacy tail offset."""
+    fs = sorted(glob.glob(os.path.join(raw_dir, "f*.png")))
+    tsv = os.path.join(raw_dir, "frames.tsv")
+    if os.path.isfile(tsv):
+        st = np.asarray(img["Stamp"], float)
+        lut = {}
+        for j, v in enumerate(st):
+            lut.setdefault(v, j)
+        out = []
+        for line in open(tsv).read().splitlines()[1:]:
+            k, v = line.split("\t")
+            fp = os.path.join(raw_dir, f"f{int(k):05d}.png")
+            j = lut.get(float(v))
+            if j is not None and os.path.isfile(fp):
+                out.append((fp, j))
+        return out
+    off = len(img["Time"]) - len(fs)                  # recorded = tail N frames
+    return [(fp, off + i) for i, fp in enumerate(fs) if 0 <= off + i < len(img["Time"])]
 
 
 # ----------------------------------------------------------------- one (v,run) --
 def _score(run_dir, raw_dir, perc):
     img, gt = _load_run(run_dir)
     St = gt["start_time"]; tg = gt["t_g"]
-    Vsg = gt["V_s_g"]; altg = np.abs(gt["alt"]); alphag = gt["alpha"]
+    Vsg = gt["V_s_true"] if _REF == "true" else gt["V_s_g"]; altg = np.abs(gt["alt"]); alphag = gt["alpha"]
     it = np.asarray(img["Time"], float)
     iq = img["Quat"]
-    M = len(it)
-    fs = sorted(glob.glob(os.path.join(raw_dir, "f*.png")))
-    N = len(fs)
-    off = M - N                                       # recorded = tail N frames
     ts = {"last_bbox": None, "miss_count": 0}
     n_outside = [0]
     rows = []
-    for i, fp in enumerate(fs):
-        j = off + i
-        if j < 0 or j >= M:
-            continue
+    for fp, j in _frame_rows(raw_dir, img):
         t = it[j] - St
         # ⛔ GT-WINDOW GUARD (2026-09-03). np.interp CLAMPS outside t_g instead of
         # rejecting, so frames recorded after the GT log ends were being scored against
@@ -174,6 +207,9 @@ def _agg(rows, focal):
         "err_med_n": float(np.median(eok)) if len(eok) else np.nan,
         "err_med_px": float(np.median(eok) * focal) if len(eok) else np.nan,
         "hit_015": 100.0 * np.mean(eok < 0.15) if len(eok) else np.nan,   # frac of ok dets within 0.15 norm (~20px) of GT
+        # POISON rate: confident-wrong -- ok detections > 0.15 off, as a share of ALL scored-
+        # eligible frames. The quantity that flies the drone away (a miss is honest; this is not).
+        "poison": 100.0 * np.sum(eok >= 0.15) / max(len(rows), 1),
         "bands": [],
     }
     from collections import Counter
@@ -181,9 +217,12 @@ def _agg(rows, focal):
     for lo, hi in ALT_BANDS:
         m = (a >= lo) & (a < hi)
         if m.sum() < 3:
-            out["bands"].append((lo, hi, m.sum(), np.nan))
+            out["bands"].append((lo, hi, m.sum(), np.nan, np.nan, np.nan))
             continue
-        out["bands"].append((lo, hi, int(m.sum()), 100.0 * ok[m].mean()))
+        em = e[m & np.isfinite(e)]
+        out["bands"].append((lo, hi, int(m.sum()), 100.0 * ok[m].mean(),
+                             float(np.median(em)) if len(em) else np.nan,
+                             100.0 * np.mean(em < 0.15) if len(em) else np.nan))
     return out
 
 
@@ -196,7 +235,13 @@ def main():
     ap.add_argument("--variant", default=None, choices=list(VARIANTS))
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--label", default="")
+    ap.add_argument("--ref", choices=["true", "reg"], default=None,
+                    help="GT bearing reference: true x/z (default) or reg x/(z+0.2) (pre-2026-09-24)")
     args = ap.parse_args()
+    global _REF
+    if args.ref:
+        _REF = args.ref
+    print(f"[ref] scoring against {'TRUE bearing x/z (V_s_true)' if _REF == 'true' else 'REGULARIZED x/(z+0.2) (V_s_g)'}")
 
     if args.setdir:
         subs = sorted(d for d in glob.glob(os.path.join(args.setdir, "*"))
@@ -217,7 +262,9 @@ def main():
     for nm in names:
         for k in list(os.environ):
             if (k.startswith("CROSS_ADAPT") or k.startswith("CROSS_RING_")
-                    or k in ("CROSS_RING_BALANCE_RESCUE_MARGIN", "CROSS_GATE_MODE", "CROSS_GEOM_CONFIRM", "CROSS_BALANCE_CONFIRM")):
+                    or k.startswith("CROSS_STROKE")
+                    or k in ("CROSS_RING_BALANCE_RESCUE_MARGIN", "CROSS_GATE_MODE", "CROSS_GEOM_CONFIRM", "CROSS_BALANCE_CONFIRM",
+                             "CROSS_DETECTOR")):
                 del os.environ[k]   # GATE_MODE too, else it leaks into later variants
         os.environ.update(VARIANTS[nm])
         importlib.reload(cmd)
@@ -231,11 +278,12 @@ def main():
                 print(f"  {rn:32s}  (no frames scored)")
                 continue
             bands = "  ".join(f"{lo:.1f}-{hi:.1f}:{('%.0f%%' % b) if np.isfinite(b) else '--':>4}"
-                              for lo, hi, n, b in g["bands"])
+                              + (f"/{em:.3f}" if np.isfinite(em) else "")
+                              for lo, hi, n, b, em, hb in g["bands"])
             print(f"  {rn:32s} n={g['n']:4d}  detOK {g['detrate']:5.1f}%   "
                   f"centroid-err med {g['err_med_n']:.3f} ({g['err_med_px']:.1f}px)  "
-                  f"within-0.15 {g['hit_015']:.0f}%  (scored {g['n_scored']})")
-            print(f"      by alt: {bands}")
+                  f"within-0.15 {g['hit_015']:.0f}%  POISON {g['poison']:.1f}%  (scored {g['n_scored']})")
+            print(f"      by alt (detOK/err-med): {bands}")
             if g["topfail"]:
                 print(f"      top-fail: {g['topfail']}")
 

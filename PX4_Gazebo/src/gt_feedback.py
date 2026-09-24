@@ -210,7 +210,12 @@ class GTFeedback:
         # z>0), but a transient/post-touchdown GT glitch could give z<0, which would make
         # (z+Z_REG) flip sign -> wrong-signed bearing/loom. Clamp z>=0 so the regularized
         # depth stays in [Z_REG, inf) (strictly positive) and the feature sign is correct.
-        _zb = max(float(V_x[2]), 0.0) + Z_REG                      # regularized, non-negative V-frame depth
+        # PLASMC_GT_S_Z_REG (2026-09-24, default = Z_REG -> unchanged): regularization for s ONLY
+        # (h keeps Z_REG). A camera measures the TRUE bearing x/z, not x/(z+0.2) -- the two
+        # differ 1.5-1.9x below 0.5 m -- so a small value (e.g. 0.02) makes GT s match what
+        # perception can deliver, to test whether the sperc-vs-GT terminal gap is that 1/z gain
+        # difference rather than perception noise (SPercGTFB_AB).
+        _zb = max(float(V_x[2]), 0.0) + float(os.environ.get("PLASMC_GT_S_Z_REG", Z_REG))
         s_xy = np.array([V_x[0] / _zb, V_x[1] / _zb])
         alpha = float(np.arctan2(np.sin(_asign * ry), np.cos(_asign * ry)))   # wrapped rel-yaw feature (sign per convention above)
         s4 = np.array([s_xy[0], s_xy[1], 1.0, alpha])

@@ -76,11 +76,20 @@ def _v_frame(R):
     return np.column_stack([x, y, z]).T        # body -> V
 
 
-def compute_gt_flow(rep_dir):
+def compute_gt_flow(rep_dir, marker_dz=None):
     """Returns a dict of GT reference signals on the GT time axis t_g (0-based, s):
        t_g, alt, W_x_tu, B_h_g(3), V_h_g(3), loom(=V_h_g[:,2]), alpha(yaw),
-       start_time, and align(t_other, y_other) to resample a measured signal
-       (e.g. Img 'Opt Flow Fused', timestamps absolute) onto t_g."""
+       V_s_g (bearing regularized 1/(z+0.2), = what GT-FB feeds), V_s_true (the TRUE
+       bearing x/z a camera measures, depth floored at 0.02 m), start_time, and
+       align(t_other, y_other) to resample a measured signal (e.g. Img 'Opt Flow Fused',
+       timestamps absolute) onto t_g.
+       marker_dz: per-call marker-above-target-origin offset (m); None = the
+       PLASMC_GT_MARKER_DZ env default (0.0 flat worlds, 0.5 rover worlds).
+
+    ⚠ Score perception s against V_s_true, not V_s_g (2026-09-24): the two differ by
+    (z+0.2)/z -- 1.27x at 0.75 m, 1.5x at 0.4 m, 1.9x at 0.22 m -- so V_s_g books a
+    CORRECT close-range bearing as a 30-90% error."""
+    marker_off = _MARKER_OFF_FLU if marker_dz is None else np.array([0., 0., float(marker_dz)])
     gt = np.load(os.path.join(rep_dir, "Ground_Truth.npy"), allow_pickle=True).item()
     St = float(gt['Start Time'])
     tg = np.asarray(gt['Time'], float)
@@ -102,7 +111,7 @@ def compute_gt_flow(rep_dir):
         Rft = Quaternion([t.orientation.w, t.orientation.x, t.orientation.y, t.orientation.z]).to_DCM()
         Rt  = NED_FROM_ENU @ Rft @ FRD_2_FLU                          # target body-FRD -> NED
         cam_ned    = up  + Ru[i] @ (FRD_2_FLU @ _CAM_OFF_FLU)         # camera position, NED
-        marker_ned = tpp + Rt @ (FRD_2_FLU @ _MARKER_OFF_FLU)         # marker position, NED
+        marker_ned = tpp + Rt @ (FRD_2_FLU @ marker_off)              # marker position, NED
         W_x_tu[i] = marker_ned - cam_ned                              # marker-camera, NED
         # FIXED 2026-07-28 (ported from the analogous Pi derive_pi_cal.py fix,
         # itself validated against this repo's own gt_feedback.py:146 formula
@@ -122,9 +131,12 @@ def compute_gt_flow(rep_dir):
     W_v_tu = _robust_vel(W_x_tu, tg)                                  # NED relative velocity
     B_h_g = np.full((n, 3), np.nan); V_h_g = np.full((n, 3), np.nan)
     V_s_g = np.full((n, 2), np.nan)                                   # GT V-frame centroid bearing
+    V_s_true = np.full((n, 2), np.nan)                                # TRUE bearing x/z (no 0.2 regularization)
     for i in range(n):
         B_x = Ru[i].T @ W_x_tu[i]                                     # NED -> body-FRD (target rel pos)
         V_x = _v_frame(Ru[i]) @ B_x                                   # body -> V (leveled)
+        _zt = max(float(V_x[2]), 0.02)
+        V_s_true[i] = [V_x[0] / _zt, V_x[1] / _zt]
         # BUG FIX (2026-09-08, matches gt_feedback.py's clamp exactly): depth must be
         # non-negative -- the camera is physically above the marker (gear/mount keeps
         # z>0), but a transient/post-touchdown GT glitch could give z<0, which would
@@ -143,7 +155,8 @@ def compute_gt_flow(rep_dir):
         B_h_g[i] = B_v / (zB + 0.2)
         V_h_g[i] = V_v / (zB + 0.2)
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2], W_x_tu=W_x_tu,
-               B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
+               B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g,
+               V_s_true=V_s_true)
 
     def align(t_abs, y):
         """Resample a measured signal y sampled at ABSOLUTE timestamps t_abs
