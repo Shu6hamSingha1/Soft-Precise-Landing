@@ -64,6 +64,14 @@ export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
 # above its base (rover_aruco SDF), unlike the flat stationary aruco marker. So
 # the GT camera-to-marker depth needs this offset here (gt_feedback default is
 # 0.0 for flat-marker worlds). Camera offset (0.20 m) is universal -> its default.
+# rover_cross_deck (2026-09-24): the GT target there (POSE_IDX_TARGET=1) is the standalone
+# `deck_platform` model itself (target z 0.26-0.29 m + deck roll/pitch in recorded GT), whose
+# marker_visual sits +0.201 m above ITS origin -- not the rover base. The 0.5 default placed the
+# GT marker 0.3 m too high (plus ~5 cm lateral on a 10-deg deck tilt): two independent detectors
+# read 24-32% "poison" vs GT on the Circular deck frames, 0% (err 0.006) with 0.201.
+if [ "$WORLD" = "rover_cross_deck" ]; then
+  export PLASMC_GT_MARKER_DZ="${PLASMC_GT_MARKER_DZ:-0.201}"
+fi
 export PLASMC_GT_MARKER_DZ="${PLASMC_GT_MARKER_DZ:-0.5}"
 
 # HEADLESS=1 -> no Gazebo GUI client, no QGroundControl.
