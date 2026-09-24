@@ -20,8 +20,10 @@ that file's inline comments for the rationale behind each choice. The only
 difference is the input frame: PX4 MAVSDK odometry delivers position_body already
 in NED and q already as the body(FRD)->NED DCM (verified against img_data.py's
 identical `Quaternion([q.w,q.x,q.y,q.z]).to_DCM()` usage for V-frame leveling), so
-there is no NED_FROM_ENU / FRD_2_FLU step here. The target has no tracked
-orientation (static marker) -- its relative-yaw contribution is 0 by construction.
+there is no NED_FROM_ENU / FRD_2_FLU step here. The target heading is the
+pre-arm vehicle heading snapshotted with the marker position (2026-09-24). Because
+the input yaw is NED, alpha is NEGATED relative to gt_feedback.py so that it
+keeps the ENU convention (see the ALPHA SIGN FIX comment in update()).
 
 Outputs match the getters they replace:
   s    (4-vec) = [V_s_x, V_s_y, 1.0, alpha]     <- getImgFeatureParam()
@@ -159,8 +161,13 @@ class HWPosFeedback:
 
         W_x_tu = marker_ned - cam_ned                          # marker - camera, NED
 
-        # relative yaw (uav - target); target has no tracked orientation -> 0
-        ry = _yaw_from_R(Ru)
+        # relative yaw (uav - target), NED. The target heading is the pre-arm vehicle heading
+        # snapshotted with the marker position (see HWPoseNode.snapshotMarkerFromCurrentPosition);
+        # identity (north) if no snapshot was taken or PLASMC_HW_TARGET_YAW_SNAPSHOT=0.
+        qt = target_pose.orientation
+        Rt = Quaternion([qt.w, qt.x, qt.y, qt.z]).to_DCM()
+        ry = _yaw_from_R(Ru) - _yaw_from_R(Rt)
+        ry = float(np.arctan2(np.sin(ry), np.cos(ry)))
         if self._last_ry is not None:
             ry = self._last_ry + np.arctan2(np.sin(ry - self._last_ry), np.cos(ry - self._last_ry))
         self._last_ry = ry
@@ -198,7 +205,17 @@ class HWPosFeedback:
         _s_mag = float(np.linalg.norm(s_xy))
         if _s_mag > _s_max:
             s_xy = s_xy * (_s_max / _s_mag)
-        alpha = float(np.arctan2(np.sin(_asign * ry), np.cos(_asign * ry)))
+        # ALPHA SIGN FIX (2026-09-24): ry here is a NED yaw (MAVSDK body-FRD->NED quaternion),
+        # but PX4 gt_feedback.py's ry is ENU (_yaw_of on the Gazebo quaternion), so there
+        # alpha = +psi_ENU = -psi_NED -- the convention the controller's yaw law is built on
+        # (alpha_dot = -psi_dot_NED, manuscript). The port kept alpha = +_asign*ry, i.e.
+        # +psi_NED: the OPPOSITE sign, so the yaw ASMC fed back positively. In the 2026-09-24
+        # session e_a grew away from its initial offset in 31/33 flights (e.g. -33 -> -75 deg),
+        # with the measured yaw rate following u_a. Negate here to express alpha in the ENU
+        # convention. Do NOT "fix" this via PLASMC_GT_ALPHA_SIGN=-1: that would also flip w[2]
+        # below, which is ALREADY right (-_asign*d(ry_NED)/dt = +_asign*d(ry_ENU)/dt, matching
+        # PX4's current w[2] = +_asign*d(ry)/dt). See FLIGHT_TEST_ANALYSIS_PROCEDURE.md #17.
+        alpha = float(np.arctan2(np.sin(-_asign * ry), np.cos(-_asign * ry)))
         s4 = np.array([s_xy[0], s_xy[1], 1.0, alpha])
 
         # --- flow h (V-frame rel velocity / depth) + w_z (rel yaw rate) ---
@@ -296,9 +313,23 @@ class HWPoseNode:
         if self._explicit_override:
             return
         pb = self._fc.getPosBody()
-        self._target = _Pose(_Vec3(pb.x_m, pb.y_m, pb.z_m), _Quat(1., 0., 0., 0.))
+        # TARGET HEADING SNAPSHOT (2026-09-24, with the alpha sign fix): PX4's GT-FB alpha is the
+        # yaw RELATIVE to the target (ry = yaw(uav) - yaw(target)). Here the target had identity
+        # orientation, so the (now correctly signed) yaw loop would turn the vehicle to face NORTH:
+        # takeoff headings in the 2026-09-24 session ranged -38..+100 deg, i.e. up to ~100 deg of
+        # yaw slew during descent. The vehicle sits on the marker at this moment, so its heading
+        # is the natural target reference; with alpha_d=0 the loop then holds the launch heading.
+        # PLASMC_HW_TARGET_YAW_SNAPSHOT=0 restores the north reference.
+        if os.environ.get("PLASMC_HW_TARGET_YAW_SNAPSHOT", "1") == "1":
+            q = self._fc.getQuat()
+            _q = _Quat(q.w, q.x, q.y, q.z)
+            _yaw_t = np.degrees(_yaw_from_R(Quaternion([q.w, q.x, q.y, q.z]).to_DCM()))
+        else:
+            _q = _Quat(1., 0., 0., 0.)
+            _yaw_t = 0.0
+        self._target = _Pose(_Vec3(pb.x_m, pb.y_m, pb.z_m), _q)
         print(f"[hw_pos_feedback] marker position snapshotted from current pose: "
-              f"({pb.x_m:.3f}, {pb.y_m:.3f}, {pb.z_m:.3f}) NED")
+              f"({pb.x_m:.3f}, {pb.y_m:.3f}, {pb.z_m:.3f}) NED, target heading {_yaw_t:.1f} deg NED")
 
     def getPose(self):
         pb = self._fc.getPosBody()

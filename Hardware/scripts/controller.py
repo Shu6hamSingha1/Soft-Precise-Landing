@@ -469,8 +469,9 @@ class Controller(Thread):
         # Global (all-altitude) vertical-accel cap -- bounds |a_u_z| so a stale-perception
         # reacquisition burst (h_z frozen during coast -> real error dumped at once on
         # reacquisition, seen hitting -7.4 m/s^2 in real flight 2026-08-03) can't fire an
-        # aggressive one-shot climb/descent command. 0 = OFF.
-        self._au_max_z = float(os.environ.get("PLASMC_AU_MAX_Z", "0.2"))
+        # aggressive one-shot climb/descent command. 0 = OFF. Default 0.2 -> 3.0 and made
+        # symmetric 2026-09-24 (the old one-sided clamp capped BRAKING -- see the site in PLASMC()).
+        self._au_max_z = float(os.environ.get("PLASMC_AU_MAX_Z", "3.0"))
         self._commit_win = int(os.environ.get("PLASMC_COMMIT_WIN", "7"))   # median window vs extent spikes
         self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
@@ -1848,7 +1849,12 @@ class Controller(Thread):
             # awareness that trips after just 3 misses even while a rescue is
             # successfully covering every one -- gating on it would blind this
             # integral during exactly the window a working rescue is active.
-            _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+            # BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-09-24): s comes from the analytic
+            # feed there (always fresh); the camera's freshness says nothing about it. Same
+            # rationale as the CBF_CORNERS_STALE bypass (2026-08-19). See #19 in
+            # FLIGHT_TEST_ANALYSIS_PROCEDURE.md.
+            _feat_fresh = (self._gt_feedback is not None
+                           or bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True)))
             if len(self._is_e_n) == 0:
                 self._is_e_n.append(np.zeros(2))
             elif not _feat_fresh:
@@ -2165,7 +2171,13 @@ class Controller(Thread):
         # (freeze while the feature measurement feeding zeta is unfresh -- see the
         # matching is_e_n comment above; same 2026-07-30 hardware finding, same
         # FEATURE_PTS_FRESH gate, same reason FEATURE_IS_STALE is the wrong flag).
-        _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+        # BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-09-24): in those modes zeta is built from
+        # the analytic (EKF) feed, which is always fresh, while the camera rarely sees the marker.
+        # Gating on the camera froze izeta at exactly 0 in all 33 flights of the 2026-09-24 session,
+        # so the Omega integral term never acted. Same rationale as CBF_CORNERS_STALE (2026-08-19).
+        # See #19 in FLIGHT_TEST_ANALYSIS_PROCEDURE.md.
+        _feat_fresh = (self._gt_feedback is not None
+                       or bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True)))
         if len(self._izeta) == 0:
             self._izeta.append(np.zeros(N_DIM))
         elif not _feat_fresh:
@@ -2404,12 +2416,20 @@ class Controller(Thread):
             _nag = float(np.linalg.norm(a_u[:2]))
             if _nag > self._au_max_xy:
                 a_u[:2] = a_u[:2] * (self._au_max_xy / _nag)
-        # DESCENT-ONLY a_u_z cap (PLASMC_AU_MAX_Z): bound the DOWNWARD vertical accel at ALL
-        # altitudes; climb direction left uncapped. Found 2026-08-03: a_u_z hit -7.4 m/s^2 as a
+        # SYMMETRIC |a_u_z| cap (PLASMC_AU_MAX_Z). Origin (2026-08-03): a_u_z hit -7.4 m/s^2 as a
         # one-shot correction burst when perception reacquired after a coast during which h_z
-        # stayed frozen near zero (see project_pi_izeta_kappa_ratchet_fix memory). 0 = OFF.
-        if self._au_max_z > 0 and a_u[2] < -self._au_max_z:
-            a_u[2] = -self._au_max_z
+        # stayed frozen near zero (see project_pi_izeta_kappa_ratchet_fix memory).
+        # FIXED 2026-09-24: this was `if a_u[2] < -max: a_u[2] = -max` with max=0.2, commented as a
+        # "descent-only" cap. a_u is NED-down in the V frame (I_a = R a_u - g e3; logs: a_u_z=+0.54
+        # -> I_a_z=-9.27), so NEGATIVE a_u_z is UP. The clamp therefore capped BRAKING at 0.2 m/s^2
+        # and left downward accel unbounded. In the 2026-09-24 session it pinned a_u_z at -0.2 in
+        # 33/33 flights for ~49% of each descent while sigma_z<0 (descending too fast), so the
+        # vertical loop could not absorb even a 0.01 hover-throttle shortfall (~0.27 m/s^2). See
+        # FLIGHT_TEST_ANALYSIS_PROCEDURE.md #18. Now a symmetric magnitude bound. 3.0 still stops
+        # the -7.4 burst, allows arresting 2 m/s within ~0.7 m, and never bound on the downward
+        # side (max +0.79 seen). 0 = OFF.
+        if self._au_max_z > 0:
+            a_u[2] = float(np.clip(a_u[2], -self._au_max_z, self._au_max_z))
         # NOTE: the legacy |a_u|>100 abort was removed. PX4 saturates attitude-
         # rate setpoints internally to physical limits (~±220 deg/s); an
         # over-large a_u from a noisy startup PID firing just produces a
@@ -2483,7 +2503,9 @@ class Controller(Thread):
         # runaway, not garbage). The descent runaway is loom UNDER-scaling -> the controller
         # under-arrests, a loom-cal / descent-gain issue — not a perception-death to freeze through.
         if os.environ.get("YAW_TERMINAL_HOLD", "1") == "1":
-            if self.FEATURE_IS_STALE:
+            # Camera staleness says nothing about alpha under GT/HW_POS feedback (analytic,
+            # always fresh). Bypass it there (2026-09-24, #19). The alpha-rate trigger below still applies.
+            if self.FEATURE_IS_STALE and self._gt_feedback is None:
                 self._yaw_hold = True
             elif len(self._e_a) > 1 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
                 _de = self._e_a[-1] - self._e_a[-2]
