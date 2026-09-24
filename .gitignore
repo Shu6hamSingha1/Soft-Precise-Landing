@@ -90,6 +90,10 @@ PX4_Gazebo/test_data/DetectorFrameset/**
 # bulk npy+frames ignored (regenerable, ~263MB), only a manifest is tracked.
 PX4_Gazebo/test_data/RobustnessFrameset/**
 !PX4_Gazebo/test_data/RobustnessFrameset/MANIFEST.md
+# PerceptionEvalSet (2026-09-24): eval set for the locked-design stroke detector rewrite
+# (scripts/record_perception_evalset.sh + tools/build_evalset_tag.py). Same policy -- bulk ignored.
+PX4_Gazebo/test_data/PerceptionEvalSet/**
+!PX4_Gazebo/test_data/PerceptionEvalSet/MANIFEST.md
 
 # GtfbMulti_col: 5 independent GT-feedback flights on cm_col, recorded to
 # validate the ring+balance rescue at n=5 without the closed-loop confound of

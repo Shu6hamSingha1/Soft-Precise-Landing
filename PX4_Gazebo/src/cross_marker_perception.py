@@ -2955,6 +2955,7 @@ class CrossMarkerPerception:
                              float(_lp[:, 1].max() - _lp[:, 1].min()))
         self._last_extent_bbox = _ext_bbox
         self._s = np.array([s_xy[0], s_xy[1], 1.0])
+        self._s_stamp = t   # capture stamp of this s (CROSS_S_PREDICT extrapolates from here)
         self._s_recent.append((float(s_xy[0]), float(s_xy[1])))
 
         # --- alpha: unweighted moment over REAL detected arm/stub pixels ---
@@ -3320,6 +3321,10 @@ class CrossMarkerPerception:
         return self._ok
 
 
+_S_PREDICT = os.environ.get("CROSS_S_PREDICT", "0") == "1"
+_S_PREDICT_MAX_S = float(os.environ.get("CROSS_S_PREDICT_MAX_S", "0.15"))
+
+
 class CrossMarkerNode(Thread):
     """Thread wrapper around CrossMarkerPerception, exposing the minimal subset
     of IMG_PROCESSOR's public interface that controller.py actually calls
@@ -3499,6 +3504,12 @@ class CrossMarkerNode(Thread):
                         os.makedirs(self._rec_dir, exist_ok=True)
                         _fps = self._image_node.getFPS()
                         self._rec_fps = _fps if (isinstance(_fps, (int, float)) and _fps > 1) else 30.0
+                        # frames.tsv sidecar (2026-09-24): saved-frame index -> the capture stamp
+                        # process_frame() used (= Img_Data['Stamp']), so offline scorers pair a
+                        # frame with its exact log row / GT time instead of a positional offset.
+                        self._rec_index = open(os.path.join(self._rec_dir, "frames.tsv"), "w", buffering=1)
+                        self._rec_index.write("frame\tstamp\n")
+                    self._rec_index.write(f"{self._rec_n}\t{stamp!r}\n")
                     # Enqueue only -- the actual cv2.imwrite() happens on _rec_writer_loop's
                     # own thread (see _rec_queue's __init__ comment). .copy() because `frame`
                     # is imgs[-1], a live deque slot that gets overwritten by the next
@@ -3511,7 +3522,22 @@ class CrossMarkerNode(Thread):
                 time.sleep(0.01)
 
     def getImgFeatureParam(self):
-        return self._perception.getImgFeatureParam()
+        # CROSS_S_PREDICT (2026-09-24, default "0" = off): LAG COMPENSATION of s. A frame's s is
+        # served until the next frame is processed, and on a MOVING target it goes stale: with
+        # the stroke detector (48-80 ms live frame gap) GT s drifted 0.02-0.09 per gap on the
+        # Sinusoidal rover vs a detection error of only 0.012-0.033 (SPercGTFB_rover_stroke).
+        # Extrapolate from the frame's CAPTURE stamp to now with the centroid KF's own rate
+        # (_scen_kf_x[:, 1], same V-frame normalised units as s -- scale-free, no depth, no
+        # target model), clamped to CROSS_S_PREDICT_MAX_S so a dropout never extrapolates far.
+        # ⚠ OFFLINE (rover_sin, 64 ms gaps): helps >1 m (err 0.021->0.013) but HURTS <0.3 m
+        # (0.11-0.14 -> 0.15-0.19; the KF rate is noisy on sparse terminal frames) -- NOT enabled.
+        out = self._perception.getImgFeatureParam()
+        p = self._perception
+        if _S_PREDICT and getattr(p, "_s_stamp", None) is not None and p._scen_kf_init:
+            dt = float(np.clip(self._time.perf_counter() - p._s_stamp, 0.0, _S_PREDICT_MAX_S))
+            out = np.array(out, dtype=float)
+            out[0:2] += (p._sensor_cal_s[0:2, 0:2] @ p._scen_kf_x[:, 1]) * dt
+        return out
 
     def getOptFlowAngVel(self):
         return self._perception.getOptFlowAngVel()
