@@ -1,3 +1,7 @@
+# HARDWARE COPY (2026-09-24) of PX4_Gazebo/src/cross_marker_detector.py @ e1611b8, unmodified below this
+# header. Keep in sync with the PX4 source rather than editing here. Its px thresholds were tuned at
+# SITL f=135 and are not yet made scale-free for the Pi (fx~513), see
+# Hardware/docs/CROSS_MARKER_PORT_PLAN.md stage S3.
 """Standalone detector for the cross+stub fiducial (see docs/cross_marker.pdf).
 
 Decode-free alternative to ArUco: recovers marker center (and optionally heading)
