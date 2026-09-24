@@ -45,11 +45,13 @@ then `tools/build_evalset_tag.py` (moving tags).
 
 ## ⚠ Known issues
 
-- **`rover_circ_*` GT is the ROVER, not the marker.** In `rover_cross_deck` the marker is on
-  `deck_platform`, teleported to the rover pose at 20 Hz by `apps/deck_follower.py`; GT uses
-  `POSE_IDX_TARGET=1` (the rover). Two independent detectors see the marker a median 0.141 m off
-  the GT point at 0.39 m/s (≈0.36 s lag; rigid `rover_cross`: 0.013 m). Direction vs velocity not
-  yet verified. Until the deck pose is recorded as the target, score these tags on POISON-free
-  detection behaviour only, not centroid accuracy. Same flaw affects GT-FB Linear/Circular flights.
+- **`rover_circ_*`: FIXED 2026-09-24 — marker height, not target identity.** An earlier note here
+  claimed the deck-world GT target was the rover; WRONG. `POSE_IDX_TARGET=1` in `rover_cross_deck`
+  IS `deck_platform` (recorded target z 0.26–0.29 m with deck roll/pitch), but its marker sits
+  +0.201 m above that origin while the rover launcher defaulted `PLASMC_GT_MARKER_DZ=0.5` (right for
+  `rover_cross`). meta.json now says 0.201: stroke err 0.006 / poison 0% (was 24–32% poison).
+  `scripts/run_rover_landing.sh` now defaults 0.201 for `WORLD=rover_cross_deck`. Every GT-FB
+  Linear/Circular flight before this fix steered at (and scored touchdown against) a GT marker
+  0.3 m too high.
 - **`test_data/RobustnessFrameset/inv` is mis-paired** (tail-offset assumption fails: f150 shows
   ~2 m, paired GT alt 4.9 m) — every `inv` number from that set is invalid. Use `rob_inv`.
