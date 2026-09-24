@@ -144,23 +144,53 @@ THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 # HW_HOVER_THROTTLE_NORM override still takes precedence (skips voltage read
 # entirely) -- same override-wins convention as PLASMC_HW_MARKER_NED_XYZ elsewhere
 # in this file.
+# SUPERSEDED 2026-09-24: the coarse 3-step table this comment describes was
+# replaced by a measured interpolation table below (_HOVER_TABLE_V/_T). The
+# enable/override semantics here are unchanged.
 HOVER_VOLTAGE_CORRECTION_ENABLED = (
     os.environ.get("HW_HOVER_VOLTAGE_CORRECTION", "1") != "0"
     and "HW_HOVER_THROTTLE_NORM" not in os.environ
 )
 
 
+# MEASURED HOVER TABLE (2026-09-24, replaces the 2026-08-21 3-step table):
+# the old table capped at 0.395 for everything below 22.2V. The 2026-09-24
+# gain-sweep session (33 flights, 3 packs each flown down to 20.6-20.9V) showed
+# the true hover throttle keeps rising well past that. The shortfall left the
+# drone with a steady downward acceleration: descent speed at 0.5-1 m followed
+# 0.82 + 13.7*(true - used) m/s (R^2=0.61), so 0.2-0.5 m/s on fresh packs and
+# 1.5-2.5 m/s below 21.3V. The estimate per flight is
+# median(thr_cmd + a_z_down / (THRUST_SLOPE/mass)) over the controlled descent
+# (tilt<8deg, Z>0.6 m), so it uses the same thrust mapping as convert_2_sys_cmd.
+# corr(V, hover) = -0.87. Points below are binned medians (n per bin 2-7);
+# see Hardware/docs/FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #14.
+# The 22.97V bin (0.387) matches the old 22.4-24.0V plateau (0.388), which
+# independently cross-checks the method. Above 23.24V (highest flown) the old
+# campaign's values are kept: flat to 24.0V, 0.380 above 24.25V.
+# Below 20.67V there is no data. It clamps at the last value and does not
+# extrapolate; flying there is outside the tested envelope (PX4 raises its
+# low-battery emergency around 21V under load).
+_HOVER_TABLE_V = np.array([20.67, 20.94, 21.29, 21.58, 21.82, 22.12, 22.48, 22.97, 24.00, 24.25])
+_HOVER_TABLE_T = np.array([0.504, 0.465, 0.430, 0.420, 0.408, 0.405, 0.399, 0.387, 0.387, 0.380])
+# Recommended per-pack test floor. Below it, flights are both harder on the
+# vehicle and confounded as gain comparisons.
+HOVER_TABLE_WARN_V = float(os.environ.get("HW_HOVER_WARN_VOLTAGE", "22.0"))
+
+
 def _voltage_corrected_hover_throttle(voltage_v):
-    """Coarse piecewise hover-throttle estimate from project_hover_voltage_curve's
-    clusters. Returns HOVER_THROTTLE_NORM unchanged if voltage is None or falls
-    in the well-supported 22.4-24.0V plateau; nudges up/down outside it."""
+    """Hover throttle interpolated from the measured 2026-09-24 voltage table
+    (see _HOVER_TABLE_V/_T). Returns HOVER_THROTTLE_NORM if voltage is None;
+    clamps outside the table's range (np.interp does not extrapolate)."""
     if voltage_v is None:
         return HOVER_THROTTLE_NORM
-    if voltage_v <= 22.2:
-        return 0.395       # 21.68-22.19V cluster: every point sank even at 0.389
-    if voltage_v <= 24.0:
-        return 0.388       # 22.4-24.0V plateau: converged across 5 sweeps
-    return 0.380            # >24.0V: 24.25/24.36V points all climbed even below 0.388
+    if voltage_v < _HOVER_TABLE_V[0]:
+        print(f"[WARN] Battery {voltage_v:.2f}V is BELOW the measured hover table "
+              f"({_HOVER_TABLE_V[0]:.2f}V). Hover throttle clamped at {_HOVER_TABLE_T[0]:.3f}; "
+              f"the true value is likely higher. Swap the pack.")
+    elif voltage_v < HOVER_TABLE_WARN_V:
+        print(f"[WARN] Battery {voltage_v:.2f}V < {HOVER_TABLE_WARN_V:.1f}V recommended test "
+              f"floor: descent will be harder to arrest and gain comparisons are confounded.")
+    return float(np.interp(voltage_v, _HOVER_TABLE_V, _HOVER_TABLE_T))
 
 # *** Rate-axis command correction, r^2-weighted input-cal cross-check ***
 # gain = achieved/commanded from input-cal regression; dividing the intended

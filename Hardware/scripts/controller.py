@@ -654,12 +654,32 @@ class Controller(Thread):
         # ~8.0/min(p_10)~34.3. Sized above that ceiling with margin; anything beyond it would
         # mean corruption (NaN/Inf), not a legitimate reading.
         self._td_gt_sen_max = float(os.environ.get("PLASMC_TD_GT_SEN_MAX", "40.0"))
+        # NEAR-GROUND GATE + TIME HOLD (2026-09-24 hardware fix, not mirrored on Ubuntu/Gazebo):
+        # the plateau/rate/progress test above only checks that descent has STOPPED, not that
+        # the vehicle is ON THE GROUND. With persistence = _td_frames=3 ticks (~35-53 ms) it
+        # latched twice in the 2026-09-24 session at depth 0.591 m / 0.634 m, when a braking
+        # descent passed through v_z=0 above ground (runs 14-57-58, 15-18-18; in the second
+        # the depth was already rising again). Every genuine latch that session (31 flights)
+        # read depth 0.000-0.058 m (last_rel_alt is referenced to the marker = ground and
+        # clamped >= 0), and the longest airborne at_landed stretch in any trace was 0.037 s.
+        #  - PLASMC_TD_GT_DEPTH_MAX (m): at_landed also requires depth <= this. 0.25 leaves
+        #    ~0.2 m of margin above the observed contacts, and is well under the false ones.
+        #  - PLASMC_TD_GT_HOLD_S (s): at_landed must then hold CONTINUOUSLY this long
+        #    (replaces the 3-tick streak on this path). 0.2 s is ~5x the longest false
+        #    stretch seen; the latency it adds at real contact could not be replayed
+        #    offline (the old latch stopped logging after 3 ticks). Watch it on the next session.
+        # If EKF drift ever makes the ground read above DEPTH_MAX, this path simply does not
+        # latch, and hardware_landing.py's PX4-LandedState path still ends the landing.
+        self._td_gt_depth_max = float(os.environ.get("PLASMC_TD_GT_DEPTH_MAX", "0.25"))
+        self._td_gt_hold_s = float(os.environ.get("PLASMC_TD_GT_HOLD_S", "0.2"))
+        self._td_gt_hold_t0 = None
         if self._touchdown_loom:
             if self._gt_feedback is not None:
                 print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1 (analytic-feedback/HW_POS): touchdown = "
                       f"camera-marker depth held within {self._td_gt_flat_eps}m of its recorded landed "
                       f"height (rate<{self._td_gt_rate_max}m/s, progressed>={self._td_gt_progress_min}m "
-                      f"since arm) for x{self._td_frames} within a {self._td_window}-frame window + "
+                      f"since arm, depth<={self._td_gt_depth_max}m) held continuously for "
+                      f">={self._td_gt_hold_s}s + "
                       f"|s_e_n|<{self._td_gt_sen_max}, armed after h_z<{self._td_arm_loom} "
                       f"(perception extent NOT used)")
             else:
@@ -1150,15 +1170,25 @@ class Controller(Thread):
                            (self._td_gt_depth_at_arm - self._td_gt_min_depth) >= self._td_gt_progress_min)
             _flat_rate = _rate is not None and abs(_rate) < self._td_gt_rate_max
             _near_min = (depth - self._td_gt_min_depth) < self._td_gt_flat_eps
-            _at_landed = _progressed and _flat_rate and _near_min
+            _near_ground = depth <= self._td_gt_depth_max
+            _at_landed = _progressed and _flat_rate and _near_min and _near_ground
             self._td_gt_hist.append(_at_landed)
             _gt_streak = sum(self._td_gt_hist)
+            # Continuous-hold timer (see PLASMC_TD_GT_HOLD_S in __init__): any tick that is not
+            # at_landed restarts it.
+            if _at_landed:
+                if self._td_gt_hold_t0 is None:
+                    self._td_gt_hold_t0 = self._t[-1]
+                _held = self._t[-1] - self._td_gt_hold_t0
+            else:
+                self._td_gt_hold_t0 = None
+                _held = 0.0
             if self._td_debug:
                 print(f"[TD_DEBUG] t={self._t[-1]:.3f} GT depth={depth:.4f} "
                       f"landed_height={self._td_gt_min_depth:.4f} rate={_rate} "
                       f"progressed={_progressed} flat_rate={_flat_rate} near_min={_near_min} "
-                      f"at_landed={_at_landed} streak={_gt_streak}/{len(self._td_gt_hist)} "
-                      f"|s_e_n|={_sen_mag:.4f}")
+                      f"near_ground={_near_ground} at_landed={_at_landed} held={_held:.3f}s "
+                      f"streak={_gt_streak}/{len(self._td_gt_hist)} |s_e_n|={_sen_mag:.4f}")
             # SEN GATE, RELAXED FOR THIS PATH (found + fixed on hardware 2026-08-26; not yet
             # mirrored on Ubuntu/Gazebo, still uses the tight 0.6 there): the original
             # |s_e_n|<_td_sen (0.6) gate exists to reject a PERCEPTION glitch masquerading as
@@ -1170,13 +1200,13 @@ class Controller(Thread):
             # divides it down -- a hard, far-off-center landing, not a numerical artifact.
             # Under the original 0.6 gate this NEVER latches. Sized above the signal's own
             # physical ceiling (~8.0/min(p_10) ~ 34.3) with margin.
-            if _gt_streak >= self._td_frames and _sen_mag < self._td_gt_sen_max:
+            if _held >= self._td_gt_hold_s and _sen_mag < self._td_gt_sen_max:
                 self._touchdown = True
-                print(f"[controller] TOUCHDOWN-DETECT (analytic-feedback): depth={depth:.3f}m held "
-                      f"within {self._td_gt_flat_eps}m of recorded landed height="
-                      f"{self._td_gt_min_depth:.3f}m (rate={_rate:.4f}m/s, progressed "
+                print(f"[controller] TOUCHDOWN-DETECT (analytic-feedback): depth={depth:.3f}m "
+                      f"(<= {self._td_gt_depth_max}m) held within {self._td_gt_flat_eps}m of recorded "
+                      f"landed height={self._td_gt_min_depth:.3f}m (rate={_rate:.4f}m/s, progressed "
                       f"{self._td_gt_depth_at_arm - self._td_gt_min_depth:.3f}m since arming) "
-                      f"(x{self._td_frames} within {len(self._td_gt_hist)}-frame window) "
+                      f"continuously for {_held:.2f}s (>= {self._td_gt_hold_s}s) "
                       f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
             return
 
