@@ -23,6 +23,10 @@ CROSS MARKER (2026-09-24): PREVIEW_MARKER selects the detector overlay:
                     SITL-tuned px threshold rejected it" (port-plan stage S3).
   aruco           - the original ArUco decode overlay.
   both            - both overlays on the same frame.
+CROSS_DETECTOR=legacy (default) | stroke picks the cross detector
+implementation. stroke is PX4's 2026-09-24 locked-design ridge-stroke detector
+(cross_stroke_detector.py): no absolute intensity gate, stroke-matched working
+resolution, so it is the closer fit for the no-marker-size port.
 Also shows detect() time: cross cost grows with the marker's pixel count
 (port-plan R2), so watch it when the camera is close to the marker.
 
@@ -120,11 +124,11 @@ def _overlay_cross(vis, frame_bgr, track_state, y):
         H, W = vis.shape[:2]
         ext = int(max(det.mask_bbox[2], det.mask_bbox[3])) if det.mask_bbox is not None else 0
         hd = f"{det.heading_deg:.0f}deg" if det.heading_deg is not None else "none"
-        label = f"CROSS ok c=({cx:.0f},{cy:.0f}){'' if det.in_fov else ' OFF-FOV'} hdg={hd}"
+        label = f"CROSS[{cmd.DETECTOR}] ok c=({cx:.0f},{cy:.0f}){'' if det.in_fov else ' OFF-FOV'} hdg={hd}"
         info = f"ext={ext}px fill={ext / min(H, W):.2f} detect {dt_ms:.1f}ms"
         color = _GREEN
     else:
-        label, info, color = f"CROSS fail: {det.fail_reason}", f"detect {dt_ms:.1f}ms", _RED
+        label, info, color = f"CROSS[{cmd.DETECTOR}] fail: {det.fail_reason}", f"detect {dt_ms:.1f}ms", _RED
     # Two short lines: the frame is only 320 px wide before the display upscale.
     cv2.putText(vis, label, (5, y), _FONT, 0.35, color, 1)
     cv2.putText(vis, info, (5, y + 12), _FONT, 0.35, color, 1)
