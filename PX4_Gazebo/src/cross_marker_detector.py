@@ -2107,7 +2107,11 @@ DETECT_WORK_MAX_PX = int(os.environ.get("CROSS_DETECT_WORK_MAX_PX", "200"))
 # CROSS_DETECTOR (2026-09-24): "legacy" (default, everything in this module) or "stroke" --
 # the locked-design stroke detector (src/cross_stroke_detector.py: multi-scale ridge strokes +
 # X-junction confirm, no absolute gate, no mask-centroid proxy). Same CrossMarkerDetection out.
-DETECTOR = os.environ.get("CROSS_DETECTOR", "legacy").strip().lower()
+# DEFAULT FLIPPED legacy -> stroke (2026-09-25, user-approved after the IC1-5 gate). Evidence:
+# offline PerceptionEvalSet poison 0-1.6% vs 0.4-37%; SITL GT-FB-except-s stationary IC1-5x5 25/25
+# manuscript SP (legacy 6/25); moving Sinusoidal runaway 2.5 m -> 0.16 m; pure-perception IC1-5 n=1
+# (with settle + fade) 4/5 SP, 5/5 soft vs legacy 3/5. CROSS_DETECTOR=legacy restores the old detector.
+DETECTOR = os.environ.get("CROSS_DETECTOR", "stroke").strip().lower()
 
 
 def _scale_detection(det, f, crop_shape):

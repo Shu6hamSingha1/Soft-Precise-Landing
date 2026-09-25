@@ -493,6 +493,18 @@ async def main(record = 'n'):
         #  in_final_descent/final_descent_t0.)
         in_final_descent = False
         final_descent_t0 = None
+        # TOUCHDOWN SETTLE (PLASMC_TD_SETTLE_S, 2026-09-25, default 0 = off = old behaviour).
+        # The perception touchdown detector (overfill path) fires 4-12 cm ABOVE the ground
+        # (measured, 10 pure-perception IC1-5 flights, both detectors; resting camera-marker depth
+        # 0.136 m vs detections at 0.17-0.25 m) and the old code disarms on the spot -> the drone
+        # free-falls the remainder (~0.9-1.5 m/s at contact), and rel_vel is scored BEFORE that fall.
+        # With this on: on TOUCHDOWN_DETECTED keep flying level at the mild-descent thrust and let PX4
+        # confirm contact (ON_GROUND / impact spike -> FC_node.LANDED); disarm only then, or after
+        # PLASMC_TD_SETTLE_S as a bound. No altitude / depth / target-motion term.
+        # DEFAULT 1.0 s (2026-09-25, user-approved): pure-perception IC1-5 n=1, touchdown speed 0.2-0.7 -> 0.01-0.13 m/s,
+        # new config 5/5 soft. PLASMC_TD_SETTLE_S=0 restores disarm-on-detection.
+        TD_SETTLE_S = float(os.environ.get("PLASMC_TD_SETTLE_S", "1.0"))
+        td_settle_t0 = None
         last_good_sys_cmd = None
         marker_lost_t0 = None
         terminal_perception_loss = False
@@ -702,7 +714,10 @@ async def main(record = 'n'):
                               f"{last_fresh_extent:.0f}px >= {STALE_COMMIT_EXTENT:.0f}px "
                               f"(touchdown proximity) -> open-loop touchdown "
                               f"[terminal perception loss, not a tracking failure]")
-            if feature_fresh and not in_final_descent:
+            if td_settle_t0 is not None:
+                # settling after a touchdown detection: level, mild descent, wait for PX4 contact
+                await FC_node.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THRUST)
+            elif feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
                 await FC_node.send_attitude_rate(*sys_cmd)  # FC BODY follows FRD
@@ -777,8 +792,17 @@ async def main(record = 'n'):
             # sign-flip (soft contact the accel-spike detector misses). End the landing NOW, before
             # the control pumps the bounce. Closed-loop until this instant; not an open-loop commit.
             if EC_node.TOUCHDOWN_DETECTED and not FC_node.LANDED:
-                print("[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming")
-                FC_node.LANDED = True
+                if TD_SETTLE_S > 0:
+                    if td_settle_t0 is None:
+                        td_settle_t0 = time_node.perf_counter()
+                        print(f"[landing_test] Touchdown detected (controller) — settling up to "
+                              f"{TD_SETTLE_S:.2f}s for PX4 contact before disarm")
+                    elif (time_node.perf_counter() - td_settle_t0) >= TD_SETTLE_S:
+                        print("[landing_test] Touchdown settle bound reached — LANDED, disarming")
+                        FC_node.LANDED = True
+                else:
+                    print("[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming")
+                    FC_node.LANDED = True
 
             # CBF-driven handover signal (2026-07-17, user design): bridges controller.py's
             # CBF_OVERFLOW (per-corner FoV-margin classification, big marker spanning/still
