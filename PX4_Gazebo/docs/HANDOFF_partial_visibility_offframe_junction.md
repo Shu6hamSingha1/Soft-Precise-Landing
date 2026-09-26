@@ -42,7 +42,7 @@ re-run the script on Ubuntu to confirm before changing code.
 ## Proposed change (env knob; default ON only after the gate passes)
 A. Stroke detector: accept J outside the frame when >=2 lines with different angles (existing PAIR angle limits) each
    have verified support on the VISIBLE side (span >= a scale-free minimum, e.g. a fraction of the frame min-dimension or
-   a multiple of stroke width), consistent width ratio and polarity, and J within an extrapolation cap (frame-diagonal
+   a multiple of the ridge sigma `ln["width"]` -- NOTE sigma is NOT the stroke pixel width (sigma ~ 0.29 x width), see Coordination), consistent width ratio and polarity, and J within an extrapolation cap (frame-diagonal
    multiples, like legacy 3.0). Do not weaken the in-frame X-junction/balance checks. Do NOT let two border lines meeting at a
    frame corner pass (the reason `vmin` exists). Return `in_fov=False`.
 B. Perception: consume `in_fov`. Use the off-frame centre for s with inflated measurement noise in the centroid KF
@@ -68,3 +68,19 @@ legacy reports a wrong place on 55%. Scripts: `hw_perception_quality.py`, `perce
 `oracle_scan.py`, `score_cross_perception.py`. The user plans a mocap recording of the cross marker (GT for s, alpha, h, w)
 and an output calibration; real-world detector tuning follows that. Hardware h, w, alpha are NOT computed on the Pi yet
 (`Img_Data` is all `coast` on 09-24/09-25).
+
+## Coordination with the peer session (added 2026-09-26 after merging `Memory/px4/*` notes)
+- A peer session (soft-precise-landing-bf) OWNS `src/cross_stroke_detector.py` (commits 19cdabff, 697ed4f9, 11a3d741 baked `CROSS_DETECTOR=stroke`,
+  `PLASMC_S_LOSS_FADE=1`, `PLASMC_TD_SETTLE_S=1.0`). Pull first, check `git log -- src/cross_stroke_detector.py`, keep changes as env knobs, and do not
+  disturb its A/B comparability. Requirement from the user: ONE configuration for stationary and moving targets (never branch on target type).
+- Same code area, different problem: `Memory/px4/project_20260924_stroke_terminal_ring_radius.md` found that `ln["width"]` is the ridge filter's sigma (a bar's
+  ridge response peaks at sigma ~ 0.29 x width), so `vmin` (2 sigma), the side `gap` and the ring radius (2.5 sigma, should be ~1.15 stroke widths) are all in
+  sigma units. Their fix (ring radius 2.5 -> 4 sigma, proposed env knob `CROSS_STROKE_RING_K`) is NOT applied yet. Raising `vmin` alone cannot fix balance
+  refusals (the partner line's short side becomes unverifiable). Design the off-frame acceptance with the same units, and A/B it against that change.
+- Pending gates from `Memory/px4/project_20260925_pending_perception_s_tasks.md` that also serve as regression gates for this change: n=5 pure-perception IC1-5
+  (set `WORLD=cross_marker MARKER_TYPE=cross` EXPLICITLY, the launcher defaults to ArUco; compare vs `CROSS_DETECTOR=legacy PLASMC_S_LOSS_FADE=0 PLASMC_TD_SETTLE_S=0`)
+  and moving targets in pure perception (rover_cross Sinusoidal, rover_cross_deck Circular).
+- Traps recorded there: `validate_detector_gt.py --variant baseline` is now stroke (use `CROSS_DETECTOR=legacy` for a legacy arm); score perception vs the TRUE
+  bearing x/z, not the regularised x/(z+0.2); deck-world `marker_dz` is 0.201 (rover_cross 0.5); frame<->log pairing must be a contiguous stamp run; never edit a
+  .sh while it runs; use `pgrep -x`, not `pgrep -f`, in until-loops.
+- Track this work in `docs/FIX_LOG.md` FIX-001 (status + result).

@@ -35,7 +35,9 @@ Entry template:
   ~2x the in-frame error + small extrapolation error (not 170-350 px), off-frame detected rate up, in-frame row unchanged
   (>=95% detected, <=3 px median). (2) `tools/validate_detector_gt.py --set test_data/PerceptionEvalSet --variant stroke`:
   accuracy/POISON no worse. (3) `scripts/run_ic_validation.sh` IC2-5 (only when the user asks, HEADLESS=1) still passes.
-- Must not regress: in-frame precision; no two border lines meeting at a frame corner accepted as an X.
+- Must not regress: in-frame precision; no two border lines meeting at a frame corner accepted as an X; the peer session's baked defaults
+  (stroke, S_LOSS_FADE, TD_SETTLE) and its n=5 pure-perception IC1-5 gate (see handover, Coordination). Note `ln["width"]` is ridge sigma, not pixel
+  width; peer's ring-radius change (`CROSS_STROKE_RING_K` 2.5->4) touches the same function and is not applied yet.
 - Result: pending.
 
 ### FIX-002 HW_POS_FEEDBACK reference marker point does not match the real marker  [open] (opened 2026-09-26, hypothesis)
