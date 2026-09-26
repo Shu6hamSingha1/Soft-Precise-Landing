@@ -68,6 +68,22 @@ g = 9.80      # m/s^2 (matches Gazebo aruco.sdf <gravity>0 0 -9.8</gravity>;
 S_MARGIN = 0.05
 
 
+
+def _levelled_basis(R):
+    """Columns [x_V, y_V, z_V] of the gravity-levelled V frame, expressed in the BODY frame, so
+    R @ basis maps V-frame vectors to NED. R = body(FRD)->NED DCM. Same construction as
+    img_geometry._rp_basis and hw_pos_feedback._v_frame (z = gravity in body, x = body-y x z)."""
+    g_b = R.T @ np.array([0.0, 0.0, 1.0])
+    z = g_b / np.linalg.norm(g_b)
+    x = np.cross([0.0, 1.0, 0.0], z)
+    n = np.linalg.norm(x)
+    if n < 1e-6:                     # gravity along body-y (degenerate): fall back to the ZYX-yaw frame
+        _yw = np.arctan2(R[1, 0], R[0, 0])
+        return R.T @ np.array([[np.cos(_yw), -np.sin(_yw), 0.0], [np.sin(_yw), np.cos(_yw), 0.0], [0.0, 0.0, 1.0]])
+    x = x / n
+    y = np.cross(z, x)
+    return np.column_stack([x, y, z])
+
 class Controller(Thread):
     def __init__(self, ref_rad_opt_flow, des_img_feature, time_keeper=time, controller=None, record='n',
                  pose_node=None):
@@ -465,7 +481,9 @@ class Controller(Thread):
         self._commit_au_max = float(os.environ.get("PLASMC_COMMIT_AU_MAX", "0"))
         # Global (all-altitude) lateral-accel cap — tames the off-center APPROACH over-aggression
         # (a_u_xy ~102 at ~2.3m), which is where 53% of combined fly-aways breach. 0 = OFF.
-        self._au_max_xy = float(os.environ.get("PLASMC_AU_MAX_XY", "0"))
+        # FIX F7 (2026-09-26): default 10 m/s^2 (was 0 = off). 2026-09-25 hardware: |a_u_xy| p99.9 = 17.8 and p99 = 5.3 in normal flight,
+        # but 100-9900 m/s^2 in the terminal 0.3-0.7 m of 31/47 flights; 10 clips 0.23 % of normal samples. See Hardware/docs/FIX_LEDGER.md.
+        self._au_max_xy = float(os.environ.get("PLASMC_AU_MAX_XY", "10"))
         # Global (all-altitude) vertical-accel cap -- bounds |a_u_z| so a stale-perception
         # reacquisition burst (h_z frozen during coast -> real error dumped at once on
         # reacquisition, seen hitting -7.4 m/s^2 in real flight 2026-08-03) can't fire an
@@ -574,6 +592,14 @@ class Controller(Thread):
         # the full n=5 PLASMC_TD_SPIKE sweep history that set 0.0 as the validated default.
         self._td_spike = float(os.environ.get("PLASMC_TD_SPIKE", "0.0"))
         self._td_debug = os.environ.get("TD_DEBUG", "0") == "1"  # per-call h_z/streak/s_e_n trace
+        # 2026-09-25 (user directive): touchdown must be SCALE-based (marker extent), not EKF depth,
+        # even under PLASMC_HW_POS_FEEDBACK. The EKF-depth path (last_rel_alt) is now opt-in:
+        # PLASMC_TD_USE_GT_DEPTH=1 restores it. Default 0 -> HW_POS runs use the perception
+        # extent-only path (loom/h_z is EKF-derived under HW_POS, so that path is skipped there).
+        self._td_use_gt_depth = os.environ.get("PLASMC_TD_USE_GT_DEPTH", "0") == "1"
+        self._td_use_scale = os.environ.get("PLASMC_TD_SCALE", "0") == "1"   # marker-scale (extent/loom) latch; OFF by default -- touchdown is IMU-based (flight_controller._imuTouchdownStep)
+        self._td_debug_period = float(os.environ.get("TD_DEBUG_PERIOD_S", "0.5"))  # console throttle; near-ground/held ticks always print
+        self._td_debug_last_t = -1e9
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
@@ -1143,12 +1169,14 @@ class Controller(Thread):
                     self._td_gt_depth_at_arm = _d0
                     self._td_gt_min_depth = _d0
                 if self._td_debug:
-                    print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
+                    self._td_dbg(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}", force=True)
             return
 
+        if not (self._td_use_gt_depth or self._td_use_scale):
+            return   # arming above still runs (it gates the IMU contact detector); no perception/EKF latch
         # ANALYTIC-FEEDBACK (HW_POS_FEEDBACK): own confirmation path, entirely independent
         # of perception extent. Only engaged once armed above.
-        if self._gt_feedback is not None:
+        if self._gt_feedback is not None and self._td_use_gt_depth:
             depth = getattr(self._gt_feedback, "last_rel_alt", None)
             if depth is None:
                 return
@@ -1185,11 +1213,12 @@ class Controller(Thread):
                 self._td_gt_hold_t0 = None
                 _held = 0.0
             if self._td_debug:
-                print(f"[TD_DEBUG] t={self._t[-1]:.3f} GT depth={depth:.4f} "
+                self._td_dbg(f"[TD_DEBUG] t={self._t[-1]:.3f} GT depth={depth:.4f} "
                       f"landed_height={self._td_gt_min_depth:.4f} rate={_rate} "
                       f"progressed={_progressed} flat_rate={_flat_rate} near_min={_near_min} "
                       f"near_ground={_near_ground} at_landed={_at_landed} held={_held:.3f}s "
-                      f"streak={_gt_streak}/{len(self._td_gt_hist)} |s_e_n|={_sen_mag:.4f}")
+                      f"streak={_gt_streak}/{len(self._td_gt_hist)} |s_e_n|={_sen_mag:.4f}",
+                      force=(depth <= 0.5 or _held > 0.0))
             # SEN GATE, RELAXED FOR THIS PATH (found + fixed on hardware 2026-08-26; not yet
             # mirrored on Ubuntu/Gazebo, still uses the tight 0.6 there): the original
             # |s_e_n|<_td_sen (0.6) gate exists to reject a PERCEPTION glitch masquerading as
@@ -1211,38 +1240,40 @@ class Controller(Thread):
                       f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
             return
 
-        if self._gt_feedback is None and bool(getattr(self._img_node, 'HW_FROZEN', False)):
+        if not self._td_use_gt_depth and self._gt_feedback is None and bool(getattr(self._img_node, 'HW_FROZEN', False)):
             if self._td_debug:
-                print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} FROZEN -> excluded from window "
+                self._td_dbg(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} FROZEN -> excluded from window "
                       f"spikes_in_window={self._td_streak}/{len(self._td_hist)} |s_e_n|={_sen_mag:.4f}")
             return
-        self._td_hist.append(h_z > self._td_spike)
-        self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity
+        _loom_path = self._gt_feedback is None   # h_z is EKF-derived under HW_POS -> not a scale signal
         _ext_flat = self._extentGrowthFlattened()
-        if self._td_debug:
-            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} spikes_in_window={self._td_streak}/"
-                  f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f} ext_flattened={_ext_flat}")
         _ext_prox = self._extentTouchdownProximate()
-        if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
-            if not (_ext_flat and _ext_prox):
-                if self._td_debug:
-                    print(f"[TD_DEBUG] t={self._t[-1]:.3f} loom+sen satisfied but extent not "
-                          f"corroborating (flattened={_ext_flat} proximate={_ext_prox}, "
-                          f"extent={float(self.MARKER_EXTENT_PX):.0f} vs running_max={self._td_ext_max:.0f}) -> HELD")
-            else:
-                self._touchdown = True
-                print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
-                      f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f}, extent flattened+"
-                      f"proximate ({float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px) "
-                      f"-> LANDED (disarm before bounce)")
-                return
+        if _loom_path:
+            self._td_hist.append(h_z > self._td_spike)
+            self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity
+            if self._td_debug:
+                self._td_dbg(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} spikes_in_window={self._td_streak}/"
+                      f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f} ext_flattened={_ext_flat}")
+            if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
+                if not (_ext_flat and _ext_prox):
+                    if self._td_debug:
+                        self._td_dbg(f"[TD_DEBUG] t={self._t[-1]:.3f} loom+sen satisfied but extent not "
+                              f"corroborating (flattened={_ext_flat} proximate={_ext_prox}, "
+                              f"extent={float(self.MARKER_EXTENT_PX):.0f} vs running_max={self._td_ext_max:.0f}) -> HELD")
+                else:
+                    self._touchdown = True
+                    print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
+                          f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f}, extent flattened+"
+                          f"proximate ({float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px) "
+                          f"-> LANDED (disarm before bounce)")
+                    return
         # SECOND PATH -- loom-independent: no requirement on h_z's sign/magnitude at all,
         # only that extent has independently stalled near its own proximate max, sustained
         # the same _td_frames-in-a-window way.
         self._td_ext_only_hist.append(_ext_flat and _ext_prox)
         _ext_only_streak = sum(self._td_ext_only_hist)
         if self._td_debug:
-            print(f"[TD_DEBUG] t={self._t[-1]:.3f} ext-only: flattened={_ext_flat} proximate={_ext_prox} "
+            self._td_dbg(f"[TD_DEBUG] t={self._t[-1]:.3f} ext-only: flattened={_ext_flat} proximate={_ext_prox} "
                   f"streak={_ext_only_streak}/{len(self._td_ext_only_hist)}")
         if _ext_only_streak >= self._td_frames and _sen_mag < self._td_sen:
             self._touchdown = True
@@ -1250,6 +1281,15 @@ class Controller(Thread):
                   f"{float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px, "
                   f"x{self._td_frames} within {len(self._td_ext_only_hist)}-frame window) "
                   f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
+
+    def _td_dbg(self, msg, force=False):
+        """Throttled TD_DEBUG print: the per-tick trace floods the console (~10k lines/session)
+        and overwrote the terminal scrollback. Prints at most every TD_DEBUG_PERIOD_S unless
+        force (near ground / hold timer running / state change)."""
+        _t = self._t[-1]
+        if force or _t - self._td_debug_last_t >= self._td_debug_period:
+            self._td_debug_last_t = _t
+            print(msg)
 
     @property
     def TOUCHDOWN_DETECTED(self):
@@ -2745,19 +2785,32 @@ class Controller(Thread):
             self._yaw_c_hold = None                                # compass path: release the held snapshot
 
         # Raw inertial accel (net of gravity).
-        # a_u lives in the gravity-LEVELED V frame; MATLAB uses I_R_V = rotz(yaw),
-        # Python historically used the full body DCM R (parity item D1) — which
-        # MIS-ROTATES the leveled command by the current tilt. During the lateral
-        # overshoot the drone tilts 10-35° (IC1 diag 2026-06-19), so the full-DCM
-        # transform mis-directs the commanded brake → not delivered → fly-away
-        # (lateral wall = commanded-but-not-delivered, NOT perception, NOT a sign bug;
-        # feedback_lateral_wall_anti_restoring_au). PLASMC_AU_ROTZ_ONLY=1 uses the
-        # MATLAB-correct rotz(yaw_c) only. Default-off pending IC1 A/B.
-        if os.environ.get("PLASMC_AU_ROTZ_ONLY", "0") == "1":
+        # a_u lives in the gravity-LEVELED V frame (the same frame the perception / analytic s
+        # are built in: img_geometry._rp_basis, hw_pos_feedback._v_frame). Mapping it to inertial
+        # with the FULL body DCM R (the old default) MIS-ROTATES it by the current tilt and leaks
+        # a_u_xy into the vertical channel: (R a_u)_z = -sin(th) a_x + cos(th) sin(ph) a_y + ...
+        # FIXED 2026-09-26 (hardware): 2026-09-25 flights (47) showed the terminal lateral blow-up
+        # (a_u_xy 100-9900 m/s^2 at 0.3-0.7 m) leaking through R into I_a_z (up to +50 m/s^2 =
+        # thrust collapse -> 1.6-2.6 m/s plunge at 22-37 deg tilt -> pilot throttle takeover in
+        # 37/47). Replaying the logged a_u with the exact V frame reproduces the leak with the old
+        # code to 0.01 m/s^2 and removes it (max |I_a_z| 2610 -> 12.8; 94 samples with
+        # I_a_z>-5 -> 0). See Hardware/docs/FLIGHT_ANALYSIS_2026-09-25.md.
+        # PLASMC_AU_FRAME:
+        #   'vframe' (DEFAULT) R_V->NED = R @ [x_V y_V z_V], the exact levelled frame (heading from
+        #                      body-y x gravity, identical to perception's V frame).
+        #   'rotz'             Rz(yaw_c) only (MATLAB I_R_V; also PLASMC_AU_ROTZ_ONLY=1). Removes the
+        #                      vertical leak but its heading differs from the perception V frame by
+        #                      0-24 deg at 0-37 deg roll+pitch.
+        #   'body'             legacy full body DCM (the bug; parity/A-B only).
+        _au_frame = os.environ.get("PLASMC_AU_FRAME",
+                                   "rotz" if os.environ.get("PLASMC_AU_ROTZ_ONLY", "0") == "1" else "vframe")
+        if _au_frame == "body":
+            R_au = R
+        elif _au_frame == "rotz":
             _czA, _szA = np.cos(yaw_c), np.sin(yaw_c)
             R_au = np.array([[_czA, -_szA, 0.0], [_szA, _czA, 0.0], [0.0, 0.0, 1.0]])
         else:
-            R_au = R
+            R_au = R @ _levelled_basis(R)
         I_a_raw = R_au @ self._a_u[-1] - np.array([0.0, 0.0, g])
         self._I_a_raw.append(I_a_raw.copy())
 
@@ -2984,8 +3037,15 @@ class Controller(Thread):
         corners = cbf_corners
         dt_last = self._dt[-1] if len(self._dt) > 0 else None
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+        # FIX F8 (2026-09-26): the CBF maps inertial<->image with Rz(+-yaw). The image/V axes are the
+        # gravity-levelled frame (heading from body-y x gravity), which differs from the ZYX yaw yaw_c by
+        # 0-24 deg at 0-37 deg roll+pitch. Use the V-frame heading here (PLASMC_CBF_VYAW=0 restores yaw_c).
+        _yaw_cbf = yaw_c
+        if os.environ.get("PLASMC_CBF_VYAW", "1") == "1":
+            _RV = R @ _levelled_basis(R)
+            _yaw_cbf = float(np.arctan2(_RV[1, 0], _RV[0, 0]))
         I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
-            I_a, R, R33, yaw_c, corners,
+            I_a, R, R33, _yaw_cbf, corners,
             self._img_node.center, self._img_node.focal,
             self._p_10, theta_cone,
             dt_last, w_rp, self._cbf_state)
@@ -3188,9 +3248,15 @@ class Controller(Thread):
         # not 0). Need to add g back to align: B_T = mass·(I_a[2] + g)/cos·cos.
         # Without the +g, B_T = -20.7 N at hover → thrust_norm clips to 1.0 →
         # full throttle → drone climbs instead of hovering.
-        self._B_T.append(mass * (self._I_a[-1][2] + g)
-                         / max(np.cos(euler[0]), 1e-6)
-                         / max(np.cos(euler[1]), 1e-6))
+        # FIX F6 (2026-09-26): tilt-compensated thrust. Want vertical thrust component = -m*I_a_z, i.e. T = -m*I_a_z/cc
+        # (cc = cos(roll)cos(pitch) of the MEASURED attitude) -> B_T = m*g - T = m*g + m*I_a_z/cc. The legacy
+        # m*(I_a_z+g)/cc gives T = m*g at I_a_z=-g for ANY tilt, so lift falls as g*(1-cc): 1.3 m/s^2 at 30 deg,
+        # 2 m/s^2 at 37 deg (2026-09-25 plunges). cc floored at 0.5 (60 deg). PLASMC_THRUST_TILT_COMP=0 -> legacy.
+        _cc = max(np.cos(euler[0]) * np.cos(euler[1]), 1e-6)
+        if os.environ.get("PLASMC_THRUST_TILT_COMP", "1") == "1":
+            self._B_T.append(mass * g + mass * self._I_a[-1][2] / max(_cc, 0.5))
+        else:
+            self._B_T.append(mass * (self._I_a[-1][2] + g) / _cc)
 
         self._u.append(np.concatenate((self._w_u[-1], [self._B_T[-1]])))
 

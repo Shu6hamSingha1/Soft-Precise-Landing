@@ -632,6 +632,7 @@ class HardwareLandingSystem:
                 await self.fc.send_position_ned(search_hold_x, search_hold_y,
                                                  search_base_z, search_hold_yaw)
 
+            self.fc.IMU_TD_ARM = bool(getattr(self.controller, "_td_armed", False))   # IMU contact detector armed once a descent is established
             if self.controller.TOUCHDOWN_DETECTED and not self.fc.LANDED:
                 print("[hardware_landing] Loom-inversion touchdown (controller) - LANDED")
                 self.fc.LANDED = True

@@ -85,6 +85,23 @@ class FC():
         self._vel_ned = []
         self._att = []
         self._acc_frd = []
+        # IMU CONTACT DETECTOR (2026-09-25, user directive: touchdown from IMU, not marker scale /
+        # EKF depth). Fires on the contact JERK of the vertical specific force. Replayed on the 47
+        # 2026-09-25 descents (FC sensor_combined @250 Hz, ground truth = rangefinder): |a| magnitude
+        # alone is unusable (15 m/s2 -> 7 false, 50 m/s2 -> 31/47 missed: soft contacts read only
+        # 11-13 m/s2) but 3-sample-smoothed |d a_z/dt| > 800 m/s3 caught 33/47 within 0.25 m of the
+        # ground, 6 missed, 3 false + 5 early (pilot-induced transients). Only ARMED while the
+        # controller reports a descent is established (IMU_TD_ARM, set by hardware_landing).
+        self.IMU_TD_ARM = False
+        self.IMU_TD_LATCHED = False
+        self._imu_td_on = os.environ.get("FC_IMU_TD", "1") == "1"
+        self._imu_td_jerk = float(os.environ.get("FC_IMU_TD_JERK", "800.0"))       # m/s^3
+        self._imu_td_persist = int(os.environ.get("FC_IMU_TD_PERSIST", "1"))       # consecutive samples
+        self._imu_td_dwell = float(os.environ.get("FC_IMU_TD_ARM_DWELL", "0.5"))   # s armed before firing
+        self._imu_td_prev = None
+        self._imu_td_jbuf = []
+        self._imu_td_run = 0
+        self._imu_td_t_arm = None
         self._ang_vel_frd = []
 
         # timestamps
@@ -305,29 +322,65 @@ class FC():
             # estimate that PX4 then refused to fly on. Now also wait for
             # is_global_position_ok and is_home_position_ok, not just is_armable.
             print("-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...")
-            armable_timeout = 60.0
-            async def _wait_armable():
-                async for health in self.vehicle.telemetry.health():
-                    if (health.is_armable and health.is_global_position_ok
-                            and health.is_home_position_ok):
-                        return
+            # 2026-09-25 (run-start failures at 10:50/10:55): PX4's preflight readiness on the
+            # hardware flickers for 1-46 s after every landing/kill-disarm ("height estimate not
+            # stable", "GPS Vertical/Horizontal Pos Drift too high", kill-switch/termination
+            # latch until the pilot releases it). The old code (a) accepted ONE transient
+            # is_armable sample and armed immediately -> COMMAND_DENIED "Resolve system health
+            # failures first" when the flag flipped back within ms, and (b) gave up after a hard
+            # 60 s. Now: require the flags to hold CONTINUOUSLY for ARM_STABLE_S, retry a denied
+            # arm() (re-waiting for stability) until one overall ARM_WAIT_TIMEOUT_S deadline.
+            armable_timeout = float(os.environ.get("ARM_WAIT_TIMEOUT_S", "120"))
+            stable_s = float(os.environ.get("ARM_STABLE_S", "2.0"))
+            async def _wait_stable_ready():
+                # A background pump records the latest readiness; the stability timer is polled
+                # (NOT evaluated only when a new health sample arrives -- MAVSDK may stop emitting
+                # while health is steady, which would otherwise never let the timer expire).
+                _st = {"since": None}
+                async def _pump():
+                    async for health in self.vehicle.telemetry.health():
+                        _ok = (health.is_armable and health.is_global_position_ok
+                               and health.is_home_position_ok)
+                        if not _ok:
+                            _st["since"] = None
+                        elif _st["since"] is None:
+                            _st["since"] = time.monotonic()
+                _task = asyncio.ensure_future(_pump())
+                try:
+                    while True:
+                        if _task.done():
+                            _task.result()        # surface a stream error instead of spinning
+                            raise RuntimeError("health stream ended")
+                        if _st["since"] is not None and time.monotonic() - _st["since"] >= stable_s:
+                            return
+                        await asyncio.sleep(0.1)
+                finally:
+                    _task.cancel()
             t0 = time.monotonic()
-            try:
-                await asyncio.wait_for(_wait_armable(), timeout=armable_timeout)
-            except asyncio.TimeoutError:
-                raise RuntimeError(
-                    f"is_armable + global/home position did not go True within "
-                    f"{armable_timeout}s — PX4 lockstep race is not recovering."
-                )
-            print(f"  is_armable + position ready after {time.monotonic() - t0:.1f}s")
-
-            print("-- Arming")
-            try:
-                await self.vehicle.action.arm()
-            except Exception as e:
-                # If arm() fails even when is_armable=True, something else is
-                # wrong (e.g. preflight check beyond EKF) — signal outer retry.
-                raise RuntimeError(f"arm() failed even after is_armable: {e}")
+            _last_err = None
+            _attempt = 0
+            while True:
+                _left = armable_timeout - (time.monotonic() - t0)
+                if _left <= 0:
+                    raise RuntimeError(
+                        f"is_armable + global/home position did not stay True for {stable_s}s "
+                        f"within {armable_timeout}s (attempts={_attempt}, last arm error: "
+                        f"{_last_err}) — PX4 preflight not recovering (check kill switch, "
+                        f"GPS drift / height-estimate warnings above).")
+                try:
+                    await asyncio.wait_for(_wait_stable_ready(), timeout=_left)
+                except asyncio.TimeoutError:
+                    continue   # deadline check at loop top raises with context
+                print(f"  is_armable + position stable for {stable_s}s after {time.monotonic() - t0:.1f}s")
+                print("-- Arming")
+                _attempt += 1
+                try:
+                    await self.vehicle.action.arm()
+                    break
+                except Exception as e:
+                    _last_err = e
+                    print(f"  arm() denied (attempt {_attempt}): {e} -- re-waiting for stable readiness")
+                    await asyncio.sleep(1.0)
             print('Armed!')
         else:
             raise Exception("Request for arming rejected.")
@@ -580,12 +633,39 @@ class FC():
         except Exception as e:
             print(f"Unexpected error during odometry retrieval: {e}")
 
+    def _imuTouchdownStep(self, acc, t):
+        """One IMU sample -> contact-jerk detector. Latches LANDED (and IMU_TD_LATCHED) once.
+        t = sensor timestamp (s); dt must come from the sensor clock, not message arrival."""
+        if self.LANDED or not self.IMU_TD_ARM:
+            self._imu_td_prev = None; self._imu_td_jbuf = []; self._imu_td_run = 0
+            self._imu_td_t_arm = None
+            return
+        if self._imu_td_t_arm is None:
+            self._imu_td_t_arm = t
+        az = float(acc.down_m_s2)
+        if self._imu_td_prev is not None:
+            dt = t - self._imu_td_prev[0]
+            if dt > 1e-4:
+                self._imu_td_jbuf.append(abs(az - self._imu_td_prev[1]) / dt)
+                self._imu_td_jbuf = self._imu_td_jbuf[-3:]
+                if len(self._imu_td_jbuf) == 3 and (t - self._imu_td_t_arm) >= self._imu_td_dwell:
+                    jm = sum(self._imu_td_jbuf) / 3.0
+                    self._imu_td_run = self._imu_td_run + 1 if jm > self._imu_td_jerk else 0
+                    if self._imu_td_run >= self._imu_td_persist:
+                        self.IMU_TD_LATCHED = True
+                        self.LANDED = True
+                        print(f"[FC] IMU contact detected (|d a_z/dt|={jm:.0f} m/s^3 > "
+                              f"{self._imu_td_jerk:.0f}, a_z={az:+.1f} m/s^2) — LANDED=True")
+        self._imu_td_prev = (t, az)
+
     async def _getAcc(self):
         try:
             async for imu in self.vehicle.telemetry.imu():
                 self._acc_frd.append(imu.acceleration_frd)
                 self._ang_vel_frd.append(imu.angular_velocity_frd)
                 self._imu_ts.append(self._time.perf_counter())
+                if self._imu_td_on:
+                    self._imuTouchdownStep(imu.acceleration_frd, imu.timestamp_us * 1e-6)   # IMU's own sample time (gRPC delivery is bursty)
                 # print("6")
                 if not self._STAY_OPEN:
                     break
