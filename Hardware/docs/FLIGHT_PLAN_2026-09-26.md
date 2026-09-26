@@ -21,48 +21,49 @@ Blocks (one fresh pack each, >= 22.5 V; A first and last in every block, middle 
 - Pack 4: A E B C D A   (F19-F24)
 => A x8, B/C/D/E x4 each = 24 flights.
 
-## Commands (Pi, in `~/ws/scripts/precise_landing`)
+## Commands (Pi) - every flight is ONE self-contained line (no shell function, no exports)
+Setup, once per session (each is a separate command):
 ```bash
-# --- once per session ---
 source ~/denv/bin/activate
 cd ~/ws/scripts/precise_landing
 md5sum controller.py flight_controller.py hardware_landing.py     # expect 99a48e58..., d7a03add..., d8301f1c...
 rm -f Test_Data/.log_download_active
 script -a Test_Data/Landing/console_$(date +%d%m%Y).txt            # transcript; type `exit` at the very end
-export PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1
-fl() { echo -e "$1\t$2\t$3\t$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; shift 3; env "$@" python3 hardware_landing.py; }
-
-# --- PACK 1 ---
-fl F01 A pack1
-fl F02 B pack1 PLASMC_AU_FRAME=body
-fl F03 C pack1 PLASMC_THRUST_TILT_COMP=0
-fl F04 D pack1 PLASMC_AU_MAX_XY=0
-fl F05 E pack1 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92
-fl F06 A pack1
-# --- PACK 2 ---
-fl F07 A pack2
-fl F08 C pack2 PLASMC_THRUST_TILT_COMP=0
-fl F09 D pack2 PLASMC_AU_MAX_XY=0
-fl F10 E pack2 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92
-fl F11 B pack2 PLASMC_AU_FRAME=body
-fl F12 A pack2
-# --- PACK 3 ---
-fl F13 A pack3
-fl F14 D pack3 PLASMC_AU_MAX_XY=0
-fl F15 E pack3 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92
-fl F16 B pack3 PLASMC_AU_FRAME=body
-fl F17 C pack3 PLASMC_THRUST_TILT_COMP=0
-fl F18 A pack3
-# --- PACK 4 ---
-fl F19 A pack4
-fl F20 E pack4 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92
-fl F21 B pack4 PLASMC_AU_FRAME=body
-fl F22 C pack4 PLASMC_THRUST_TILT_COMP=0
-fl F23 D pack4 PLASMC_AU_MAX_XY=0
-fl F24 A pack4
-
-# --- end of session ---
-exit                                                                # ends `script`
+```
+Flights (paste one line at a time; each line first appends its label to `Test_Data/Landing/plan_<DDMMYYYY>.tsv`, then runs the flight):
+```bash
+# ===== PACK 1 (fresh pack >= 22.5 V) =====
+echo -e "F01	A	pack1	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+echo -e "F02	B	pack1	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_FRAME=body python3 hardware_landing.py
+echo -e "F03	C	pack1	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_THRUST_TILT_COMP=0 python3 hardware_landing.py
+echo -e "F04	D	pack1	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_MAX_XY=0 python3 hardware_landing.py
+echo -e "F05	E	pack1	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92 python3 hardware_landing.py
+echo -e "F06	A	pack1	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+# ===== PACK 2 (fresh pack >= 22.5 V) =====
+echo -e "F07	A	pack2	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+echo -e "F08	C	pack2	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_THRUST_TILT_COMP=0 python3 hardware_landing.py
+echo -e "F09	D	pack2	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_MAX_XY=0 python3 hardware_landing.py
+echo -e "F10	E	pack2	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92 python3 hardware_landing.py
+echo -e "F11	B	pack2	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_FRAME=body python3 hardware_landing.py
+echo -e "F12	A	pack2	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+# ===== PACK 3 (fresh pack >= 22.5 V) =====
+echo -e "F13	A	pack3	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+echo -e "F14	D	pack3	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_MAX_XY=0 python3 hardware_landing.py
+echo -e "F15	E	pack3	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92 python3 hardware_landing.py
+echo -e "F16	B	pack3	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_FRAME=body python3 hardware_landing.py
+echo -e "F17	C	pack3	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_THRUST_TILT_COMP=0 python3 hardware_landing.py
+echo -e "F18	A	pack3	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+# ===== PACK 4 (fresh pack >= 22.5 V) =====
+echo -e "F19	A	pack4	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+echo -e "F20	E	pack4	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 RATE_CORRECTION_WX=0.92 RATE_CORRECTION_WY=0.92 python3 hardware_landing.py
+echo -e "F21	B	pack4	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_FRAME=body python3 hardware_landing.py
+echo -e "F22	C	pack4	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_THRUST_TILT_COMP=0 python3 hardware_landing.py
+echo -e "F23	D	pack4	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 PLASMC_AU_MAX_XY=0 python3 hardware_landing.py
+echo -e "F24	A	pack4	$(date +%F_%T)" >> Test_Data/Landing/plan_$(date +%d%m%Y).tsv; PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+```
+End of session:
+```bash
+exit
 LOG_REMOTE_DATE_DIR=/fs/microsd/log/2026-09-26 /home/doctor/denv/bin/python3 -u download_flight_logs.py
 ```
 Between flights (always, not conditional): disengage the RC kill switch before the next `fl` (a kill at the previous touchdown latches "Kill switch engaged");
