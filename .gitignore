@@ -141,3 +141,10 @@ PX4_Gazebo/test_data/YawRLQwzSweep/**/rep*/
 !PX4_Gazebo/test_data/YawRLQwzSweep/**/summary.tsv
 !PX4_Gazebo/test_data/YawRLKiSweep/**/*.log
 !PX4_Gazebo/test_data/YawRLQwzSweep/**/*.log
+# SPercGTFB_* (2026-09-23..25): perception-s vs GT-s SITL experiments (~7 GB raw). Bulk ignored; per-rep
+# results + findings tracked in SPercGTFB_results/. Aborted/partial IC-gate bundles likewise.
+PX4_Gazebo/test_data/SPercGTFB_AB*/
+PX4_Gazebo/test_data/SPercGTFB_rover*/
+PX4_Gazebo/test_data/SPercGTFB_deckfix*/
+PX4_Gazebo/test_data/SPercGTFB_fade*/
+PX4_Gazebo/test_data/ICValidation/*_ABORTED_*/
