@@ -31,6 +31,10 @@ git push origin main
 
 On Windows, prepend `export PATH=$PATH:"/c/Program Files/GitHub CLI"` if `gh` isn't found.
 
+## Bug Fix Records
+
+While working on ANY bug, add/update an entry in `docs/FIX_LOG.md` (symptom + evidence, root cause, fix, status, and the exact data/command/pass criteria that confirm the fix). Read it at session start when continuing bug work — the user works across several Claude Code sessions (Windows, Ubuntu, Pi). Commit it with the fix.
+
 ## Project Structure
 
 ```
