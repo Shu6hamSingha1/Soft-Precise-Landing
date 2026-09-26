@@ -83,7 +83,7 @@ Entry template:
 - Result: pending.
 
 
-### FIX-004 a_u -> I_a uses the full body DCM: lateral command leaks into thrust  [in-repo] (opened 2026-09-26)
+### FIX-004 a_u -> I_a uses the full body DCM: lateral command leaks into thrust  [deployed] (opened 2026-09-26)
 - Symptom / evidence: 2026-09-25 (47 controller flights): 37/47 ended by PILOT throttle-stick takeover (roll/pitch/yaw sticks never moved),
   at median 0.36 m height, 1.2 m/s down (1.6-2.6 for stick-up cases), tilt 22-37 deg; commanded thrust fell to 0.03-0.29 vs ~0.45-0.52
   needed. Peak raw `I_a_z` median +53 m/s^2 in takeover flights (-9.2 otherwise). Analysis: `Hardware/docs/FLIGHT_ANALYSIS_2026-09-25.md`.
@@ -105,8 +105,9 @@ Entry template:
 - Second data set (2026-09-24, 39 flights, same pipeline `Hardware/Test_Data/analysis_2026-09-25/day_compare.py`): identical signature - 31/39 offboard
   phases ended by pilot takeover, `a_u_xy >= 100` in 22 (>= 1000 in 11), vertical leak > 5 m/s^2 in 22 and `I_a_raw_z > -5` in 22 flights. The bug predates
   09-25; it was masked because every flight was also being disrupted by other faults (09-24 yaw positive feedback, see FIX-013).
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
-### FIX-005 Thrust law has no tilt compensation  [in-repo] (opened 2026-09-26)
+### FIX-005 Thrust law has no tilt compensation  [deployed] (opened 2026-09-26)
 - Symptom / evidence: legacy `B_T = m(I_a_z+g)/(cos phi cos theta)` gives T = m g at I_a_z = -g for any tilt, so vertical lift falls by g(1-cos):
   1.3 m/s^2 at 30 deg, 2 m/s^2 at 37 deg (thrust median 0.38 vs 0.42 needed in the last 1 s before takeovers). Same formula in PX4_Gazebo.
 - Root cause: `controller.py::_attCtrl` B_T line.
@@ -115,8 +116,9 @@ Entry template:
   thrust > 0.9 fraction stays < 1 % and `actuator_motors` max < 0.95; vertical speed gain in the last second < 0.5 m/s.
 - Must not regress: hover thrust (+-0.01 of before; near-hover replay change was 0.005), voltage-corrected hover table (FIX-008 area / 09-24 fix).
 - Result: offline (2026-09-26) full-pipeline replay: last-1 s thrust median 0.38 -> 0.42 (p10 0.18 -> 0.33), thrust>0.9 0.96 % -> 0.07 %. Flight: pending.
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
-### FIX-006 Uncapped lateral a_u command (PLASMC_AU_MAX_XY = 0)  [in-repo] (opened 2026-09-26)
+### FIX-006 Uncapped lateral a_u command (PLASMC_AU_MAX_XY = 0)  [deployed] (opened 2026-09-26)
 - Symptom / evidence: normal flight |a_u_xy| p50 0.7 / p99 5.3 / p99.9 17.8 m/s^2; terminal 100-9900 in 31/47 flights (last 0.2-0.9 s, 0.3-0.7 m).
 - Root cause: no bound on `a_u[:2]` (cap knob existed, default off). This is a limiter; the terminal blow-up cause is FIX-011.
 - Fix: `PLASMC_AU_MAX_XY` default 10 m/s^2 (clips 0.23 % of normal samples); `=0` disables.
@@ -126,8 +128,9 @@ Entry template:
 - Metric caveat (FIX-002): lateral offset "vs arm point" is offset from the controller's reference, not necessarily from the physical marker
   (unmodelled camera lever arm, possible snapshot offset). Use video / mocap for the true landing offset when judging precision.
 - Result: pending.
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
-### FIX-007 CBF maps inertial<->image with ZYX yaw, perception uses the body-y x gravity frame  [in-repo] (opened 2026-09-26)
+### FIX-007 CBF maps inertial<->image with ZYX yaw, perception uses the body-y x gravity frame  [deployed, unverifiable until perception runs] (opened 2026-09-26)
 - Symptom / evidence: heading of the perception/analytic V frame relative to `yaw_c`: 0 deg single-axis tilt, 7 (20/20), 16 (30/30), 24 (37/37).
 - Root cause: `controller.py` passes `yaw_c` to `cbf_visibility.cbf2_filter` (Rz(+-yaw)).
 - Fix: pass the V-frame heading `atan2((R @ _levelled_basis(R))[1,0], [0,0])`; `PLASMC_CBF_VYAW=0` restores `yaw_c`.
@@ -136,8 +139,9 @@ Entry template:
 - Revised 2026-09-26 with FIX-003: no cross perception runs on the Pi yet, so this cannot be confirmed until perception is ported and flown
   in perception-feedback mode. Until then its status stays in-repo / unverifiable; the V frame it uses is the same one `img_geometry._rp_basis` builds.
 - Result: unit-checked only (basis math). Pending.
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
-### FIX-008 Touchdown trigger: EKF depth and marker scale rejected -> IMU contact jerk  [in-repo; older version deployed] (opened 2026-09-26)
+### FIX-008 Touchdown trigger: EKF depth and marker scale rejected -> IMU contact jerk  [deployed] (opened 2026-09-26)
 - Symptom / evidence: `MARKER_EXTENT_PX == 0` in all 47 runs (cross perception not ported / 100% coast, FIX-003; not caused by HW_POS itself) so a scale path could never fire; EKF-depth trigger rejected by the
   user; |a| magnitude unusable (soft contacts read 11-13 m/s^2; a 50 m/s^2 threshold misses ~31/47).
 - Root cause: design (depth/scale signals); Gazebo's `_impactDetector` (|a|>50) is tuned to 500-900 m/s^2 sim contacts.
@@ -153,21 +157,24 @@ Entry template:
 - Must not regress: PX4 ON_GROUND backstop (`_getLandedState`), post-LANDED `action.land()`.
 - Result: offline (real method on logged 188 Hz IMU streams, 47 flights): fired 40, 38 within 0.25 m (median at contact), 2 early (0.51, 0.66 m), 7 missed.
   Flight: pending. Known limit ~15 % missed (soft settles).
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
-### FIX-009 Run-start (arming) failures after landings  [in-repo; OLDER version deployed - re-deploy]  (opened 2026-09-26)
+### FIX-009 Run-start (arming) failures after landings  [deployed]  (opened 2026-09-26)
 - Symptom / evidence: 09-25 10:50 (`arm() COMMAND_DENIED: Resolve system health failures first`, is_armable had gone true 13.7 s earlier), 10:55
   (60 s hard timeout), 10:56 (user Ctrl-C during the same wait); readiness flickers 1-46 s ("height estimate not stable", "GPS ... Drift too high",
   kill switch / termination latch).
 - Root cause: `flight_controller.py::arm_and_takeoff` armed on one transient `is_armable` sample and gave up after 60 s. Why PX4 flickers is unknown (FIX-015).
 - Fix: readiness must hold `ARM_STABLE_S` (2 s) continuously (timer POLLED by a background health pump, not tied to new samples); denied `arm()`
-  retried until `ARM_WAIT_TIMEOUT_S` (120 s). NOTE: the Pi has the earlier version whose timer only ran on new samples - re-deploy.
+  retried until `ARM_WAIT_TIMEOUT_S` (120 s). (The earlier Pi version, whose timer only ran on new samples, was replaced on 2026-09-26.)
 - Confirm with: console `is_armable + position stable for 2.0s after X s`, `arm() denied (attempt n)`; count run-start failures (was 3 of 50 attempts).
 - Result: offline mock vehicle: steady-then-silent armed 1.2 s; flicker 2.1 s; two denials then ok 5.4 s / 3 calls; never-ready -> timeout at deadline. Flight: pending.
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
 ### FIX-010 Console flood from TD_DEBUG  [deployed] (opened 2026-09-26)
 - Symptom / evidence: 10,509 of ~13,100 lines of the 09-25 transcript were `[TD_DEBUG]`; the transcript started at 10:44 instead of 10:20.
 - Fix: `controller.py::_td_dbg` prints every `TD_DEBUG_PERIOD_S` (0.5 s) (every tick when depth <= 0.5 m or hold running).
 - Confirm with: next transcript keeps the whole session. Result: pending.
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
 ### FIX-011 Terminal lateral blow-up / funnel vs achievable lateral precision  [open] (opened 2026-09-26)
 - Symptom / evidence: 31/47 flights `a_u_xy >= 100` in the last 0.2-0.9 s at 0.3-0.7 m; kappa_xy to 30 (3 flights); SEN funnel p_s shrinks 1.2 -> 0.35
@@ -208,7 +215,7 @@ Entry template:
   (blind-land failsafe), 11-14-50 started at 3.60 m; 09-24 15-15-12 (3.59 -> 4.49 m, low battery), 15-21-19 (4.11 m, blind land), 15-25-24 (2.53 m). Most coincide
   with PX4 failsafes (FIX-015), so treat as a consequence, not a separate takeoff bug.
 
-### FIX-015 PX4 failsafes during flight (low battery) + preflight flicker / kill-switch latch  [in-repo (battery guard); flicker cause open] (opened 2026-09-26)
+### FIX-015 PX4 failsafes during flight (low battery) + preflight flicker / kill-switch latch  [deployed (battery guard); flicker cause open] (opened 2026-09-26)
 - Symptom / evidence: see FIX-009; 7 low-battery failsafes on 09-25; each flight ends with the pilot's kill switch which latches "Kill switch engaged /
   Flight termination active" until released. Root cause unknown (no pre-arm logs exist). Confirm with: battery V at arm and EKF status while disarmed. Result: pending.
 - Update 2026-09-26 (both days): a PX4 failsafe fired DURING offboard control in 12/39 flights on 09-24 (9 low battery, 3 'invalid setpoints / blind land') and 8/47 on
@@ -218,6 +225,7 @@ Entry template:
   of descending. Operating rule: swap the pack when the hover-load voltage is < 21.8 V.
 - Confirm with: console `Battery ... is below HW_MIN_FLIGHT_V` lines on low packs; zero low-battery failsafe messages in `.ulg` for flown flights. The 3 09-24 'invalid setpoints'
   events predate the 09-24 fixes (check they do not recur). Flicker/kill-latch cause still unknown.
+- Deployed 2026-09-26 14:44 to the Pi (192.168.1.110) with `Hardware/deploy_to_pi.sh`; md5 controller 99a48e58..., flight_controller d7a03add..., hardware_landing d8301f1c...; backups `*.bak_before_fixdeploy_20260926_144435`; import check OK. Unflown until the next session.
 
 ### FIX-016 Port FIX-004..007 to PX4_Gazebo  [open] (opened 2026-09-26)
 - Evidence: `PX4_Gazebo/src/controller.py` has identical `R_au`, `B_T`, `PLASMC_AU_MAX_XY=0`, CBF yaw code; sim Final VISTA-GT results unaffected
