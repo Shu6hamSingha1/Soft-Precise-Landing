@@ -632,7 +632,11 @@ class HardwareLandingSystem:
                 await self.fc.send_position_ned(search_hold_x, search_hold_y,
                                                  search_base_z, search_hold_yaw)
 
-            self.fc.IMU_TD_ARM = bool(getattr(self.controller, "_td_armed", False))   # IMU contact detector armed once a descent is established
+            # IMU contact detector arming (FIX-008): controller's "descent established" flag (h_z-based; EKF-derived under
+            # HW_POS_FEEDBACK but perception-derived once cross perception is ported, FIX-003 -> could never arm on a coast/noisy h_z)
+            # OR a perception-independent time fallback: >= FC_IMU_TD_ARM_FALLBACK_S of controlled flight (0 disables the fallback).
+            _imu_fb = float(os.environ.get("FC_IMU_TD_ARM_FALLBACK_S", "4.0"))
+            self.fc.IMU_TD_ARM = bool(getattr(self.controller, "_td_armed", False)) or (_imu_fb > 0 and (now - start_time) >= _imu_fb)
             if self.controller.TOUCHDOWN_DETECTED and not self.fc.LANDED:
                 print("[hardware_landing] Loom-inversion touchdown (controller) - LANDED")
                 self.fc.LANDED = True

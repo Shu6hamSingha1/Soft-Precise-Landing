@@ -9,7 +9,7 @@ Pi runs and `.ulg` files are matched 1:1 **by order** (validated on rangefinder 
 3. **Not actuator-limited**: motors never >0.95; max thrust setpoint median 0.49. Huge I_a is clipped upstream (lean cap).
 4. **PX4 rate loop is fine** (lag ~48 ms roll / 60 ms pitch, corr 0.95) -> the slow lateral response is in the position/perception path, not the FC.
 5. **09-24 fixes**: hover throttle tracks voltage (cmd/est ratio 0.97; both fall 0.023/V) -> OK. Yaw sign: |e_a| ends smaller in 24/47, final median 4 deg, 7 flights grew >0.1 rad (worst -0.57) -> partly fixed. TD detect fired at depth <=0.25 always (as coded); EKF/odometry height agrees with the rangefinder to ~0.03 m.
-6. **MARKER_EXTENT_PX == 0 in every run** under PLASMC_HW_POS_FEEDBACK -> any marker-scale touchdown trigger cannot work in this mode.
+6. **MARKER_EXTENT_PX == 0 in every run** (cross perception is not running on the Pi, FIX-003; all flights are HW_POS_FEEDBACK) -> a marker-scale touchdown trigger cannot fire until perception is ported.
 7. Loop 18 ms (p99 25 ms); camera 29 fps; image latency ~17 ms.
 
 ## Config comparison (n small; blown = a_u_xy>=100)

@@ -29,6 +29,8 @@ Entry template:
 - Root cause: `cross_stroke_detector.py` `side_stats()` returns `bal=None` when J is at/outside the frame edge and the pair loop
   does `if ba is None and bb is None: continue`; `cross_marker_perception.py` never reads `det.in_fov`.
   (Details + line refs: `PX4_Gazebo/docs/HANDOFF_partial_visibility_offframe_junction.md`.)
+- Interaction with FIX-006 (a_u_xy cap 10 m/s^2): a wrong-lock centre (170-350 px error) becomes a large fake lateral error; the cap bounds the
+  resulting a_u but does not detect the wrong lock. FIX-001 remains the actual fix for that failure.
 - Fix: (planned) accept off-frame J with >=2 angled lines each verified on the visible side, capped extrapolation, `in_fov=False`;
   perception uses `in_fov` with inflated KF noise; env knob, default ON only after the gate passes.
 - Confirm with: (1) `tools/score_partial_visibility.py test_data 0.5` before/after. PASS = off-frame rows' centre error within
@@ -46,6 +48,15 @@ Entry template:
   moves up in the image). Controller steers to the snapshotted point, not the physical marker.
 - Root cause: unknown (candidates: marker snapshot taken from an off-centre pose, EKF drift, geometry/sign error in
   `Hardware/scripts/hw_pos_feedback.py` V-frame/lever arm, Control_Data index misalignment). NOT investigated.
+- Update 2026-09-26 (hardware analysis, evidence narrowing the hypothesis list): the analytic `s` in `hw_pos_feedback.py` is IMPLEMENTED FAITHFULLY.
+  Independent recomputation from `Telemetry_Data` (Position Body + Quaternion, marker = median pose before takeoff, the model camera offset
+  [0,0,0.15], Z_REG 0.2, V frame) reproduces the logged `s(t)` to rms 0.002-0.012 (corr 1.00/1.00) on 8 09-25 runs (with NO camera offset rms rises to
+  0.03-0.09). So the mismatch is in the INPUTS, not the s math. Leading candidate: camera lever arm - `_CAM_OFF_FRD` is the Gazebo value (purely
+  vertical 0.15 m) while `img_geometry.py` documents a real non-zero Pi camera lever arm (~0.19-0.23 m systematic bearing error, user-confirmed
+  2026-07-27, unmeasured). A fixed 0.2 m lateral offset at Z = 1.5 m is 0.13 in s = ~65 px at fx ~513 (matches the 60-80 px), and grows as 1/Z
+  as the drone descends (matches the reference moving away from the real cross). Other candidates: snapshot pose vs the physical marker position,
+  EKF drift. Next check: measure the camera position relative to the FC in x/y/z and the marker position relative to the drone at arming, set
+  `PLASMC_GT_CAM_DZ` plus a lateral offset accordingly, then re-project the reference into the videos (PASS criterion already in this entry).
 - Fix: none yet.
 - Confirm with: mocap or a hand-measured marker position vs the snapshot NED point; replay: project the reference into the
   video frames for several runs (`Hardware/scripts/perception_hw_common.py` `ref_pixel`, `depth_yaw`) and check it stays on the
@@ -58,6 +69,10 @@ Entry template:
   Offline reprocessing of the videos: stroke detector 60% miss on visible frames (weak > 2.5 m and < 1.2 m), legacy 55% wrong-place.
 - Root cause: `cross_marker_perception` not ported (`Hardware/docs/CROSS_MARKER_PORT_PLAN.md` S4); detectors tuned at f=135,
   Pi is fx~513 / 35 deg hfov, thin strokes at 320x240.
+- Interaction with the 2026-09-26 controller fixes (FIX-004..008): every 09-25/09-24 flight is HW_POS_FEEDBACK with dead perception (Img_Data 100% coast, so
+  `MARKER_EXTENT_PX` == 0 always), so those flights say nothing about perception-mode behaviour. When perception is ported, re-verify FIX-004 (frame),
+  FIX-006 (a_u_xy cap vs noisy real s / wrong locks, see FIX-001), FIX-007 (CBF heading, first time it is really exercised) and FIX-008 arming
+  (`h_z` would then be perception-derived) in a perception-feedback flight.
 - Fix: port perception + log raw detector output in `Img_Data`; tune the detector on real footage after the user's mocap recording.
 - Confirm with: mocap-GT recording (heights, offsets, yaw, lighting) then `Hardware/scripts/hw_perception_quality.py`,
   `oracle_scan.py`, `score_cross_perception.py`; corr/nRMSE of s, alpha, h, w vs mocap GT. PASS thresholds to be set with the user
@@ -80,6 +95,8 @@ Entry template:
   (4) thrust in last 1 s before handover >= 0.8x hover/cos(tilt) (was collapsing to 0.03-0.29); (5) vertical re-ascent after first <1 m
   (was > 0.3 m in 12/47) and handover vertical speed (was median 1.2 m/s).
 - Must not regress: lateral tracking (xy offset at kill was median 0.53 m), yaw hold, touchdown detection (FIX-008).
+- Metric caveat (FIX-002): lateral offset "vs arm point" is offset from the controller's reference, not necessarily from the physical marker
+  (unmodelled camera lever arm, possible snapshot offset). Use video / mocap for the true landing offset when judging precision.
 - Result: offline only (2026-09-26): all 47 flights / 31,315 ticks replayed with the new frame: max |I_a_z| 2746 -> 12.8, I_a_z>-5 samples 1496 -> 0,
   flights affected 33 -> 0 (open loop). Flight: pending. If it fails: `PLASMC_AU_FRAME=rotz` isolates frame vs heading; `body` = legacy.
 
@@ -100,6 +117,8 @@ Entry template:
 - Confirm with: terminal tilt > 25 deg flights (was 14/47), pilot takeovers, lateral offset at handover/kill (was 0.41 / 0.53 m median).
   PASS = takeover/tilt counts fall and lateral offset not worse. Watch the opposite failure: authority too low to brake (raise to 15).
 - Must not regress: precision; earlier history says capping can hurt braking ("lateral wall = commanded-but-not-delivered").
+- Metric caveat (FIX-002): lateral offset "vs arm point" is offset from the controller's reference, not necessarily from the physical marker
+  (unmodelled camera lever arm, possible snapshot offset). Use video / mocap for the true landing offset when judging precision.
 - Result: pending.
 
 ### FIX-007 CBF maps inertial<->image with ZYX yaw, perception uses the body-y x gravity frame  [in-repo] (opened 2026-09-26)
@@ -108,15 +127,20 @@ Entry template:
 - Fix: pass the V-frame heading `atan2((R @ _levelled_basis(R))[1,0], [0,0])`; `PLASMC_CBF_VYAW=0` restores `yaw_c`.
 - Confirm with: perception-feedback flight (CBF is largely bypassed under HW_POS_FEEDBACK): `theta_cone`/`rho_fov`, corner count, no new
   `CBF_CORNERS_STALE` aborts vs 09-25. Untestable on HW_POS flights.
+- Revised 2026-09-26 with FIX-003: no cross perception runs on the Pi yet, so this cannot be confirmed until perception is ported and flown
+  in perception-feedback mode. Until then its status stays in-repo / unverifiable; the V frame it uses is the same one `img_geometry._rp_basis` builds.
 - Result: unit-checked only (basis math). Pending.
 
 ### FIX-008 Touchdown trigger: EKF depth and marker scale rejected -> IMU contact jerk  [in-repo; older version deployed] (opened 2026-09-26)
-- Symptom / evidence: `MARKER_EXTENT_PX == 0` in all 47 runs under `PLASMC_HW_POS_FEEDBACK` (scale path dead); EKF-depth trigger rejected by the
+- Symptom / evidence: `MARKER_EXTENT_PX == 0` in all 47 runs (cross perception not ported / 100% coast, FIX-003; not caused by HW_POS itself) so a scale path could never fire; EKF-depth trigger rejected by the
   user; |a| magnitude unusable (soft contacts read 11-13 m/s^2; a 50 m/s^2 threshold misses ~31/47).
 - Root cause: design (depth/scale signals); Gazebo's `_impactDetector` (|a|>50) is tuned to 500-900 m/s^2 sim contacts.
 - Fix: `flight_controller.py::_imuTouchdownStep` (from `_getAcc`, sensor timestamps): 3-sample-mean `|d a_z/dt| > FC_IMU_TD_JERK` (800 m/s^3),
   persist 1, dwell 0.5 s, armed via `controller._td_armed` -> `fc.IMU_TD_ARM`; sets `LANDED` (-> existing `action.land()`). Controller depth/scale
   latches opt-in (`PLASMC_TD_USE_GT_DEPTH`, `PLASMC_TD_SCALE`, default 0). `FC_IMU_TD=0` disables.
+- Revised 2026-09-26 (FIX-003): arming no longer relies only on the controller's `_td_armed` (h_z-based; EKF-derived under HW_POS but perception-derived once
+  perception is ported and could then never arm). `hardware_landing.py` now arms the IMU detector when `_td_armed` OR after `FC_IMU_TD_ARM_FALLBACK_S` (4.0 s,
+  0 disables) of controlled flight. Replay with time-only arming (flag never set): identical to before - fired 40/47, 38 within 0.25 m, same 2 early + 7 missed.
 - Confirm with: console `[FC] IMU contact detected (...)` per flight; compare with EKF height (`vehicle_local_position`) at that time.
   PASS = fired in >= ~80 % of flights, height at trigger <= 0.25 m (median ~0), no trigger > 0.6 m; PLASMC now flies to contact (new below 0.25 m):
   check touchdown speed, bounce, lateral slide.
@@ -143,7 +167,8 @@ Entry template:
 - Symptom / evidence: 31/47 flights `a_u_xy >= 100` in the last 0.2-0.9 s at 0.3-0.7 m; kappa_xy to 30 (3 flights); SEN funnel p_s shrinks 1.2 -> 0.35
   on a time schedule so it needs lateral error <= 0.35 x height, but achieved (vs arm point, EKF) 0.22 m at 3 m, peak 0.50 m at 1-1.5 m, 0.23 m at
   0.3-0.6 m: inside the funnel 97 % / 44 % / 26 % of the time; s_e_n first > 1 at 1.3-3 m height in most flights.
-  Caveat: measured relative to the snapshotted arm point (see FIX-002; may differ from the physical marker).
+  Caveat (FIX-002): measured relative to the snapshotted arm point = the controller's own reference (the analytic s was verified to be computed faithfully, rms <= 0.012),
+  so the funnel-vs-precision comparison is valid for the controller; the offset to the PHYSICAL marker may differ (unmodelled camera lever arm).
 - Root cause: partly FIX-004 (leak couples lateral spikes into altitude); remaining: hypothesis - funnel schedule / gains tuned for sim precision.
 - Fix: none yet - re-evaluate after FIX-004..006 fly.
 - Confirm with: timeline of s, p_s, s_e_n, kappa_xy, a_u_xy vs height (analysis dir `lat`-style), fraction of time s_e_n > 1, terminal a_u_xy, pilot takeovers.
