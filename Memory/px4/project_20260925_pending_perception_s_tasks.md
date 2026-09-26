@@ -14,6 +14,5 @@ State at close: defaults `CROSS_DETECTOR=stroke`, `PLASMC_S_LOSS_FADE=1`, `PLASM
 4. **Re-record manuscript GT-FB Linear/Circular deck videos** (Final/) — recorded with marker_dz 0.5 (true 0.201). User's call.
 5. **Linear deck**: rover speed erratic (median 0.18-1.32 m/s per rep) — separate stimulus issue, unexplained.
 6. Stroke terminal (<0.3 m) detOK still 60-96% (ring-topology confirm helps; a peer session has notes in project_20260924_stroke_terminal_ring_radius). Hardware/Pi port of the stroke detector was already synced by the peer (f334f068).
-7. ArUco path not re-gated with the new settle default (comparison-only).
 
 **Traps hit this thread (don't repeat):** editing a .sh while it runs; stamp-SET membership is not a valid frame<->log pairing (use contiguous run); scoring perception vs regularised x/(z+0.2) GT; deck-world GT marker_dz; stating a mechanism from magnitude alone (deck "teleport lag" — wrong); first fade version on V_ds_d never engaged (combined barrier).
