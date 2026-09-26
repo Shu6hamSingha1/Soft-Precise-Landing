@@ -374,6 +374,7 @@ class HardwareLandingSystem:
         # Voltage-corrected hover throttle (see HOVER_VOLTAGE_CORRECTION_ENABLED
         # above) -- read once here, same MAVSDK call find_hover_throttle.py uses.
         global _active_hover_throttle_norm
+        _hover_v = None
         if HOVER_VOLTAGE_CORRECTION_ENABLED:
             try:
                 battery = await self.fc.vehicle.telemetry.battery().__aiter__().__anext__()
@@ -381,10 +382,18 @@ class HardwareLandingSystem:
                 _active_hover_throttle_norm = _voltage_corrected_hover_throttle(v)
                 print(f"Battery voltage: {v:.2f}V -> hover throttle {_active_hover_throttle_norm:.3f} "
                       f"(base {HOVER_THROTTLE_NORM:.3f})")
+                _hover_v = v
             except Exception as e:
                 print(f"[WARN] Could not read battery voltage, using base hover throttle "
                       f"{HOVER_THROTTLE_NORM:.3f}: {e}")
                 _active_hover_throttle_norm = HOVER_THROTTLE_NORM
+        # FIX-015 (2026-09-26): 16/86 controlled flights on 2026-09-24/25 hit PX4's "Low battery level" failsafe DURING offboard control; all
+        # 16 engaged at 20.5-21.4 V under hover load, none above 21.4 V. Abort the descent (PX4 land via the main() abort path) instead of
+        # flying a flight that the FC will override. HW_MIN_FLIGHT_V=0 disables the guard.
+        _min_v = float(os.environ.get("HW_MIN_FLIGHT_V", "21.5"))
+        if _hover_v is not None and _min_v > 0 and _hover_v < _min_v:
+            raise RuntimeError(f"Battery {_hover_v:.2f}V under hover load is below HW_MIN_FLIGHT_V={_min_v:.1f}V - "
+                               f"PX4 low-battery failsafe would override the controller. Swap the pack (HW_MIN_FLIGHT_V=0 to disable).")
 
     async def landing_loop(self):
         print("\n" + "=" * 60)

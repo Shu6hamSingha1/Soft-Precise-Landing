@@ -41,3 +41,14 @@ Correction to the section above: `a_v_z` is the ASMC virtual control (a_u = -G^-
 
 ## Fix records
 All fixes and their post-flight confirmation checks are tracked in `docs/FIX_LOG.md` (FIX-004..FIX-016 from this analysis).
+
+## Second bug-hunt pass (09-24 + 09-25) - scripts in analysis_2026-09-25/ (`common.py` loader for any date, `map_check.py`, `rate_gain.py`, `yaw_check.py`, `day_compare.py`)
+New defects found (see docs/FIX_LOG.md): FIX-015 low-battery failsafes (16/86 flights, all engaged at <= 21.4 V) -> guard added; FIX-017 RATE_CORRECTION over-corrects
+(achieved/intended 0.8); FIX-013/012/014 clarified (09-24 yaw positive feedback confirmed fixed; izeta windup mostly inert; overshoots coincide with failsafes).
+Checked, NO defect (do not repeat):
+- Controller -> FC command mapping: FC rates_setpoint = 0.75 x w_u (= RATE_CORRECTION, corr 1.00, lag 50 ms); B_T -> FC thrust_setpoint slope -0.0296 vs -0.0313 expected, corr -0.98.
+- Hover throttle by voltage: commanded/FC-estimated hover thrust 0.97 on both days (0.91-1.01), independent of voltage.
+- Pi telemetry latency (angular velocity/attitude) ~18 ms behind FC gyro; odometry ~95-100 Hz, IMU ~190 Hz. Attitude quaternion matches FC attitude (median 0.25 deg).
+- Analytic s in hw_pos_feedback reproduces from telemetry to rms <= 0.012 (implementation faithful; FIX-002 is an input/lever-arm issue).
+- Takeoff: offboard starts at median 3.06 m (09-24) / 3.13 m (09-25); descent rate 1->0.4 m is 0.2 m/s as designed.
+- 09-24 vs 09-25: same pilot-takeover / leak signature (31/39 vs 37/47), so the frame bug (FIX-004) predates the 09-24 fixes.

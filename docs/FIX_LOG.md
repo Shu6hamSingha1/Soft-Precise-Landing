@@ -102,6 +102,9 @@ Entry template:
   (unmodelled camera lever arm, possible snapshot offset). Use video / mocap for the true landing offset when judging precision.
 - Result: offline only (2026-09-26): all 47 flights / 31,315 ticks replayed with the new frame: max |I_a_z| 2746 -> 12.8, I_a_z>-5 samples 1496 -> 0,
   flights affected 33 -> 0 (open loop). Flight: pending. If it fails: `PLASMC_AU_FRAME=rotz` isolates frame vs heading; `body` = legacy.
+- Second data set (2026-09-24, 39 flights, same pipeline `Hardware/Test_Data/analysis_2026-09-25/day_compare.py`): identical signature - 31/39 offboard
+  phases ended by pilot takeover, `a_u_xy >= 100` in 22 (>= 1000 in 11), vertical leak > 5 m/s^2 in 22 and `I_a_raw_z > -5` in 22 flights. The bug predates
+  09-25; it was masked because every flight was also being disrupted by other faults (09-24 yaw positive feedback, see FIX-013).
 
 ### FIX-005 Thrust law has no tilt compensation  [in-repo] (opened 2026-09-26)
 - Symptom / evidence: legacy `B_T = m(I_a_z+g)/(cos phi cos theta)` gives T = m g at I_a_z = -g for any tilt, so vertical lift falls by g(1-cos):
@@ -179,22 +182,56 @@ Entry template:
 
 ### FIX-012 Integral windup (izeta at its clamp 5.0 in 9/47 flights)  [open] (opened 2026-09-26)
 - Symptom / evidence: `izeta_max = 5.00` in 10 of the 09-25 flights (blown runs); clamp exists (`controller.py` `_izeta_clamp`), freeze-when-unfresh only.
-- Root cause: hypothesis - integrates through funnel breach / saturated commands. Fix: none yet (candidate: conditional integration).
+- Root cause (revised 2026-09-26): mostly INERT state. In the combined-barrier config only `izeta_z` enters sigma (`_sig[2] += Omega_z*izeta_z`, max
+  0.1*5 = 0.5); `izeta_xy` is only used after the terminal commit (`_tc_integral and _committed`), otherwise it is logging-only. The clamp is hit on the
+  X component in 8 of 9 flights (harmless) and on Z in 3 flights (10-34-55, 10-53-06, 10-58-07). It winds up over 3-12 s of funnel breach (s_e_n > 1 for
+  35-100 % of the time). izeta was frozen at exactly 0 on 09-24 (camera gating, fixed that evening), so 09-25 is the first data with active integrators.
+  Fix: none needed for x/y; for z consider conditional integration (freeze while |s_e_n| > 1) only if z windup shows up again after FIX-004..006.
 - Confirm with: izeta trace vs s_e_n > 1 periods after FIX-004..006. Result: pending.
 
 ### FIX-013 Yaw loop only partly converging  [open] (opened 2026-09-26)
 - Symptom / evidence: `|e_a|` ended smaller than at start in 24/47 flights (end median 4 deg); 7 flights grew > 0.1 rad (worst -0.57 rad).
 - Root cause: not investigated (the 09-24 alpha-sign fix removed the 31/33 divergence). Confirm with: e_a(t), u_a(t) vs measured yaw rate after FIX-004. Result: pending.
+- Update 2026-09-26 (both days, FC heading as independent reference, `analysis_2026-09-25/yaw_check.py`):
+  09-24 the loop was in POSITIVE feedback: controller `e_a` had slope +0.98 vs the true heading change (09-25: -1.00), the commanded yaw rate reduced the true
+  error 0 % of the time, heading drifted a median -28.5 deg (max 75 deg), max |u_a| 1.5 rad/s. The 09-24 alpha-sign fix (deployed for 09-25) works: 09-25 max heading
+  error median 11 deg (p90 23), net drift median 1.9 deg (max 39).
+  Residual on 09-25: the command reduces the true error only 50 % of the time (chance level), corr(u_a, gyro_z) 0.19, corr(w_u[2], gyro_z) 0.39; std(gyro_z)
+  0.094 vs std(u_a) 0.060 rad/s - yaw command is small versus disturbance/noise, so yaw is effectively uncontrolled but stays within ~11 deg (little effect on
+  lateral landing because analytic s does not use alpha). Low priority; no code defect found. Confirm after FIX-004 that heading error stays <= 25 deg.
 
 ### FIX-014 Takeoff overshoot to ~6 m in 2 flights; stick-down takeovers at altitude  [open] (opened 2026-09-26)
 - Symptom / evidence: 09-25 flights `10_49_44` (peak 5.9 m) and one more (3.5-3.9 m) ended by pilot stick-DOWN takeover at 3.5-5.9 m.
 - Root cause: not investigated. Confirm with: ulg takeoff phase altitude vs setpoint and hover throttle at arm. Result: pending.
+- Update 2026-09-26: takeoff itself is fine on both days (height at offboard start median 3.06 m 09-24 / 3.13 m 09-25, p10-p90 3.0-3.3). Outliers are few:
+  09-25 10-33-24 climbed from 3.15 to 5.85 m during control (V 20.7, low-battery failsafe active), 10-34-55 to 3.75 m, 10-54-47 started at 3.71 m
+  (blind-land failsafe), 11-14-50 started at 3.60 m; 09-24 15-15-12 (3.59 -> 4.49 m, low battery), 15-21-19 (4.11 m, blind land), 15-25-24 (2.53 m). Most coincide
+  with PX4 failsafes (FIX-015), so treat as a consequence, not a separate takeoff bug.
 
-### FIX-015 PX4 preflight flicker and kill-switch latch after each landing  [open] (opened 2026-09-26)
+### FIX-015 PX4 failsafes during flight (low battery) + preflight flicker / kill-switch latch  [in-repo (battery guard); flicker cause open] (opened 2026-09-26)
 - Symptom / evidence: see FIX-009; 7 low-battery failsafes on 09-25; each flight ends with the pilot's kill switch which latches "Kill switch engaged /
   Flight termination active" until released. Root cause unknown (no pre-arm logs exist). Confirm with: battery V at arm and EKF status while disarmed. Result: pending.
+- Update 2026-09-26 (both days): a PX4 failsafe fired DURING offboard control in 12/39 flights on 09-24 (9 low battery, 3 'invalid setpoints / blind land') and 8/47 on
+  09-25 (7 low battery). All 16 low-battery flights engaged at 20.5-21.4 V (median 21.1) under hover load; the other 70 flights engaged at 21.3-24.1 V (median 22.2);
+  40 % of flights engaged at <= 21.9 V hit the failsafe. Min voltage in flight 20.1-23.8 V, peak current 35 A. Those flights are compromised (FC overrides the controller).
+- Fix (guard): `hardware_landing.py` after takeoff: hover voltage < `HW_MIN_FLIGHT_V` (default 21.5 V; 0 disables) -> RuntimeError -> existing abort path (PX4 land) instead
+  of descending. Operating rule: swap the pack when the hover-load voltage is < 21.8 V.
+- Confirm with: console `Battery ... is below HW_MIN_FLIGHT_V` lines on low packs; zero low-battery failsafe messages in `.ulg` for flown flights. The 3 09-24 'invalid setpoints'
+  events predate the 09-24 fixes (check they do not recur). Flicker/kill-latch cause still unknown.
 
 ### FIX-016 Port FIX-004..007 to PX4_Gazebo  [open] (opened 2026-09-26)
 - Evidence: `PX4_Gazebo/src/controller.py` has identical `R_au`, `B_T`, `PLASMC_AU_MAX_XY=0`, CBF yaw code; sim Final VISTA-GT results unaffected
   (a_u_xy <= 2 m/s^2); blown YawRateLaw sims show the same leak. Handover: `Hardware/docs/HANDOVER_AU_FRAME_FIX_UBUNTU.md`.
 - Confirm with: `scripts/run_rotz_ic1_ab.sh` extended with a `vframe` arm; `scripts/run_ic_validation.sh` (only when the user asks, HEADLESS=1). Result: pending.
+
+### FIX-017 RATE_CORRECTION over-corrects roll/pitch (achieved rate ~0.8x intended)  [open] (opened 2026-09-26)
+- Symptom / evidence: `hardware_landing.py` multiplies the controller body-rate command by RATE_CORRECTION = (0.758, 0.739, 0.665) from the input calibration (which assumed
+  achieved = commanded/0.76). In flight PX4 tracks its setpoint at about unity: achieved/FC-setpoint gain 1.08 roll/pitch on 09-25 (0.97/0.99 on 09-24) with 50-60 ms lag, so
+  achieved/intended = 0.82 roll, 0.80 pitch (09-25) / 0.79, 0.75 (09-24). Command mapping itself is faithful (FC setpoint = 0.75 x w_u, corr 1.00; B_T -> thrust setpoint slope
+  -0.0296 vs -0.0313 expected, corr -0.98). Yaw is inconsistent between days (achieved/intended 1.32 on 09-25 vs 0.70 on 09-24), see FIX-013. Scripts:
+  `Hardware/Test_Data/analysis_2026-09-25/{map_check,rate_gain}.py`.
+- Root cause: input-cal gain not representative of flight (different frequency/amplitude or PX4 rate gains changed since the cal); hypothesis.
+- Fix: none yet, and NOT a clear bug - raising the roll/pitch factors to ~0.92 would raise loop gain ~15-20 % with ~50 ms lag and all gains were tuned with today's effective
+  0.8x. Decide after FIX-004..006 are flown; if lateral response is still slow, test `RATE_CORRECTION_WX/WY=0.92` as a separate, explicit A/B.
+- Confirm with: achieved/intended gain from `rate_gain.py` on the next session (PASS = ~1.0 if the factors are changed; unchanged = 0.8 expected).
+- Result: pending.
