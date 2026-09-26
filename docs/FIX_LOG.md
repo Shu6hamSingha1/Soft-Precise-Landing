@@ -57,6 +57,9 @@ Entry template:
   as the drone descends (matches the reference moving away from the real cross). Other candidates: snapshot pose vs the physical marker position,
   EKF drift. Next check: measure the camera position relative to the FC in x/y/z and the marker position relative to the drone at arming, set
   `PLASMC_GT_CAM_DZ` plus a lateral offset accordingly, then re-project the reference into the videos (PASS criterion already in this entry).
+- Caveat on the original 60-80 px / 208->500 px numbers (added by the Windows session, 2026-09-26): they projected the logged s, which is the REGULARISED bearing x/(z+0.2),
+  as if it were the true bearing x/z. Below ~1.5 m that inflates the apparent offset (13 % at 1.5 m, 40 % at 0.5 m), so part of the late divergence is this, not the lever arm.
+  When re-projecting, use the true bearing (s*(z+0.2)/z) or compare in regularised form on both sides.
 - Fix: none yet.
 - Confirm with: mocap or a hand-measured marker position vs the snapshot NED point; replay: project the reference into the
   video frames for several runs (`Hardware/scripts/perception_hw_common.py` `ref_pixel`, `depth_yaw`) and check it stays on the
