@@ -243,3 +243,15 @@ Entry template:
   0.8x. Decide after FIX-004..006 are flown; if lateral response is still slow, test `RATE_CORRECTION_WX/WY=0.92` as a separate, explicit A/B.
 - Confirm with: achieved/intended gain from `rate_gain.py` on the next session (PASS = ~1.0 if the factors are changed; unchanged = 0.8 expected).
 - Result: pending.
+
+### FIX-018 Hardware-default gains reset per GROUP instead of per axis when one env var is set  [in-repo] (opened 2026-09-26)
+- Symptom / evidence: 09-25 recorded `Control_Params.npy` show the gain tests were not single-variable: `PLASMC_GAMMA_Z=1.5` ran with Gamma = (2.0, 2.0, 1.5) (xy 8x the hardware 0.25);
+  `PLASMC_GAMMA_X/Y=1.0` (5 flights) ran Gamma = (1, 1, 1.0) and `=1.2` (4 flights) ran (1.2, 1.2, 1.0), both with z 1.0 instead of the hardware 0.75. Effective configs flown (n): default 19,
+  Gamma(1,1,1) 5, P_xy 2.5 4, Gamma(1.2,1.2,1) 4, K_R 1.0 3, kappa_max 10 3, K_R 2.0 2, K_R 3.0 2, P_z 2.5 2, N_z 0.2 2, Gamma(2,2,1.5) 1.
+- Root cause: `controller.py` combined-barrier auto-align applied the hardware defaults for GAMMA, KAPPA0, E and XI2 only `if not any(PLASMC_<K>_{X,Y,Z} in os.environ)`; setting any one axis
+  reset the unset axes to the `pa()` code defaults (GAMMA 2,2,1; KAPPA0/E/XI2 similarly). (P2INF and the per-axis `pa()` gains such as P, N, OMEGA, KAPPA_MAX were already per axis.)
+- Fix: `_hw_axes(key, hw, cur)` applies each hardware default per axis (only axes without an env override). Unit-checked: GAMMA_Z=1.5 -> (0.25, 0.25, 1.5); GAMMA_X/Y=1.2 -> (1.2, 1.2, 0.75);
+  old logic reproduces the recorded 09-25 values. Repo only - NOT deployed (the 2026-09-26 flight plan sets none of these variables, so its behaviour is unchanged either way).
+- Confirm with: next session that sets a GAMMA/KAPPA0/E/XI2 env var: `Control_Params.npy` shows only the overridden axis changed and the others equal the hardware defaults
+  (Gamma 0.25/0.25/0.75, kappa_0 0.5/0.5/0.25, E 1/1/0.5, Xi2 0.7/0.7/1.0). Must not regress: default (no env) config identical to before.
+- Result: unit-checked only. Consequence: all 09-25 GAMMA-based conclusions (FIX-011 sweep tables, Gamma 1.2 / revert / GAMMA_Z tests) are void.

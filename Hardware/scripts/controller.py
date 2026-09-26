@@ -310,17 +310,22 @@ class Controller(Thread):
         # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
         # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
+            # FIX-018 (2026-09-26): apply each hardware default PER AXIS. The old form (`if not any(PLASMC_<K>_{X,Y,Z} in environ)`) reset ALL
+            # axes to the pa() code defaults as soon as one axis was overridden, e.g. PLASMC_GAMMA_Z=1.5 alone ran with Gamma_xy=2.0 (8x the
+            # hardware 0.25) and PLASMC_GAMMA_X/Y alone ran with Gamma_z=1.0 (not 0.75) - the 2026-09-25 gain tests were not single-variable.
+            def _hw_axes(key, hw, cur):
+                out = np.array(cur, dtype=float)
+                for _i, _a in enumerate("XYZ"):
+                    if f"PLASMC_{key}_{_a}" not in os.environ:
+                        out[_i] = hw[_i]
+                return out
             if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 2.5   # REBAKED 2026-08-28 (was 1.0, KEPT 2026-06-30 under a different base config {h_rd=-0.30,XIR=0.15}): Gazebo IC2 GT-FB n=5 A/B directly traced P2INF_XY=0.5/1.0 as the MECHANICAL TRIGGER for the funnel-breach/Singhal-containment/dh_d-leak/a_u-thrash chain (project_pi_08_26_lateral_kappa_runaway + same-day Gazebo follow-up) -- s_e_n was small and still CONVERGING right up to the moment p(t) hit its floor; the funnel getting tight, not the tracking error growing, triggered every observed breach. 2.5 (the original un-auto-aligned table default) gave 5/5 CLEAN runs (kappa_xy_max<=0.18, a_u_xy_max<=4.4, zero containment events) vs 0.5 giving 2/4 severe (a_u to 162) and repeated catastrophic outliers (a_u to 1e6, 9e3) once AU_LEAD/KF-retune were layered on top trying to patch the consequences. This supersedes the 2026-06-30 A/B's modest SP-rate finding -- avoiding a full breach event is worth far more than that A/B's marginal rel_vel gain, and that A/B's own base config differs from the GT-FB/HW_POS_FEEDBACK combined-barrier config this was validated against.
             if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 2.5   # REBAKED 2026-08-28, see PLASMC_P2INF_X comment above -- same finding, same fix.
             if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
-            if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
-                self._Gma = np.diag([0.25, 0.25, 0.75])                      # GAMMA_xy 0.4375/0.5->0.25 BAKED 2026-06-29 (symmetric): reaching gain a_u=-Gamma*sigma is the terminal-limit-cycle FORCING amplitude (sigma rings in the boundary layer terminally); lower Gamma shrinks the cycle -> softer + more precise. GT-FB sweep {0.25,0.5,1.0} @ PR0=10/PRINF=0.8/XIR=0.10: 0.25 best (xy 0.087 3/4 precise, rel_vel 0.38, vlat_term 0.23 vs 0.31/0.63). Symmetric (GT-FB has no hot axis; x 1.39x is a perception/cal asymmetry -> re-check per-axis under perception-ON). Z=0.75 (VDF, descent) unchanged. (was vdf 0.4375/0.5; pre-vdf bare default 2/2/1)
-            if not any(f"PLASMC_KAPPA0_{a}" in os.environ for a in "XYZ"):
-                self._kappa_0 = np.array([0.5, 0.5, 0.25])                  # BAKED 2026-06-29 terminal-approach kappa0 (was 0.125/0.125/0.25 VDF)
-            if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
-                self._E = np.diag([1.0, 1.0, 0.5])                          # vdf E; E_z 1.0->0.5 BAKED 2026-06-21 (IC2 N=15 x2: xy std 29.5->~4, fly 5/15->2-4/15, TL 5/15->1/15; engages kappa switching damping on the terminal Z cycle per MATLAB CB57). X/Y stay 1.0 (NOISE-pumped, kappa hurts there). Env PLASMC_E_* still overrides.
-            if not any(f"PLASMC_XI2_{a}" in os.environ for a in "XYZ"):
-                self._gamma = np.diag([0.7, 0.7, 1.0])                      # BAKED 2026-06-29 terminal-approach Xi_h (was 0.2/0.2/0.2 VDF)
+            self._Gma = np.diag(_hw_axes("GAMMA", [0.25, 0.25, 0.75], np.diag(self._Gma)))                      # GAMMA_xy 0.4375/0.5->0.25 BAKED 2026-06-29 (symmetric): reaching gain a_u=-Gamma*sigma is the terminal-limit-cycle FORCING amplitude (sigma rings in the boundary layer terminally); lower Gamma shrinks the cycle -> softer + more precise. GT-FB sweep {0.25,0.5,1.0} @ PR0=10/PRINF=0.8/XIR=0.10: 0.25 best (xy 0.087 3/4 precise, rel_vel 0.38, vlat_term 0.23 vs 0.31/0.63). Symmetric (GT-FB has no hot axis; x 1.39x is a perception/cal asymmetry -> re-check per-axis under perception-ON). Z=0.75 (VDF, descent) unchanged. (was vdf 0.4375/0.5; pre-vdf bare default 2/2/1)
+            self._kappa_0 = _hw_axes("KAPPA0", [0.5, 0.5, 0.25], self._kappa_0)                  # BAKED 2026-06-29 terminal-approach kappa0 (was 0.125/0.125/0.25 VDF)
+            self._E = np.diag(_hw_axes("E", [1.0, 1.0, 0.5], np.diag(self._E)))                          # vdf E; E_z 1.0->0.5 BAKED 2026-06-21 (IC2 N=15 x2: xy std 29.5->~4, fly 5/15->2-4/15, TL 5/15->1/15; engages kappa switching damping on the terminal Z cycle per MATLAB CB57). X/Y stay 1.0 (NOISE-pumped, kappa hurts there). Env PLASMC_E_* still overrides.
+            self._gamma = np.diag(_hw_axes("XI2", [0.7, 0.7, 1.0], np.diag(self._gamma)))                      # BAKED 2026-06-29 terminal-approach Xi_h (was 0.2/0.2/0.2 VDF)
             # (self._kappa is seeded from self._kappa_0 below at its init, picks up the new value)
 
         # Print every parameter whose value differs from its default.
